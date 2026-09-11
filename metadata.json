@@ -1,0 +1,6 @@
+{
+  "name": "Cerlesse",
+  "description": "基于 SearXNG 实时检索与 AgentTeam 多智能体协同的智搜引擎，支持根据搜索结果自定义生成独有卡片组件、多Agent并发搜索、小组件并行构建与拓扑自适应排版。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

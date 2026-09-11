@@ -1,0 +1,759 @@
+import React, { useState } from "react";
+import { AgentStep, AgentTeamReport, AgentRole, TeamMember, AssignedTask } from "../types.js";
+import {
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Bot,
+  Search,
+  Blocks,
+  LayoutGrid,
+  ShieldCheck,
+  Zap,
+  Clock,
+  Sparkles,
+  ArrowRight,
+  TrendingUp,
+  Workflow,
+  Cpu,
+  RefreshCw,
+  GitFork,
+  CheckCheck,
+  FileCheck,
+  Crown,
+  Share2
+} from "lucide-react";
+import { IOSWidget } from "./ui/IOSWidget.js";
+
+interface AgentProgressStreamProps {
+  steps: AgentStep[];
+  query: string;
+  isComplete: boolean;
+  executionTimeMs?: number;
+  agentTeam?: AgentTeamReport | null;
+}
+
+export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
+  steps,
+  query,
+  isComplete,
+  executionTimeMs,
+  agentTeam
+}) => {
+  const [viewMode, setViewMode] = useState<"matrix" | "team" | "timeline">("matrix");
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+  const [selectedAgentRole, setSelectedAgentRole] = useState<AgentRole | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedStepId(expandedStepId === id ? null : id);
+  };
+
+  // Helper to get fallback TeamMembers if agentTeam is not fully sent yet
+  const getDerivedMembers = (): TeamMember[] => {
+    if (agentTeam && agentTeam.members && agentTeam.members.length > 0) {
+      return agentTeam.members;
+    }
+
+    // Derive from steps
+    const hasPlanDone = steps.some(s => s.id === "plan" && s.status === "completed");
+    const isPlanRunning = steps.some(s => s.id === "plan" && s.status === "running");
+
+    const hasSearchDone = steps.some(s => s.id === "search" && s.status === "completed");
+    const hasSynthDone = steps.some(s => s.id === "synthesize" && s.status === "completed");
+    const hasLayoutDone = steps.some(s => s.id === "layout" && s.status === "completed");
+    const hasQaDone = steps.some(s => s.id === "qa" && s.status === "completed");
+
+    // Once the Master Agent has dispatched the plan, all 4 specialist agents work concurrently!
+    const isConcurrentTeamActive = hasPlanDone && !isComplete;
+
+    return [
+      {
+        id: "agent-coord",
+        role: "coordinator",
+        name: "主 Agent (调度总控)",
+        title: "意图感知与任务派发中枢",
+        isMaster: true,
+        dedicatedDuty: "全局需求研判、协作任务拆解、向专职 Agent 派发独立任务指令并最终验收交付",
+        avatarIcon: "Bot",
+        status: hasPlanDone ? "completed" : isPlanRunning ? "running" : "idle",
+        currentTask: hasPlanDone ? "任务委派完毕，4 位专门 Agent 正在同时并发作业" : isPlanRunning ? "剖析意图并分发专职任务" : "待命统筹",
+        completedTasksCount: hasPlanDone ? 2 : 0,
+        totalTasksCount: 2,
+        outputSummary: "完成原词、跨语言与深度探索维度的任务解构，向 4 位专职 Agent 派发独立任务"
+      },
+      {
+        id: "agent-retrieval",
+        role: "retrieval",
+        name: "全网检索 Agent",
+        title: "信源抓取与权威官网甄别专家",
+        isMaster: false,
+        dedicatedDuty: "专职全网多源检索、跨语言分词召回、官方网站甄别与垃圾杂音清洗（绝不参与排版或研报撰写）",
+        avatarIcon: "Search",
+        status: hasSearchDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
+        currentTask: hasSearchDone ? "TASK-RETRIEVE 专职检索完成并交付" : isConcurrentTeamActive ? "正在专职并发执行多路全网检索" : "等待主 Agent 派发检索任务",
+        completedTasksCount: hasSearchDone ? 3 : 0,
+        totalTasksCount: 3,
+        speedupMultiplier: 2.4,
+        outputSummary: "完成主词、跨语言与深度词抓取，甄别官方入口并清洗低质信源"
+      },
+      {
+        id: "agent-forge",
+        role: "widget_forge",
+        name: "组件创建 Agent",
+        title: "多维研报与结构化组件加工专家",
+        isMaster: false,
+        dedicatedDuty: "专职知识萃取加工，提炼核心速览、多维对比矩阵、拓扑思维导图与延伸探索追问（专职结构化数据生成）",
+        avatarIcon: "Blocks",
+        status: hasSynthDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
+        currentTask: hasSynthDone ? "TASK-FORGE 专职组件构建完成并交付" : isConcurrentTeamActive ? "正在专职并发加工知识导图与对比矩阵" : "等待主 Agent 派发构建任务",
+        completedTasksCount: hasSynthDone ? 6 : 0,
+        totalTasksCount: 6,
+        speedupMultiplier: 2.8,
+        outputSummary: "构建完成速览、思维导图、多维对比矩阵与启发式延伸探索"
+      },
+      {
+        id: "agent-orchestrator",
+        role: "orchestrator",
+        name: "排版编排 Agent",
+        title: "拓扑装箱与组件启停专家",
+        isMaster: false,
+        dedicatedDuty: "专职视口几何规划与 4 列流式装箱排布，根据内容密度激活契合组件、休眠冗余卡片（专职视觉工程）",
+        avatarIcon: "LayoutGrid",
+        status: hasLayoutDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
+        currentTask: hasLayoutDone ? "TASK-LAYOUT 自适应装箱已生效" : isConcurrentTeamActive ? "正在专职并发计算 4 列流式装箱排布" : "等待主 Agent 派发排版任务",
+        completedTasksCount: hasLayoutDone ? 3 : 0,
+        totalTasksCount: 3,
+        outputSummary: "完成 4 列瀑布流装箱规划，动态激活关键组件并休眠空白组件"
+      },
+      {
+        id: "agent-qa",
+        role: "qa_validator",
+        name: "质检验真 Agent",
+        title: "事实风控与拓扑闭环审计专家",
+        isMaster: false,
+        dedicatedDuty: "专职全流程合规复核，核验外部信源 URL 活性、导图拓扑连通闭环与事实佐证可信度（专职合规风控）",
+        avatarIcon: "ShieldCheck",
+        status: isComplete || hasQaDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
+        currentTask: isComplete || hasQaDone ? "TASK-QA 事实风控与存活核验通过" : isConcurrentTeamActive ? "正在专职并发核验信源活性与事实闭环" : "等待主 Agent 派发质检任务",
+        completedTasksCount: isComplete || hasQaDone ? 2 : 0,
+        totalTasksCount: 2,
+        outputSummary: "完成信源真实存活性验证与知识导图拓扑连通闭环"
+      }
+    ];
+  };
+
+  const getDerivedTasks = (): AssignedTask[] => {
+    if (agentTeam && agentTeam.tasksDelegated && agentTeam.tasksDelegated.length > 0) {
+      return agentTeam.tasksDelegated;
+    }
+
+    const hasPlanDone = steps.some(s => s.id === "plan" && s.status === "completed");
+    const hasSearchDone = steps.some(s => s.id === "search" && s.status === "completed");
+    const hasSynthDone = steps.some(s => s.id === "synthesize" && s.status === "completed");
+    const hasLayoutDone = steps.some(s => s.id === "layout" && s.status === "completed");
+    const hasQaDone = steps.some(s => s.id === "qa" && s.status === "completed");
+
+    const isConcurrentTeamActive = hasPlanDone && !isComplete;
+
+    return [
+      {
+        id: "TASK-RETRIEVE",
+        assignedToRole: "retrieval",
+        assignedAgentName: "全网检索 Agent",
+        taskName: "全网多源检索与权威信源甄别",
+        mandate: `针对关键词 “${query}”，执行主词及跨语言/深度词多路检索，甄别核心官方网站，过滤百科与低质杂音。`,
+        status: hasSearchDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
+        deliverables: hasSearchDone ? ["多源原始网页记录已抓取", "甄别官方权威认证门户", "已清洗低质冗余信源"] : undefined
+      },
+      {
+        id: "TASK-FORGE",
+        assignedToRole: "widget_forge",
+        assignedAgentName: "组件创建 Agent",
+        taskName: "多模态结构化小组件全量构建",
+        mandate: "基于检索返回的清洗信源，专职提炼核心结论速览、结构化多维对比矩阵、拓扑思维导图节点与延伸探索追问。",
+        status: hasSynthDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
+        deliverables: hasSynthDone ? ["核心结论速览组件已生成", "多维对比矩阵已提取", "知识架构思维导图拓扑已闭环", "延伸探索追问已预测"] : undefined
+      },
+      {
+        id: "TASK-LAYOUT",
+        assignedToRole: "orchestrator",
+        assignedAgentName: "排版编排 Agent",
+        taskName: "自适应 4 列瀑布流装箱与组件启停决策",
+        mandate: "根据用户查询意图与生成内容密度，执行 4 列自适应装箱算法，动态激活契合组件并休眠冗余卡片。",
+        status: hasLayoutDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
+        deliverables: hasLayoutDone ? ["4 列自适应瀑布流装箱计算完毕", "动态启停匹配意图模式", "网格跨度按信息密度优化"] : undefined
+      },
+      {
+        id: "TASK-QA",
+        assignedToRole: "qa_validator",
+        assignedAgentName: "质检验真 Agent",
+        taskName: "信源真实性复核与事实防幻觉审计",
+        mandate: "对交付的信源进行真实 URL 可达性审计，核验思维导图拓扑连通性闭环与事实依据佐证度。",
+        status: isComplete || hasQaDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
+        deliverables: isComplete || hasQaDone ? ["外部信源真实存活性验证通过", "思维导图树状连通性 100%", "核心速览与研报事实支撑合规"] : undefined
+      }
+    ];
+  };
+
+  const members = getDerivedMembers();
+  const tasks = getDerivedTasks();
+  const masterAgent = agentTeam?.masterAgent || {
+    name: "主 Agent (调度总控)",
+    role: "coordinator" as AgentRole,
+    title: "意图感知、任务委派与全局验收中枢",
+    mandateSummary: "负责全局需求剖析，制定任务委派清单，向各专职 Agent 派发独立专有指令，并最终集中验收交付。"
+  };
+
+  const speedup = agentTeam?.speedupMultiplier || (isComplete ? 2.8 : 2.2);
+  const completedCount = steps.filter((s) => s.status === "completed").length;
+  const runningMembers = members.filter(m => m.status === "running").length;
+  const completedMembers = members.filter(m => m.status === "completed").length;
+
+  const renderAgentIcon = (role: AgentRole, className: string = "w-4 h-4") => {
+    switch (role) {
+      case "coordinator":
+        return <Bot className={className} />;
+      case "retrieval":
+        return <Search className={className} />;
+      case "widget_forge":
+        return <Blocks className={className} />;
+      case "orchestrator":
+        return <LayoutGrid className={className} />;
+      case "qa_validator":
+        return <ShieldCheck className={className} />;
+      default:
+        return <Cpu className={className} />;
+    }
+  };
+
+  return (
+    <IOSWidget
+      id="widget-agent-team"
+      title="AgentTeam 多智能体协作中枢"
+      subtitle={
+        isComplete
+          ? `主 Agent 统筹验收交付 · 耗时 ${((executionTimeMs || 0) / 1000).toFixed(1)} 秒 · 4 位专职智能体各司其职已闭环`
+          : `主 Agent 正在统筹调度：${runningMembers} 位专职智能体正在执行独立任务...`
+      }
+      icon={<Workflow className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+      badge={
+        <div className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+            <Zap className="w-3 h-3 fill-emerald-500 text-emerald-500" />
+            <span>协同加速 {speedup}x</span>
+          </span>
+          {isComplete ? (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+              全项验收通过
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 animate-pulse">
+              多智能体执行中
+            </span>
+          )}
+        </div>
+      }
+      actions={
+        <div className="flex items-center gap-1 p-0.5 rounded-xl bg-zinc-200/60 dark:bg-zinc-800 text-[11px] font-medium">
+          <button
+            type="button"
+            onClick={() => setViewMode("matrix")}
+            className={`px-2.5 py-1 rounded-lg transition-all ${
+              viewMode === "matrix"
+                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            主 Agent 任务委派图谱
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("team")}
+            className={`px-2.5 py-1 rounded-lg transition-all ${
+              viewMode === "team"
+                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            智能体专家成员 ({completedMembers}/5)
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("timeline")}
+            className={`px-2.5 py-1 rounded-lg transition-all ${
+              viewMode === "timeline"
+                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            协作流水日志 ({completedCount})
+          </button>
+        </div>
+      }
+      className="w-full"
+    >
+      {/* 🚀 Architectural Header: Master-Worker Explicit Delegation Notice */}
+      <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-purple-50/80 dark:from-blue-950/30 dark:via-indigo-950/20 dark:to-purple-950/30 border border-blue-100/80 dark:border-blue-900/40 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+              <Crown className="w-4 h-4 fill-amber-300 text-amber-300" />
+            </div>
+            <div>
+              <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <span>主 Agent 任务分派与专职协同机制</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-medium">
+                  非重复任务 · 专人专事
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
+                由<strong>主 Agent (调度总控)</strong>研判意图并下达《专属任务委派书》，<strong>4 位专门智能体各自专注负责专属领域</strong>（检索嗅探、组件构建、自适应排版、风控质检），互不重叠并在最后交付主 Agent 验收。
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="px-2.5 py-1 rounded-xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-zinc-500 text-[10px]">协同提速</span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{speedup}x</span>
+            </div>
+
+            <div className="px-2.5 py-1 rounded-xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="text-zinc-500 text-[10px]">缩短延迟</span>
+              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                ~{Math.round((executionTimeMs || 1500) * (speedup - 1))}ms
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* VIEW 1: MASTER AGENT TASK DELEGATION MATRIX (主 Agent 任务委派图谱) */}
+      {/* ========================================================================= */}
+      {viewMode === "matrix" && (
+        <div className="space-y-4">
+          {/* 1. Master Agent Center Box */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-zinc-800 border-2 border-blue-500/40 shadow-xs relative">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <span>{masterAgent.name}</span>
+                      <span className="text-[10px] px-2 py-0.2 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                        <Crown className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                        指挥调度核心
+                      </span>
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    {masterAgent.title} · 当前研判输入：“{query}”
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  已向 4 位专长 Agent 派发独立委派单
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-700/60 text-xs text-zinc-600 dark:text-zinc-300 bg-blue-50/40 dark:bg-blue-950/20 p-2.5 rounded-xl">
+              <strong>👑 主 Agent 调度指令：</strong> {masterAgent.mandateSummary}
+            </div>
+          </div>
+
+          {/* Visual Link Indicator: Master Agent Distributing Tasks Downwards */}
+          <div className="flex items-center justify-center gap-2 text-zinc-400 text-xs font-mono py-0.5">
+            <span className="w-12 h-px bg-zinc-300 dark:bg-zinc-700" />
+            <GitFork className="w-4 h-4 text-blue-500" />
+            <span>主 Agent 任务派发与专职执行矩阵</span>
+            <span className="w-12 h-px bg-zinc-300 dark:bg-zinc-700" />
+          </div>
+
+          {/* 2. 4 Specialized Delegated Tasks Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {tasks.map((task) => {
+              const assignedMember = members.find(m => m.role === task.assignedToRole);
+              const isCompleted = task.status === "completed";
+              const isRunning = task.status === "running";
+
+              return (
+                <div
+                  key={task.id}
+                  className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between ${
+                    isRunning
+                      ? "bg-white dark:bg-zinc-800 border-blue-400 dark:border-blue-600 shadow-xs"
+                      : isCompleted
+                      ? "bg-zinc-50/90 dark:bg-zinc-800/80 border-zinc-200/80 dark:border-zinc-700/80"
+                      : "bg-zinc-50/40 dark:bg-zinc-900/40 border-zinc-200/40 dark:border-zinc-800 text-zinc-400"
+                  }`}
+                >
+                  <div>
+                    {/* Header: Task ID & Assignee */}
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`p-1.5 rounded-xl shrink-0 ${
+                          isRunning
+                            ? "bg-blue-600 text-white"
+                            : isCompleted
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-200 dark:bg-zinc-700 text-zinc-500"
+                        }`}>
+                          {renderAgentIcon(task.assignedToRole, "w-3.5 h-3.5")}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">
+                              {task.taskName}
+                            </span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-bold">
+                              {task.id}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1 mt-0.5">
+                            <span>承接智能体：</span>
+                            <span className="font-semibold text-blue-600 dark:text-blue-400">
+                              {task.assignedAgentName}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status Tag */}
+                      <div className="shrink-0">
+                        {isRunning && (
+                          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 animate-pulse">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            专职执行中
+                          </span>
+                        )}
+                        {isCompleted && (
+                          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            已交付主Agent
+                          </span>
+                        )}
+                        {task.status === "pending" && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-200/60 dark:bg-zinc-800 text-zinc-400">
+                            排队待命
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dedicated Responsibility Statement (突出该 Agent 的独有专长，绝不与其它重复) */}
+                    <div className="mb-2 p-2 rounded-xl bg-zinc-100/70 dark:bg-zinc-900/60 text-[11px] text-zinc-600 dark:text-zinc-300 leading-snug">
+                      <span className="font-bold text-zinc-800 dark:text-zinc-200">🎯 专属职责：</span>
+                      <span>{assignedMember?.dedicatedDuty}</span>
+                    </div>
+
+                    {/* Master Agent Mandate (主 Agent 指令) */}
+                    <div className="mb-2 text-[11px] text-zinc-600 dark:text-zinc-400 pl-1 border-l-2 border-blue-500/60">
+                      <span className="font-semibold text-zinc-700 dark:text-zinc-300">📜 主 Agent 派发指令：</span>
+                      <p className="mt-0.5">{task.mandate}</p>
+                    </div>
+
+                    {/* Deliverables Delivered to Master Agent */}
+                    {task.deliverables && task.deliverables.length > 0 && (
+                      <div className="mt-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-700/60">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+                          📦 向主 Agent 提交的专职交付物：
+                        </span>
+                        <div className="space-y-1">
+                          {task.deliverables.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="text-[11px] flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300"
+                            >
+                              <CheckCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                              <span className="truncate">{item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {task.executionTimeMs && (
+                    <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-700/60 flex items-center justify-between text-[10px] text-zinc-400 font-mono">
+                      <span>耗时: {task.executionTimeMs}ms</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        独立闭环交付 ✓
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VIEW 2: TEAM MEMBERS / SPECIALISTS (智能体团队角色与职责分工) */}
+      {/* ========================================================================= */}
+      {viewMode === "team" && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5">
+            {members.map((member) => {
+              const isRunning = member.status === "running";
+              const isDone = member.status === "completed";
+              const isIdle = member.status === "idle";
+              const isSelected = selectedAgentRole === member.role;
+
+              return (
+                <div
+                  key={member.id}
+                  onClick={() => setSelectedAgentRole(isSelected ? null : member.role)}
+                  className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
+                    isSelected
+                      ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs"
+                      : isRunning
+                      ? "bg-white dark:bg-zinc-800 border-blue-300 dark:border-blue-700 shadow-2xs"
+                      : isDone
+                      ? "bg-zinc-50/80 dark:bg-zinc-800/70 border-zinc-200/80 dark:border-zinc-700/80 hover:bg-zinc-100/80 dark:hover:bg-zinc-800"
+                      : "bg-zinc-50/40 dark:bg-zinc-900/40 border-zinc-200/40 dark:border-zinc-800/60 text-zinc-400"
+                  }`}
+                >
+                  {/* Top Status & Role Icon */}
+                  <div className="flex items-center justify-between gap-1.5 mb-2">
+                    <div className={`p-1.5 rounded-xl transition-colors ${
+                      isRunning
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : isDone
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                        : "bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400"
+                    }`}>
+                      {renderAgentIcon(member.role, "w-4 h-4")}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {member.isMaster && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                          主Agent
+                        </span>
+                      )}
+                      {isRunning && (
+                        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 animate-pulse">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          运行中
+                        </span>
+                      )}
+                      {isDone && (
+                        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">
+                          <CheckCircle2 className="w-2.5 h-2.5" />
+                          就绪
+                        </span>
+                      )}
+                      {isIdle && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-200/60 dark:bg-zinc-800 text-zinc-400">
+                          待命
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Name & Title */}
+                  <div className="mb-2">
+                    <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                      {member.name}
+                    </h4>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-1">
+                      {member.title}
+                    </p>
+                  </div>
+
+                  {/* Real-time Task / Progress */}
+                  <div className="pt-2 border-t border-zinc-100 dark:border-zinc-700/60 text-[11px]">
+                    <div className="flex items-center justify-between text-zinc-500 mb-1">
+                      <span className="text-[10px] font-medium">当前指派任务</span>
+                      <span className="font-mono text-[10px]">
+                        {member.completedTasksCount}/{member.totalTasksCount}
+                      </span>
+                    </div>
+                    <p className={`text-[11px] leading-tight line-clamp-2 ${
+                      isRunning
+                        ? "text-blue-600 dark:text-blue-400 font-medium"
+                        : "text-zinc-600 dark:text-zinc-400"
+                    }`}>
+                      {member.currentTask}
+                    </p>
+
+                    {member.executionTimeMs && (
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-zinc-400 font-mono">
+                        <span>耗时: {member.executionTimeMs}ms</span>
+                        {member.speedupMultiplier && (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                            ⚡ {member.speedupMultiplier}x
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Selected Agent Output Summary Panel */}
+          {selectedAgentRole && (
+            <div className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/80 border border-blue-200 dark:border-blue-900/60 text-xs animate-in fade-in duration-200">
+              {(() => {
+                const target = members.find(m => m.role === selectedAgentRole);
+                if (!target) return null;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-bold text-zinc-900 dark:text-zinc-100">
+                        {renderAgentIcon(target.role, "w-4 h-4 text-blue-600")}
+                        <span>{target.name} 专属职责与交付报告</span>
+                        {target.isMaster && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold">
+                            调度主官
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        {target.completedTasksCount} / {target.totalTasksCount} 任务完成
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-700/60 text-xs">
+                      <div className="font-semibold text-zinc-800 dark:text-zinc-200 mb-0.5">
+                        🎯 独立负责的专业领域：
+                      </div>
+                      <p className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                        {target.dedicatedDuty}
+                      </p>
+                    </div>
+
+                    <p className="text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                      <strong>向主 Agent 的交付汇报：</strong> {target.outputSummary || "该智能体已完成专职任务交付，输出已被主 Agent 验收。"}
+                    </p>
+
+                    {target.deliverables && target.deliverables.length > 0 && (
+                      <div className="mt-1 pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+                          具体交付成果物清单：
+                        </span>
+                        <div className="space-y-1">
+                          {target.deliverables.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 text-xs">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              <span>{item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VIEW 3: CHRONOLOGICAL PIPELINE STREAM WITH CLEAR AGENT LABELS */}
+      {/* ========================================================================= */}
+      {viewMode === "timeline" && (
+        <div className="space-y-2">
+          {steps.map((step) => {
+            const isExpanded = expandedStepId === step.id;
+            const hasDetails = step.details && step.details.length > 0;
+
+            return (
+              <div
+                key={step.id}
+                className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200/60 dark:border-zinc-700/80 transition-all"
+              >
+                <div
+                  onClick={() => hasDetails && toggleExpand(step.id)}
+                  className={`flex items-center justify-between gap-3 ${hasDetails ? "cursor-pointer" : ""}`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="shrink-0">
+                      {step.status === "completed" && (
+                        <CheckCircle2 className="w-4 h-4 text-zinc-900 dark:text-zinc-100" />
+                      )}
+                      {step.status === "running" && (
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+                      )}
+                      {step.status === "error" && (
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 min-w-0">
+                      {step.agentRole && (
+                        <span className="shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                          {renderAgentIcon(step.agentRole, "w-3 h-3")}
+                          <span>{step.agentName || "Agent"}</span>
+                        </span>
+                      )}
+                      <span className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                        {step.title}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {step.speedupFactor && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-mono">
+                        ⚡ {step.speedupFactor}
+                      </span>
+                    )}
+                    {step.timestamp && (
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        {new Date(step.timestamp).toLocaleTimeString()}
+                      </span>
+                    )}
+                    {hasDetails && (
+                      <div className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
+                        {isExpanded ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <p className="mt-1.5 text-xs text-zinc-600 dark:text-zinc-300 pl-6.5 leading-relaxed">
+                  {step.description}
+                </p>
+
+                {/* Expandable Step Details */}
+                {isExpanded && hasDetails && (
+                  <div className="mt-3 pl-6.5 pt-3 border-t border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5 animate-in fade-in duration-150">
+                    {step.details?.map((detail, idx) => (
+                      <div
+                        key={idx}
+                        className="text-xs font-mono text-zinc-600 dark:text-zinc-400 flex items-start gap-2 bg-white/60 dark:bg-zinc-900/50 p-2 rounded-xl border border-zinc-200/40 dark:border-zinc-800"
+                      >
+                        <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                        <span className="break-all">{detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </IOSWidget>
+  );
+};

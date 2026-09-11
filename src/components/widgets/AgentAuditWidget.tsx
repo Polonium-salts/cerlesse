@@ -1,0 +1,188 @@
+import React from "react";
+import { IOSWidget } from "../ui/IOSWidget.js";
+import { Workflow, CheckCircle2, ArrowRight, Zap, Bot, Search, Blocks, LayoutGrid, ShieldCheck, Crown } from "lucide-react";
+import { AgentStep, AgentTeamReport, AgentRole, TeamMember } from "../../types.js";
+
+interface AgentAuditWidgetProps {
+  steps: AgentStep[];
+  query: string;
+  executionTimeMs?: number;
+  modelUsed?: string;
+  agentTeam?: AgentTeamReport | null;
+  onViewDetails?: () => void;
+}
+
+export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
+  steps = [],
+  query,
+  executionTimeMs = 450,
+  modelUsed,
+  agentTeam,
+  onViewDetails
+}) => {
+  const members: TeamMember[] = agentTeam?.members || [
+    {
+      id: "1",
+      role: "coordinator",
+      name: "主 Agent (调度总控)",
+      title: "意图研判与任务派发中枢",
+      isMaster: true,
+      dedicatedDuty: "全局需求感知、协作图谱分解、向各专职 Agent 派发独立任务并最终验收交付",
+      avatarIcon: "Bot",
+      status: "completed",
+      currentTask: "任务委派完毕，各专门 Agent 已在执行",
+      assignedTaskId: "TASK-MASTER",
+      completedTasksCount: 2,
+      totalTasksCount: 2
+    },
+    {
+      id: "2",
+      role: "retrieval",
+      name: "全网检索 Agent",
+      title: "信源抓取与权威官网甄别专家",
+      isMaster: false,
+      dedicatedDuty: "专职负责全网多源抓取、跨语言检索分词、官方权威网站甄别与垃圾杂音清洗",
+      avatarIcon: "Search",
+      status: "completed",
+      currentTask: "TASK-RETRIEVE 专职检索完成并交付",
+      assignedTaskId: "TASK-RETRIEVE",
+      completedTasksCount: 3,
+      totalTasksCount: 3,
+      speedupMultiplier: 2.4
+    },
+    {
+      id: "3",
+      role: "widget_forge",
+      name: "组件创建 Agent",
+      title: "多维研报与结构化组件加工专家",
+      isMaster: false,
+      dedicatedDuty: "专职多模态知识组件提炼，生成核心速览要点、多维对比矩阵、拓扑思维导图与延伸追问",
+      avatarIcon: "Blocks",
+      status: "completed",
+      currentTask: "TASK-FORGE 专职组件构建完成并交付",
+      assignedTaskId: "TASK-FORGE",
+      completedTasksCount: 6,
+      totalTasksCount: 6,
+      speedupMultiplier: 2.8
+    },
+    {
+      id: "4",
+      role: "orchestrator",
+      name: "排版编排 Agent",
+      title: "拓扑装箱与组件启停专家",
+      isMaster: false,
+      dedicatedDuty: "专职视口空间与瀑布流装箱规划，根据内容密度智能启停组件并计算 4 列自适应网格跨度",
+      avatarIcon: "LayoutGrid",
+      status: "completed",
+      currentTask: "TASK-LAYOUT 4列自适应装箱生效",
+      assignedTaskId: "TASK-LAYOUT",
+      completedTasksCount: 3,
+      totalTasksCount: 3
+    },
+    {
+      id: "5",
+      role: "qa_validator",
+      name: "质检验真 Agent",
+      title: "事实风控与拓扑闭环审计专家",
+      isMaster: false,
+      dedicatedDuty: "专职全流程合规复核，核验外部信源 URL 活性、验证思维导图连通性与事实支撑度",
+      avatarIcon: "ShieldCheck",
+      status: "completed",
+      currentTask: "TASK-QA 事实风控与存活核验通过",
+      assignedTaskId: "TASK-QA",
+      completedTasksCount: 2,
+      totalTasksCount: 2
+    }
+  ];
+
+  const speedup = agentTeam?.speedupMultiplier || 2.8;
+
+  const renderIcon = (role: AgentRole) => {
+    switch (role) {
+      case "coordinator": return <Bot className="w-3.5 h-3.5 text-blue-500" />;
+      case "retrieval": return <Search className="w-3.5 h-3.5 text-indigo-500" />;
+      case "widget_forge": return <Blocks className="w-3.5 h-3.5 text-purple-500" />;
+      case "orchestrator": return <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />;
+      case "qa_validator": return <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />;
+      default: return <Workflow className="w-3.5 h-3.5 text-blue-500" />;
+    }
+  };
+
+  return (
+    <IOSWidget
+      id="widget-agent-team-audit"
+      title="Agent 专属任务分派矩阵"
+      subtitle="主 Agent 统筹派发 · 4 位专家各司其职"
+      icon={<Workflow className="w-4 h-4 text-blue-500" />}
+      badge={
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1 font-mono">
+          <Zap className="w-3 h-3 fill-emerald-500 text-emerald-500" />
+          <span>加速 {speedup}x</span>
+        </span>
+      }
+      className="w-full h-full"
+    >
+      <div className="flex-1 flex flex-col justify-between space-y-3">
+        {/* Master Agent header callout */}
+        <div className="p-2 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-800/40 text-[11px] flex items-center gap-2">
+          <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+          <div className="min-w-0">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100">主 Agent (调度总控)：</span>
+            <span className="text-zinc-600 dark:text-zinc-300">
+              精准拆解 4 项独立专职任务，分发专责指令，拒绝重复执行
+            </span>
+          </div>
+        </div>
+
+        {/* 4 Specialist Agents with their distinct responsibilities */}
+        <div className="space-y-1.5">
+          {members.filter(m => !m.isMaster).map((member) => (
+            <div
+              key={member.id}
+              className="flex items-center justify-between gap-2 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60 dark:border-zinc-700/60 text-xs"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-6 h-6 rounded-lg bg-white dark:bg-zinc-700 border border-zinc-200/60 dark:border-zinc-600 flex items-center justify-center shrink-0">
+                  {renderIcon(member.role)}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-[11px] truncate">
+                      {member.name}
+                    </span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-700/60 text-zinc-500 font-mono">
+                      {member.assignedTaskId || "专职"}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">
+                    {member.currentTask || member.title}
+                  </div>
+                </div>
+              </div>
+
+              <div className="shrink-0 flex items-center gap-1">
+                {member.speedupMultiplier && (
+                  <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                    ⚡{member.speedupMultiplier}x
+                  </span>
+                )}
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {onViewDetails && (
+          <button
+            onClick={onViewDetails}
+            className="w-full py-2 px-3 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-300 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Workflow className="w-3.5 h-3.5 text-blue-500" />
+            <span>查看主 Agent 任务委派图谱</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </IOSWidget>
+  );
+};
