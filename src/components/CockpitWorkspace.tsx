@@ -73,6 +73,21 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
   const keyTakeaways = activeResult.keyTakeaways || [];
   const followUps = activeResult.followUpQuestions || [];
 
+  // Filter custom cards relevant to active search query (or pinned) and deduplicate by archetype
+  const activeNormQuery = (activeResult?.query || "").trim().toLowerCase();
+  const relevantCustomCards = customCards.filter((c) => {
+    if (c.isPinned) return true;
+    const cardQuery = (c.basedOnQuery || "").trim().toLowerCase();
+    return cardQuery === activeNormQuery;
+  });
+
+  const seenArchetypes = new Set<string>();
+  const displayCustomCards = relevantCustomCards.filter((c) => {
+    if (seenArchetypes.has(c.archetype)) return false;
+    seenArchetypes.add(c.archetype);
+    return true;
+  });
+
   // Enable keyboard shortcuts (1-6) for rapid zero-scroll navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -438,9 +453,9 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
           {activeTab === "overview" && (
             <div className="max-w-5xl mx-auto space-y-6">
               {/* 搜索定制独有小组件：与固定组件拥有完全相同的排列效果与UI风格 */}
-              {customCards.length > 0 && (
+              {displayCustomCards.length > 0 && (
                 <div className="space-y-4 w-full">
-                  {customCards.map((card) => (
+                  {displayCustomCards.map((card) => (
                     <UniqueCardWidget
                       key={card.id}
                       card={card}

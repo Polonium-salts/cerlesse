@@ -48,7 +48,8 @@ import {
   computeAdaptiveLayoutFromQuery, 
   getStrategyForPreset,
   calculateAdaptiveBinPacking,
-  getWidgetGridClass
+  getWidgetGridClass,
+  DEFAULT_FALLBACK_WIDGETS
 } from "./lib/adaptiveLayout.js";
 import { motion } from "motion/react";
 import { 
@@ -119,11 +120,50 @@ export default function App() {
   const [customCards, setCustomCards] = useState<CustomCardData[]>(() => {
     try {
       const saved = localStorage.getItem("cerlesse_custom_cards");
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed: CustomCardData[] = JSON.parse(saved);
+      // Clean up duplicates on boot
+      const seen = new Set<string>();
+      return parsed.filter(c => {
+        const key = `${(c.basedOnQuery || "").trim().toLowerCase()}__${c.archetype}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     } catch {
       return [];
     }
   });
+
+  const mergeCustomCards = (prev: CustomCardData[], incoming: CustomCardData[]): CustomCardData[] => {
+    let list = [...prev];
+    for (const newCard of incoming) {
+      const normNewQ = (newCard.basedOnQuery || "").trim().toLowerCase();
+      const existingIdx = list.findIndex(c => {
+        if (c.id === newCard.id) return true;
+        const normQ = (c.basedOnQuery || "").trim().toLowerCase();
+        return normQ === normNewQ && c.archetype === newCard.archetype;
+      });
+      if (existingIdx >= 0) {
+        list[existingIdx] = {
+          ...newCard,
+          isPinned: list[existingIdx].isPinned ?? newCard.isPinned
+        };
+      } else {
+        list = [newCard, ...list];
+      }
+    }
+
+    const seen = new Set<string>();
+    const deduplicated = list.filter(c => {
+      const key = `${(c.basedOnQuery || "").trim().toLowerCase()}__${c.archetype}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return deduplicated;
+  };
 
   const [isForgeModalOpen, setIsForgeModalOpen] = useState(false);
   const [preselectedSourceIds, setPreselectedSourceIds] = useState<string[]>([]);
@@ -142,7 +182,7 @@ export default function App() {
   };
 
   const handleCardCreated = (newCard: CustomCardData) => {
-    setCustomCards(prev => [newCard, ...prev]);
+    setCustomCards(prev => mergeCustomCards(prev, [newCard]));
   };
 
   const handleUpdateCard = (updated: CustomCardData) => {
@@ -245,7 +285,7 @@ export default function App() {
   // When a new search completes or activeResult changes, automatically adopt Agent's intent recommendation
   useEffect(() => {
     if (activeResult) {
-      const rec = computeAdaptiveLayoutFromQuery(activeResult, undefined, { autoFillGaps, autoFillMode });
+      const rec = activeResult.layoutStrategy || computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
       setLayoutPreset(rec.intentType);
       setCustomWidgetOrder(rec.componentOrder);
       setCustomEnabledWidgets(rec.enabledWidgets || null);
@@ -255,16 +295,15 @@ export default function App() {
 
   // Compute the currently effective strategy
   const currentStrategy = React.useMemo<AdaptiveLayoutStrategy>(() => {
-    if (!activeResult) return getStrategyForPreset("balanced", "", true, undefined, undefined, { autoFillGaps, autoFillMode });
-    const hasOfficial = activeResult.filteredResults.some((r) => r.isOfficial);
+    if (!activeResult) return getStrategyForPreset("balanced");
 
-    const baseRec = computeAdaptiveLayoutFromQuery(activeResult, customWidgetSpans, { autoFillGaps, autoFillMode });
+    const baseRec = activeResult.layoutStrategy || computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
     const activeEnabled = customEnabledWidgets || baseRec.enabledWidgets || ALL_RESULT_WIDGET_KEYS;
 
     const targetOrder: ResultWidgetKey[] = customWidgetOrder || baseRec.componentOrder;
     // Filter down to enabled widgets only for the visual layout
     const visibleOrder: ResultWidgetKey[] = targetOrder.filter((k) => activeEnabled.includes(k));
-    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? visibleOrder : ["quick_answer", "takeaways", "sources"];
+    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? visibleOrder : DEFAULT_FALLBACK_WIDGETS;
 
     const emphasized: ResultWidgetKey = safeVisibleOrder.includes(baseRec.emphasizedWidget)
       ? baseRec.emphasizedWidget
@@ -273,32 +312,29 @@ export default function App() {
     const packing = calculateAdaptiveBinPacking(safeVisibleOrder, {
       emphasizedWidget: emphasized,
       intentType: layoutPreset === "custom" ? baseRec.intentType : (layoutPreset as LayoutIntentType),
-      hasOfficialSite: hasOfficial,
-      maxColumnsPerRow: 4,
       customSpans: customWidgetSpans,
-      autoFillGaps,
-      autoFillMode
+      enabledWidgets: safeVisibleOrder
     });
 
     return {
       ...baseRec,
       intentType: layoutPreset === "custom" ? baseRec.intentType : (layoutPreset as LayoutIntentType),
-      componentOrder: packing.autoFilledOrder || safeVisibleOrder,
+      componentOrder: safeVisibleOrder,
       emphasizedWidget: emphasized,
       gridConfig: packing.gridConfig,
       totalRows: packing.totalRows,
-      maxColumnsPerRow: 4,
-      packingMethod: "agent-adaptive-binpack",
+      maxColumnsPerRow: 12,
+      packingMethod: "semantic-css-grid",
       enabledWidgets: activeEnabled,
       disabledWidgets: ALL_RESULT_WIDGET_KEYS.filter(k => !activeEnabled.includes(k)),
       widgetStatusMap: baseRec.widgetStatusMap,
       customWidgetSpans,
       alignmentMode,
-      autoFillGaps,
-      autoFillMode,
-      filledGapsCount: packing.filledGapsCount
+      autoFillGaps: false,
+      autoFillMode: "off",
+      filledGapsCount: 0
     };
-  }, [activeResult, layoutPreset, customWidgetOrder, customEnabledWidgets, customWidgetSpans, alignmentMode, autoFillGaps, autoFillMode]);
+  }, [activeResult, layoutPreset, customWidgetOrder, customEnabledWidgets, customWidgetSpans, alignmentMode]);
 
   const currentEnabledWidgets = currentStrategy.enabledWidgets || ALL_RESULT_WIDGET_KEYS;
 
@@ -306,7 +342,7 @@ export default function App() {
 
   const handleSelectPreset = (preset: LayoutIntentType) => {
     setLayoutPreset(preset);
-    const strat = getStrategyForPreset(preset, activeResult?.query, activeResult?.filteredResults.some(r => r.isOfficial));
+    const strat = getStrategyForPreset(preset, activeResult);
     setCustomWidgetOrder(strat.componentOrder);
     setCustomEnabledWidgets(strat.enabledWidgets);
     setCustomWidgetSpans({});
@@ -334,15 +370,7 @@ export default function App() {
 
   const handleToggleWidgetActivation = (widgetKey: ResultWidgetKey) => {
     setCustomEnabledWidgets((prev) => {
-      const currentList = prev || currentStrategy.enabledWidgets || [
-        "takeaways",
-        "official_portal",
-        "ai_overview",
-        "mindmap",
-        "comparison",
-        "sources",
-        "followup"
-      ];
+      const currentList = prev || currentStrategy.enabledWidgets || DEFAULT_FALLBACK_WIDGETS;
       let nextList: ResultWidgetKey[];
       if (currentList.includes(widgetKey)) {
         if (currentList.length <= 1) return currentList; // Keep at least 1 widget
@@ -357,7 +385,7 @@ export default function App() {
 
   const handleResetToRecommended = () => {
     if (!activeResult) return;
-    const rec = computeAdaptiveLayoutFromQuery(activeResult);
+    const rec = computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
     setLayoutPreset(rec.intentType);
     setCustomWidgetOrder(rec.componentOrder);
     setCustomEnabledWidgets(rec.enabledWidgets || null);
@@ -474,17 +502,7 @@ export default function App() {
           setAgentTeam(result.agentTeam);
         }
         if (result.customCards && result.customCards.length > 0) {
-          setCustomCards(prev => {
-            const existingIds = new Set(prev.map(c => c.id));
-            const newCards = result.customCards!.filter(c => !existingIds.has(c.id));
-            const updated = [...newCards, ...prev];
-            try {
-              localStorage.setItem("ai_custom_cards", JSON.stringify(updated));
-            } catch {
-              // ignore
-            }
-            return updated;
-          });
+          setCustomCards(prev => mergeCustomCards(prev, result.customCards!));
         }
         setIsLoading(false);
 
@@ -572,17 +590,7 @@ export default function App() {
               setAgentTeam(result.agentTeam);
             }
             if (result.customCards && result.customCards.length > 0) {
-              setCustomCards(prev => {
-                const existingIds = new Set(prev.map(c => c.id));
-                const newCards = result.customCards!.filter(c => !existingIds.has(c.id));
-                const updated = [...newCards, ...prev];
-                try {
-                  localStorage.setItem("ai_custom_cards", JSON.stringify(updated));
-                } catch {
-                  // ignore
-                }
-                return updated;
-              });
+              setCustomCards(prev => mergeCustomCards(prev, result.customCards!));
             }
             setIsLoading(false);
 
@@ -684,11 +692,24 @@ export default function App() {
     const isCompact = overrideCompact ?? placement?.isCompact ?? (placement?.colSpanLg ? placement.colSpanLg <= 4 : false);
 
     switch (key) {
-      case "custom_cards":
-        if (!customCards || customCards.length === 0) return null;
+      case "custom_cards": {
+        const activeNormQ = (activeResult?.query || "").trim().toLowerCase();
+        const relevantCards = customCards.filter(c => {
+          if (c.isPinned) return true;
+          const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
+          return cardQ === activeNormQ;
+        });
+        const seenArch = new Set<string>();
+        const displayCards = relevantCards.filter(c => {
+          if (seenArch.has(c.archetype)) return false;
+          seenArch.add(c.archetype);
+          return true;
+        });
+
+        if (displayCards.length === 0) return null;
         return (
           <div className="space-y-4 w-full">
-            {customCards.map((card) => (
+            {displayCards.map((card) => (
               <UniqueCardWidget
                 key={card.id}
                 card={card}
@@ -699,6 +720,7 @@ export default function App() {
             ))}
           </div>
         );
+      }
       case "quick_answer":
         return (
           <QuickAnswerWidget
@@ -1155,11 +1177,7 @@ export default function App() {
           setCurrentQuery(res.query);
           setAgentSteps(res.steps || []);
           if (res.customCards && res.customCards.length > 0) {
-            setCustomCards(prev => {
-              const existingIds = new Set(prev.map(c => c.id));
-              const newCards = res.customCards!.filter(c => !existingIds.has(c.id));
-              return [...newCards, ...prev];
-            });
+            setCustomCards(prev => mergeCustomCards(prev, res.customCards!));
           }
           setActiveTab("bento");
         }}

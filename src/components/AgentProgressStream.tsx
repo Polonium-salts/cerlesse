@@ -23,7 +23,8 @@ import {
   CheckCheck,
   FileCheck,
   Crown,
-  Share2
+  Share2,
+  BookOpen
 } from "lucide-react";
 import { IOSWidget } from "./ui/IOSWidget.js";
 
@@ -217,6 +218,8 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         return <Bot className={className} />;
       case "retrieval":
         return <Search className={className} />;
+      case "knowledge_synthesis":
+        return <BookOpen className={className} />;
       case "widget_forge":
         return <Blocks className={className} />;
       case "orchestrator":

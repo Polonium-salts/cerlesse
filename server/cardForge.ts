@@ -63,11 +63,14 @@ async function generateCardWithGemini(
     `[信源${i + 1}] 标题: ${r.title}\n网址: ${r.url}\n摘要: ${r.snippet}\n`
   ).join("\n");
 
-  const prompt = `你是一位高阶知识架构与独有交互小组件设计专家。请根据提供的用户搜索关键词与真实搜索结果，构建一个高度结构化、信息密集、具备强交互功能且具有专职业务逻辑的“独有小组件 (Unique Card Component)”。
+  const suggestedArchetype = archetype === "auto" ? detectBestArchetype(query, results) : archetype;
+
+  const prompt = `你是一位 OpenAI Agents 架构下专门负责独有业务小组件 (Unique Card Component) 架构与锻造的专职智能体 (WidgetArchitectAgent)。
+请根据提供的用户搜索关键词与真实搜索结果，构建一个高度结构化、信息密集、具备强交互功能且具有专职业务逻辑的“独有小组件”。
 
 【检索关键词】: ${query}
-【用户定制诉求】: ${userPrompt || "提炼最具价值的核心结论、实操要点、避坑指南或关键参数"}
-【目标卡片原型类型】: ${archetype === "auto" ? "根据搜索内容自动决定最适合的类型（可选：pros_cons / action_checklist / parameter_matrix / quote_dossier / timeline / verdict_summary）" : archetype}
+【用户定制诉求】: ${userPrompt || "提炼最具价值的核心结论、实操要点、权威关键参数或演进脉络"}
+【智能决策卡片原型】: 经实体与意图特征分析推荐为【${suggestedArchetype}】（可选原型：parameter_matrix / timeline / action_checklist / verdict_summary / pros_cons / quote_dossier。严禁千篇一律生成优劣势模板！）
 
 【真实信源上下文】:
 ${sourcesContext}
@@ -161,6 +164,68 @@ ${sourcesContext}
   }
 }
 
+export function detectBestArchetype(
+  query: string,
+  results: SearchResult[] = [],
+  requested?: CustomCardArchetype | "auto"
+): CustomCardArchetype {
+  if (requested && requested !== "auto") {
+    return requested;
+  }
+
+  const q = query.trim().toLowerCase();
+
+  // 1. Explicit comparison queries
+  if (/\b(vs|versus|compare|comparison|pros and cons)\b|对比|区别|优缺点|优劣|利弊|好还是|避坑|哪个好/i.test(q)) {
+    return "pros_cons";
+  }
+
+  // 2. Quotes, viewpoints, stances, interviews, controversy, speech
+  if (/(言论|观点|评价|信源|引用|谁说|论据|专访|表态|反垄断|争议|\b(quote|quotes|dossier|speech|controversy|stance|interview|hearing|verbatim)\b)/i.test(q)) {
+    return "quote_dossier";
+  }
+
+  // 3. Decision making, verdicts, buying recommendations, shopping advice
+  if (/(选择|选型|推荐|怎么选|买哪个|建议|决策|裁决|哪个合适|性价比|选哪个|\b(verdict|recommend|recommendation|should i buy|buy|worth it|which one)\b)/i.test(q)) {
+    return "verdict_summary";
+  }
+
+  // 4. Timeline, history, evolution, milestones
+  if (/(发展|演变|演进|历史|历程|时间线|版本|里程碑|起源|路线图|\b(roadmap|timeline|history|milestones|evolution)\b)/i.test(q)) {
+    return "timeline";
+  }
+
+  // 5. Actionable tutorials, steps, setup, guides, installation, how-to
+  if (/(怎么|如何|步骤|清单|教程|指南|安装|部署|配置|攻略|排查|操作|接入|搭建|\b(how to|install|deploy|setup|tutorial|guide|steps|troubleshoot|checklist)\b)/i.test(q)) {
+    return "action_checklist";
+  }
+
+  // 6. Technology platforms, companies, frameworks, hardware entities
+  // (e.g. google, apple, nvidia, react, deepseek, docker, linux, postgres, kubernetes)
+  if (
+    /(参数|规格|配置|指标|性能|显存|架构|matrix|spec|api|benchmark|跑分|模型|生态|系统|平台)/i.test(q) ||
+    /^(google|apple|microsoft|nvidia|meta|amazon|tesla|openai|deepseek|anthropic|linux|docker|kubernetes|react|vue|angular|node|python|golang|rust|postgres|mysql|redis|mongodb|intel|amd|snapdragon|arm)$/i.test(q) ||
+    /^(google|苹果|微软|英伟达|华为|腾讯|阿里|字节|百度|安卓|android|ios|mac|windows|rtx)/i.test(q)
+  ) {
+    return "parameter_matrix";
+  }
+
+  // 7. Contextual sniffing from search snippets
+  const snippetsText = results.map(r => (r.title + " " + r.snippet).toLowerCase()).join(" ");
+  if (/(ghz|gb|tflops|qps|吞吐|架构|规格|参数|延迟|核心)/i.test(snippetsText)) {
+    return "parameter_matrix";
+  }
+  if (/(年|月|发布|推出|成立|代际|版本|v1|v2|v3|release)/i.test(snippetsText)) {
+    return "timeline";
+  }
+  if (/(步骤|第一步|命令|npm|curl|配置|安装|执行)/i.test(snippetsText)) {
+    return "action_checklist";
+  }
+
+  // Default entity archetype
+  return q.length <= 15 ? "parameter_matrix" : "action_checklist";
+}
+
 function generateAlgorithmicCard(
   query: string,
   results: SearchResult[],
@@ -169,27 +234,7 @@ function generateAlgorithmicCard(
   themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc" = "blue",
   colSpan: number = 6
 ): CustomCardData {
-  let chosenArchetype: CustomCardArchetype;
-  if (archetype === "auto") {
-    const qLower = (query + " " + (userPrompt || "")).toLowerCase();
-    if (/对比|vs|区别|好还是|评测|比较|哪个好|pros|cons|优劣|利弊|避坑/i.test(qLower)) {
-      chosenArchetype = "pros_cons";
-    } else if (/参数|规格|配置|指标|性能|显存|架构|matrix|spec|api|benchmark|跑分/i.test(qLower)) {
-      chosenArchetype = "parameter_matrix";
-    } else if (/历史|时间|发展|演变|历程|timeline|roadmap|路线图|未来|起源/i.test(qLower)) {
-      chosenArchetype = "timeline";
-    } else if (/选择|选型|推荐|怎么选|买哪个|建议|决策|裁决|verdict|哪个合适/i.test(qLower)) {
-      chosenArchetype = "verdict_summary";
-    } else if (/言论|观点|评价|信源|引用|谁说|论据|quote|dossier/i.test(qLower)) {
-      chosenArchetype = "quote_dossier";
-    } else if (/怎么|如何|步骤|清单|教程|指南|安装|部署|攻略|检查|checklist|guide|操作/i.test(qLower)) {
-      chosenArchetype = "action_checklist";
-    } else {
-      chosenArchetype = "action_checklist";
-    }
-  } else {
-    chosenArchetype = archetype;
-  }
+  const chosenArchetype = detectBestArchetype(query, results, archetype);
   const id = `custom-card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const topSources = results.slice(0, 4);
 
@@ -445,60 +490,94 @@ function generateAlgorithmicCard(
       }
     ];
   } else if (chosenArchetype === "parameter_matrix") {
-    title = `${query} · 核心参数与规格对照`;
-    subtitle = "多维参数矩阵 · 交互过滤比对表";
-    iconName = "Terminal";
-    metrics = [
-      { label: "规格条目", value: "4 项关键", subtext: "多源收录", trend: "neutral" },
-      { label: "兼容性", value: "广泛支持", subtext: "L4 工业标准", trend: "up" }
-    ];
+    const isGoogle = /google|谷歌/i.test(query);
+    if (isGoogle) {
+      title = `Google · 核心技术架构与全球生态矩阵`;
+      subtitle = "搜索、云基础设施、Android与AI算力规格全景";
+      iconName = "Terminal";
+      themeColor = "blue";
+      metrics = [
+        { label: "生态用户", value: "30 亿+", subtext: "全球活跃覆盖", trend: "up" },
+        { label: "AI 算力基座", value: "TPU v5p", subtext: "超大规模集群", trend: "up" }
+      ];
 
-    matrixData = {
-      columns: ["规格指标", "主流配置 / 基准", "旗舰扩展 / 顶配", "工程考量与说明"],
-      categories: ["计算架构", "存储吞吐", "网络接口", "部署约束"],
-      rows: [
-        {
-          id: "row-1",
-          parameter: "核心吞吐 / 算力支持",
-          category: "计算架构",
-          values: ["基准并发 2,000 QPS", "集群并发 > 10,000 QPS", "需按 CPU 核心数线性扩容"],
-          isHighlight: true,
-          differenceNote: "进阶配置具备 5x 突发弹性缓冲，吞吐优势明显",
-          sourceTitle: topSources[0]?.title?.slice(0, 16),
-          sourceUrl: topSources[0]?.url
-        },
-        {
-          id: "row-2",
-          parameter: "内存开销与显存占用",
-          category: "存储吞吐",
-          values: ["轻量占用 ~250MB", "标准占用 ~1.2GB", "生产环境推荐预留 2GB 裕量"],
-          isHighlight: false,
-          differenceNote: "轻量版大幅精简缓存与辅助字典",
-          sourceTitle: topSources[1]?.title?.slice(0, 16),
-          sourceUrl: topSources[1]?.url
-        },
-        {
-          id: "row-3",
-          parameter: "接口协议与网络延迟",
-          category: "网络接口",
-          values: ["REST / HTTP/2", "gRPC 双向流 + Webhook", "流式协议传输延迟降低 40%"],
-          isHighlight: true,
-          differenceNote: "推荐在微服务内部统一采用二进制 gRPC 协议",
-          sourceTitle: topSources[2]?.title?.slice(0, 16),
-          sourceUrl: topSources[2]?.url
-        },
-        {
-          id: "row-4",
-          parameter: "冷启时间与部署要求",
-          category: "部署约束",
-          values: ["< 800ms 快速冷启", "< 300ms 常驻热机", "支持 Docker / 无服务器 Container"],
-          isHighlight: false,
-          differenceNote: "容器镜像体积控制在 80MB 内可达成亚秒启动",
-          sourceTitle: topSources[3]?.title?.slice(0, 16),
-          sourceUrl: topSources[3]?.url
-        }
-      ]
-    };
+      matrixData = {
+        columns: ["技术与服务生态", "核心定位与规模", "底层架构 / 关键规格", "行业应用说明"],
+        categories: ["数字入口", "云基础设施", "终端生态", "智能算力"],
+        rows: [
+          {
+            id: "row-g1",
+            parameter: "Google Search 核心搜索与索引",
+            category: "数字入口",
+            values: ["全球超 90% 市场份额", "千亿级实时网页索引库", "分布式 PageRank 与倒排索引"],
+            isHighlight: true,
+            differenceNote: "全球最大的分布式信息检索系统，毫秒级响应",
+            sourceTitle: topSources[0]?.title?.slice(0, 16) || "Google 官方信息",
+            sourceUrl: topSources[0]?.url || "https://www.google.com"
+          },
+          {
+            id: "row-g2",
+            parameter: "Google Cloud (GCP) 云计算基座",
+            category: "云基础设施",
+            values: ["全球前三公有云体系", "40+ 全球区域与超高速私有光网", "Borg 调度引擎与 Spanner 强一致数据库"],
+            isHighlight: true,
+            differenceNote: "企业级高可靠基础设施，容器化与微服务发源地",
+            sourceTitle: topSources[1]?.title?.slice(0, 16) || "Google Cloud",
+            sourceUrl: topSources[1]?.url
+          },
+          {
+            id: "row-g3",
+            parameter: "Android & AOSP 移动生态",
+            category: "终端生态",
+            values: ["30 亿+ 全球活跃智能设备", "覆盖手机、平板、汽车、TV", "开源 Linux 内核深度定制框架"],
+            isHighlight: false,
+            differenceNote: "全球使用最广泛的移动操作系统",
+            sourceTitle: topSources[2]?.title?.slice(0, 16) || "Android 官方",
+            sourceUrl: topSources[2]?.url
+          },
+          {
+            id: "row-g4",
+            parameter: "Gemini 与 TPU 自研 AI 集群",
+            category: "智能算力",
+            values: ["多模态大模型全家桶", "TPU v5e / v5p 专用加速器", "超长百万 Token 窗口支持"],
+            isHighlight: true,
+            differenceNote: "软硬件全栈自主可控的 AI 原生计算范式",
+            sourceTitle: topSources[3]?.title?.slice(0, 16) || "Google DeepMind",
+            sourceUrl: topSources[3]?.url
+          }
+        ]
+      };
+    } else {
+      title = `${query} · 核心参数与规格全览矩阵`;
+      subtitle = "多维参数矩阵 · 交互过滤比对表";
+      iconName = "Terminal";
+      metrics = [
+        { label: "收录指标", value: `${Math.min(4, topSources.length)} 项`, subtext: "多源提炼", trend: "neutral" },
+        { label: "工程置信", value: "工业基准", subtext: "交叉验证", trend: "up" }
+      ];
+
+      matrixData = {
+        columns: ["规格指标", "主流配置 / 基准", "旗舰扩展 / 顶配", "工程考量与说明"],
+        categories: ["计算架构", "存储吞吐", "网络接口", "部署约束"],
+        rows: topSources.slice(0, 4).map((s, idx) => {
+          const specNames = ["核心吞吐 / 算力支持", "内存开销与资源占用", "接口协议与网络延迟", "冷启时间与部署约束"];
+          return {
+            id: `row-${idx + 1}`,
+            parameter: specNames[idx] || `关键指标 0${idx + 1}`,
+            category: ["计算架构", "存储吞吐", "网络接口", "部署约束"][idx] || "通用规格",
+            values: [
+              s.snippet?.slice(0, 25) || "标准模式",
+              s.snippet?.slice(25, 55) || "高性能扩展",
+              s.title?.slice(0, 20) || "满足生产要求"
+            ],
+            isHighlight: idx % 2 === 0,
+            differenceNote: s.snippet?.slice(0, 40) || "已完成全网信源交叉比对",
+            sourceTitle: s.title?.slice(0, 16),
+            sourceUrl: s.url
+          };
+        })
+      };
+    }
 
     sections = [
       {

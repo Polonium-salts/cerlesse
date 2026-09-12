@@ -1,6 +1,6 @@
 import React from "react";
 import { IOSWidget } from "../ui/IOSWidget.js";
-import { Workflow, CheckCircle2, ArrowRight, Zap, Bot, Search, Blocks, LayoutGrid, ShieldCheck, Crown } from "lucide-react";
+import { Workflow, CheckCircle2, ArrowRight, Zap, Bot, Search, Blocks, LayoutGrid, ShieldCheck, Crown, BookOpen } from "lucide-react";
 import { AgentStep, AgentTeamReport, AgentRole, TeamMember } from "../../types.js";
 
 interface AgentAuditWidgetProps {
@@ -101,6 +101,7 @@ export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
     switch (role) {
       case "coordinator": return <Bot className="w-3.5 h-3.5 text-blue-500" />;
       case "retrieval": return <Search className="w-3.5 h-3.5 text-indigo-500" />;
+      case "knowledge_synthesis": return <BookOpen className="w-3.5 h-3.5 text-cyan-500" />;
       case "widget_forge": return <Blocks className="w-3.5 h-3.5 text-purple-500" />;
       case "orchestrator": return <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />;
       case "qa_validator": return <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />;
@@ -112,7 +113,7 @@ export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
     <IOSWidget
       id="widget-agent-team-audit"
       title="Agent 专属任务分派矩阵"
-      subtitle="主 Agent 统筹派发 · 4 位专家各司其职"
+      subtitle="OpenAI Agents 架构 · 主 Agent 统筹派发与验收"
       icon={<Workflow className="w-4 h-4 text-blue-500" />}
       badge={
         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1 font-mono">

@@ -54,11 +54,12 @@ export interface AgentPlan {
 }
 
 export type AgentRole = 
-  | "coordinator"   // 主 Agent / 调度总控: 负责全局意图解析、任务拆解与派发、进度监控与最终验收交付
-  | "retrieval"     // 全网检索 Agent: 负责主 Agent 派发的专职任务——全网多引擎嗅探、跨语言关键词扩展、权威官网甄别与垃圾清洗
-  | "widget_forge"  // 组件创建 Agent: 负责主 Agent 派发的专职任务——核心速览提炼、多维对比矩阵、知识架构导图与延伸追问构建
-  | "orchestrator"  // 排版编排 Agent: 负责主 Agent 派发的专职任务——自适应 4 列装箱算法、组件视觉跨度与启停休眠决策
-  | "qa_validator"; // 质检验真 Agent: 负责主 Agent 派发的专职任务——信源存活性复核、导图拓扑连通闭环与事实风控审计
+  | "coordinator"           // 主 Agent / 调度总控: 负责全局意图解析、任务拆解与派发、进度监控与最终验收交付
+  | "retrieval"             // 全网检索 Agent: 负责主 Agent 派发的专职任务——全网多引擎嗅探、跨语言关键词扩展、权威官网甄别与垃圾清洗
+  | "knowledge_synthesis"   // 深度研报 Agent: 负责主 Agent 派发的专职任务——核心速览提炼、多维对比矩阵、拓扑思维导图与延伸追问构建
+  | "widget_forge"          // 专属小组件构建 Agent: 负责主 Agent 派发的专职任务——独有交互小组件 (Unique Card) 架构与锻造，多原型智能匹配与防重工程
+  | "orchestrator"          // 排版编排 Agent: 负责主 Agent 派发的专职任务——自适应 4 列装箱算法、组件视觉跨度与启停休眠决策
+  | "qa_validator";         // 护栏质检 Agent: 负责主 Agent 派发的专职任务——输入/输出 Guardrails 审计、信源复核与防重复风控
 
 /**
  * 由主 Agent 专门派发给特定智能体的独立子任务定义
@@ -82,7 +83,7 @@ export interface TeamMember {
   title: string;
   isMaster?: boolean;              // 是否为主 Agent (调度领航员)
   dedicatedDuty: string;           // 专属独立职责定义 (强调各 Agent 负责领域互不重叠)
-  avatarIcon: "Cpu" | "Search" | "Blocks" | "LayoutGrid" | "ShieldCheck" | "Bot";
+  avatarIcon: "Cpu" | "Search" | "Blocks" | "LayoutGrid" | "ShieldCheck" | "Bot" | "BookOpen";
   status: "idle" | "running" | "completed" | "error";
   currentTask?: string;
   assignedTaskId?: string;         // 主 Agent 派发给它的当前任务代号
@@ -184,18 +185,46 @@ export interface WidgetStatusDetail {
   autoDecidedByAgent?: boolean;
 }
 
+export type WidgetSemanticWidth = "full" | "wide" | "half" | "compact";
+
+export interface LayoutBudget {
+  maxPrimarySections: number;
+  maxSecondarySections: number;
+  maxVisualWidgets: number;
+  maxInteractiveWidgets: number;
+}
+
+export interface LayoutPlan {
+  intent: LayoutIntentType;
+  intentLabel?: string;
+  order: ResultWidgetKey[];
+  enabled: ResultWidgetKey[];
+  featured?: ResultWidgetKey;
+  width: Partial<Record<ResultWidgetKey, WidgetSemanticWidth>>;
+  budget?: {
+    maxPrimary: number;
+    maxSecondary: number;
+    totalActive: number;
+  };
+  groups?: Array<{
+    id: string;
+    label?: string;
+    widgets: ResultWidgetKey[];
+  }>;
+}
+
 export interface WidgetGridPlacement {
-  colSpanLg: number; // 3, 4, 6, 8, 9, 12 (3 represents 1/4 row, accommodating up to 4 widgets per row)
+  colSpanLg: number; // 4, 6, 8, 12 (12-column CSS Grid: 12=full, 8=wide, 6=half, 4=compact)
   colSpanMd?: number; // 6 or 12 for tablet
-  rowIndex?: number; // 0-based row index
-  itemsInRow?: number; // Total number of widgets sharing this row (1, 2, 3, 4)
+  semanticWidth?: WidgetSemanticWidth; // "full" | "wide" | "half" | "compact"
+  rowIndex?: number; // 0-based conceptual row index
+  itemsInRow?: number; // Total number of widgets sharing this row (1, 2, 3)
   isCompact?: boolean; // Whether the widget should render in compact mode
   minHeight?: string;
-  isAutoFilled?: boolean; // Whether this widget was placed early to fill an empty gap
+  isAutoFilled?: boolean; // Legacy indicator
 }
 
 export type LayoutAlignmentMode = "masonry" | "grid";
-
 export type AutoFillGapsMode = "dense" | "stretch" | "off";
 
 export interface AdaptiveLayoutStrategy {
@@ -205,9 +234,10 @@ export interface AdaptiveLayoutStrategy {
   componentOrder: ResultWidgetKey[];
   emphasizedWidget: ResultWidgetKey;
   gridConfig: Record<ResultWidgetKey, WidgetGridPlacement>;
+  layoutPlan?: LayoutPlan;
   maxColumnsPerRow?: number; // 4
   totalRows?: number;
-  packingMethod?: "agent-adaptive-binpack" | "compact-4col" | "wide-focus";
+  packingMethod?: "agent-adaptive-binpack" | "compact-4col" | "wide-focus" | "semantic-css-grid";
   enabledWidgets?: ResultWidgetKey[];
   disabledWidgets?: ResultWidgetKey[];
   widgetStatusMap?: Record<ResultWidgetKey, WidgetStatusDetail>;

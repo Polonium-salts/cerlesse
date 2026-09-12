@@ -464,6 +464,12 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
  * 2. Every row strictly balanced to 12 columns, eliminating awkward whitespace
  * 3. Dynamic size and position adaptation based on query intent & content profile
  */
+/**
+ * Server-side Layout Planner
+ * Direct semantic mapping to 12-column CSS Grid:
+ * 12 = full width, 8 = wide (2/3), 6 = half (1/2), 4 = compact (1/3)
+ * Guarantees zero blank gaps and strict reading order stability.
+ */
 function calculateServerAdaptiveBinPacking(
   order: ResultWidgetKey[],
   options: {
@@ -476,141 +482,66 @@ function calculateServerAdaptiveBinPacking(
   gridConfig: Record<ResultWidgetKey, any>;
   totalRows: number;
 } {
-  const maxPerRow = options.maxColumnsPerRow || 4;
   const emphasized = options.emphasizedWidget;
   const intent = options.intentType || "balanced";
 
-  const getNaturalSpan = (key: ResultWidgetKey): number => {
+  const getSemanticSpan = (key: ResultWidgetKey): number => {
     if (key === emphasized) {
-      if (key === "mindmap" || key === "comparison" || key === "ai_overview") {
+      if (key === "mindmap" || key === "comparison" || key === "ai_overview" || key === "quick_answer") {
         return 12; // Emphasized analytical views take full row
       }
       if (key === "official_portal") {
-        return options.hasOfficialSite ? 6 : 4;
+        return 12;
       }
       if (key === "takeaways") {
-        return 6;
+        return 8;
       }
     }
 
     switch (key) {
       case "mindmap":
-        return intent === "architecture" ? 12 : 6;
       case "comparison":
-        return intent === "comparison" ? 12 : 9;
-      case "topic_digest":
-        return intent === "code_tutorial" ? 8 : 6;
       case "quick_answer":
-        if (intent === "code_tutorial" || intent === "quick_definition" || intent === "news_trend") {
-          return 8;
-        }
-        return 6;
-      case "takeaways":
-        if (intent === "code_tutorial" || intent === "quick_definition" || intent === "news_trend" || intent === "fact_check") {
-          return 4;
-        }
-        return 6;
       case "sources":
-        if (intent === "quick_definition" || intent === "news_trend" || intent === "fact_check") {
-          return 8;
-        }
-        return 6;
-      case "verification_checklist":
-        return intent === "fact_check" ? 8 : (intent === "news_trend" ? 4 : 3);
       case "ai_overview":
-        return 6;
+        return 12;
+      case "takeaways":
+        return intent === "quick_definition" ? 8 : 12;
       case "official_portal":
-        return intent === "official_portal" ? 6 : 3;
-      case "metrics_telemetry":
-        return intent === "fact_check" ? 4 : 3;
+        return 12;
+      case "verification_checklist":
+        return intent === "fact_check" ? 12 : 8;
       case "actions_toolbox":
-        if (intent === "code_tutorial" || intent === "quick_definition") {
-          return 4;
-        }
-        return 3;
       case "analytics_trend":
-        return intent === "news_trend" ? 4 : 3;
+      case "topic_digest":
       case "fast_chat":
-        return intent === "quick_definition" ? 6 : 3;
-      case "mobile_qr":
-        return 3;
       case "followup":
-        return intent === "quick_definition" ? 6 : (intent === "architecture" ? 6 : 3);
+      case "metrics_telemetry":
+      case "mobile_qr":
       case "agent_workflow":
-        return 3;
+        return 6;
       default:
-        return 3;
+        return 12;
     }
   };
 
   const gridConfig: Record<string, any> = {};
-  const rows: Array<Array<{ key: ResultWidgetKey; span: number }>> = [];
 
-  let currentRow: Array<{ key: ResultWidgetKey; span: number }> = [];
-  let currentOccupied = 0;
-
-  for (let i = 0; i < order.length; i++) {
-    const key = order[i];
-    let naturalSpan = Math.max(3, getNaturalSpan(key));
-
-    const wouldExceedCapacity = currentOccupied + naturalSpan > 12;
-    const wouldExceedMaxCount = currentRow.length >= maxPerRow;
-
-    if (currentRow.length > 0 && (wouldExceedCapacity || wouldExceedMaxCount)) {
-      if (currentOccupied < 12) {
-        const remaining = 12 - currentOccupied;
-        let bestCandidate = currentRow[0];
-        for (const item of currentRow) {
-          if (
-            item.key === "ai_overview" ||
-            item.key === "mindmap" ||
-            item.key === "comparison" ||
-            item.key === "takeaways"
-          ) {
-            bestCandidate = item;
-            break;
-          }
-        }
-        bestCandidate.span += remaining;
-      }
-
-      rows.push(currentRow);
-      currentRow = [];
-      currentOccupied = 0;
-    }
-
-    currentRow.push({ key, span: naturalSpan });
-    currentOccupied += naturalSpan;
-  }
-
-  if (currentRow.length > 0) {
-    if (currentOccupied < 12) {
-      const remaining = 12 - currentOccupied;
-      if (currentRow.length === 1) {
-        currentRow[0].span = 12;
-      } else {
-        currentRow[0].span += remaining;
-      }
-    }
-    rows.push(currentRow);
-  }
-
-  rows.forEach((row, rIdx) => {
-    const itemCount = row.length;
-    row.forEach((item) => {
-      gridConfig[item.key] = {
-        colSpanLg: item.span,
-        colSpanMd: item.span <= 6 ? 6 : 12,
-        rowIndex: rIdx,
-        itemsInRow: itemCount,
-        isCompact: item.span <= 4
-      };
-    });
+  order.forEach((key, index) => {
+    const span = getSemanticSpan(key);
+    gridConfig[key] = {
+      colSpanLg: span,
+      colSpanMd: span <= 6 ? 6 : 12,
+      rowIndex: index,
+      semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
+      isCompact: span <= 4,
+      isAutoFilled: false
+    };
   });
 
   return {
     gridConfig: gridConfig as Record<ResultWidgetKey, any>,
-    totalRows: rows.length
+    totalRows: order.length
   };
 }
 
@@ -1078,22 +1009,41 @@ export function determineAdaptiveLayout(params: {
     ];
   }
 
-  // 3. 关键：过滤出当前真正启用的组件顺序
+  // 3. 关键：过滤出当前真正启用的组件顺序（保留丰富有价值的组件生态，不强行截断）
   const activeOrder = baseOrder.filter(k => activation.enabledWidgets.includes(k));
   if (activeOrder.length === 0) {
-    activeOrder.push("quick_answer", "takeaways", "sources");
+    activeOrder.push("quick_answer", "takeaways", "sources", "actions_toolbox", "fast_chat", "followup", "metrics_telemetry");
   }
 
   // 4. 确保核心视觉组件在启用的组件中
   const finalEmphasized = activeOrder.includes(preferredEmphasized) ? preferredEmphasized : activeOrder[0];
 
-  // 5. 仅对已启动的组件执行高精装箱平衡算法
+  // 5. 仅对已启动的组件执行语义网格分配算法
   const packing = calculateServerAdaptiveBinPacking(activeOrder, {
     emphasizedWidget: finalEmphasized,
     intentType,
     hasOfficialSite: hasOfficial,
-    maxColumnsPerRow: 4
+    maxColumnsPerRow: 12
   });
+
+  const widthMap: Partial<Record<ResultWidgetKey, "full" | "wide" | "half" | "compact">> = {};
+  activeOrder.forEach(k => {
+    widthMap[k] = packing.gridConfig[k]?.semanticWidth || "full";
+  });
+
+  const layoutPlan = {
+    intent: intentType,
+    intentLabel,
+    order: activeOrder,
+    enabled: activeOrder,
+    featured: finalEmphasized,
+    width: widthMap,
+    budget: {
+      maxPrimary: 8,
+      maxSecondary: 4,
+      totalActive: activeOrder.length
+    }
+  };
 
   return {
     intentType,
@@ -1102,12 +1052,15 @@ export function determineAdaptiveLayout(params: {
     componentOrder: activeOrder,
     emphasizedWidget: finalEmphasized,
     gridConfig: packing.gridConfig,
-    maxColumnsPerRow: 4,
+    layoutPlan,
+    maxColumnsPerRow: 12,
     totalRows: packing.totalRows,
-    packingMethod: "agent-adaptive-binpack",
-    enabledWidgets: activation.enabledWidgets,
+    packingMethod: "semantic-css-grid",
+    enabledWidgets: activeOrder,
     disabledWidgets: activation.disabledWidgets,
-    widgetStatusMap: activation.widgetStatusMap
+    widgetStatusMap: activation.widgetStatusMap,
+    autoFillGaps: false,
+    autoFillMode: "off"
   };
 }
 
