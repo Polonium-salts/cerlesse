@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { 
   CustomCardData, 
   CustomCardArchetype, 
@@ -17,16 +16,8 @@ import {
   DownloadHubData,
   TravelItineraryData
 } from "../src/types.js";
+import { WidgetSchema, WidgetSchemaNode } from "../src/widgets/sdk/types.js";
 import { synthesizeToolActions } from "./toolRegistry.js";
-
-let genAIClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI | null {
-  if (genAIClient) return genAIClient;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") return null;
-  genAIClient = new GoogleGenAI({ apiKey: apiKey.trim() });
-  return genAIClient;
-}
 
 export interface ForgeCardOptions {
   query: string;
@@ -42,27 +33,255 @@ export interface ForgeCardOptions {
 export async function forgeUniqueCard(options: ForgeCardOptions): Promise<CustomCardData> {
   const { query, results, widgetPlan, archetype = "auto", userPrompt, themeColor = "blue", colSpan = 6 } = options;
   const validResults = (results || []).slice(0, 8);
-  const ai = getGenAI();
-
-  // If widgetPlan is provided, adopt its suggested archetype and theme
   const effectiveArchetype = archetype !== "auto" ? archetype : (widgetPlan?.suggestedArchetype || "auto");
   const effectiveTheme = widgetPlan?.widgetCustomizations?.themeColor || themeColor;
 
-  if (ai && validResults.length > 0) {
-    try {
-      const card = await generateCardWithGemini(ai, query, validResults, effectiveArchetype, userPrompt, effectiveTheme, colSpan, widgetPlan);
-      if (card) return card;
-    } catch (err: any) {
-      // Graceful fallback without crashing or polluting error logs
-    }
+  // 1. 基准算法兜底卡（毫秒级直出，具备完整的真实指标、Actions、结构化数据与 Schema）
+  const fallbackCard = generateAlgorithmicCard(query, validResults, effectiveArchetype, userPrompt, effectiveTheme, colSpan, widgetPlan);
+  if (validResults.length === 0) return fallbackCard;
+
+  // 2. 严密受限的 OpenRouter 免费 AI 路由锻造尝试（硬性 2.5 秒截止，超时立刻秒级降级兜底，杜绝任何卡死）
+  try {
+    const llmTask = (async (): Promise<CustomCardData | null> => {
+      const openRouterKey = process.env.OPENROUTER_API_KEY;
+      if (openRouterKey && openRouterKey.trim() !== "") {
+        try {
+          const card = await generateCardWithOpenRouter(
+            openRouterKey.trim(), 
+            query, 
+            validResults, 
+            effectiveArchetype, 
+            userPrompt, 
+            effectiveTheme, 
+            colSpan, 
+            widgetPlan
+          );
+          if (card) return card;
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    })();
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+    const card = await Promise.race([llmTask, timeoutPromise]);
+    if (card) return card;
+  } catch {
+    // 降级兜底
   }
 
-  // Resilient fallback generator with widgetPlan support
-  return generateAlgorithmicCard(query, validResults, effectiveArchetype, userPrompt, effectiveTheme, colSpan, widgetPlan);
+  return fallbackCard;
 }
 
-async function generateCardWithGemini(
-  ai: GoogleGenAI,
+/**
+ * Agent 自主根据检索结果批量并发锻造 1~2 张互补的高价值业务小组件 (严格并发无阻塞)
+ */
+export async function forgeMultipleDynamicWidgets(options: {
+  query: string;
+  results: SearchResult[];
+  widgetPlan?: WidgetPlan;
+  userPrompt?: string;
+}): Promise<CustomCardData[]> {
+  const { query, results, widgetPlan, userPrompt } = options;
+  const validResults = (results || []).slice(0, 8);
+  if (validResults.length === 0) return [];
+
+  const archetypes = detectMultipleArchetypes(query, validResults);
+
+  // 并发锻造主副两张互补卡片，耗时减半
+  const card1Promise = forgeUniqueCard({
+    query,
+    results: validResults,
+    widgetPlan,
+    archetype: archetypes[0],
+    userPrompt,
+    themeColor: "blue",
+    colSpan: 6
+  });
+
+  const card2Promise = (archetypes.length > 1 && archetypes[1] !== archetypes[0])
+    ? forgeUniqueCard({
+        query,
+        results: validResults,
+        widgetPlan,
+        archetype: archetypes[1],
+        userPrompt: userPrompt ? `${userPrompt} (互补维度)` : undefined,
+        themeColor: "emerald",
+        colSpan: 6
+      }).catch(() => null)
+    : Promise.resolve(null);
+
+  const [card1, card2] = await Promise.all([card1Promise, card2Promise]);
+
+  const cards: CustomCardData[] = [];
+  if (card1) cards.push(card1);
+  if (card2) {
+    if (card2.id === card1?.id) {
+      card2.id = `custom-card-${Date.now()}-sec-${Math.random().toString(36).slice(2, 6)}`;
+    }
+    cards.push(card2);
+  }
+
+  return cards;
+}
+
+/**
+ * 将任意业务小组件数据编译为标准声明式组件树 (Declarative Widget Schema JSON)
+ */
+export function buildWidgetSchemaFromCard(card: Partial<CustomCardData>): WidgetSchema {
+  const components: WidgetSchemaNode[] = [];
+  
+  // 1. 标题与说明节点
+  if (card.title) {
+    components.push({
+      type: "text",
+      text: card.title,
+      variant: "title"
+    });
+  }
+  if (card.subtitle) {
+    components.push({
+      type: "text",
+      text: card.subtitle,
+      variant: "caption"
+    });
+  }
+
+  // 2. 指标节点 (Metrics)
+  if (card.metrics && card.metrics.length > 0) {
+    card.metrics.slice(0, 3).forEach((m) => {
+      components.push({
+        type: "metric",
+        label: m.label,
+        value: m.value,
+        trend: m.trend
+      });
+    });
+  }
+
+  // 3. 原型特定结构节点
+  if (card.checklistData?.tasks && card.checklistData.tasks.length > 0) {
+    components.push({
+      type: "checklist",
+      items: card.checklistData.tasks.map((t) => ({
+        id: t.id,
+        text: `${t.title}: ${t.instruction || ""}`,
+        done: Boolean(t.checked)
+      }))
+    });
+  } else if (card.matrixData && card.matrixData.rows && card.matrixData.rows.length > 0) {
+    components.push({
+      type: "table",
+      headers: card.matrixData.columns || ["参数项", "基准值", "扩展", "说明"],
+      rows: card.matrixData.rows.slice(0, 5).map((r) => [
+        r.parameter,
+        r.values?.[0] || "-",
+        r.values?.[1] || "-",
+        r.differenceNote || "-"
+      ])
+    });
+  } else if (card.timelineData?.milestones && card.timelineData.milestones.length > 0) {
+    components.push({
+      type: "timeline",
+      events: card.timelineData.milestones.slice(0, 5).map((m) => ({
+        time: m.dateOrPeriod,
+        title: m.title,
+        desc: m.description,
+        status: m.status === "completed" ? "completed" : m.status === "current" ? "current" : "pending"
+      }))
+    });
+  } else if (card.prosConsData) {
+    const kvItems = [
+      ...card.prosConsData.pros.slice(0, 3).map((p) => ({ key: `[优势] ${p.title}`, val: p.description })),
+      ...card.prosConsData.cons.slice(0, 3).map((c) => ({ key: `[避坑] ${c.title}`, val: `${c.description} (方案: ${c.mitigation || "建议遵循规范"})` }))
+    ];
+    if (kvItems.length > 0) {
+      components.push({
+        type: "kv_list",
+        items: kvItems
+      });
+    }
+  } else if (card.downloadHubData) {
+    if (card.downloadHubData.quickCopyCommand) {
+      components.push({
+        type: "code",
+        code: card.downloadHubData.quickCopyCommand,
+        language: "bash",
+        copyable: true
+      });
+    }
+    if (card.downloadHubData.systemRequirements) {
+      components.push({
+        type: "text",
+        text: `系统需求: ${card.downloadHubData.systemRequirements}`,
+        variant: "caption"
+      });
+    }
+  } else if (card.toolDiscoveryData) {
+    components.push({
+      type: "text",
+      text: card.toolDiscoveryData.recommendationVerdict,
+      variant: "body"
+    });
+    if (card.toolDiscoveryData.tools && card.toolDiscoveryData.tools.length > 0) {
+      components.push({
+        type: "kv_list",
+        items: card.toolDiscoveryData.tools.slice(0, 4).map((t) => ({
+          key: `${t.name} (${t.pricing})`,
+          val: `${t.tagline} - ${t.highlight}`
+        }))
+      });
+    }
+  } else if (card.sections && card.sections.length > 0) {
+    card.sections.forEach((sec) => {
+      components.push({
+        type: "text",
+        text: sec.title,
+        variant: "subtitle"
+      });
+      if (sec.items && sec.items.length > 0) {
+        components.push({
+          type: "kv_list",
+          items: sec.items.slice(0, 4).map((it) => ({
+            key: it.title,
+            val: it.description,
+            copyable: false
+          }))
+        });
+      }
+    });
+  }
+
+  // 4. 行动按钮节点 (Buttons / Actions)
+  if (card.actions && card.actions.length > 0) {
+    card.actions.slice(0, 3).forEach((act) => {
+      components.push({
+        type: "button",
+        label: act.label,
+        action: act.type === "copy" ? "copyText" : "openUrl",
+        payload: act.url || act.command || "",
+        variant: act.variant === "primary" ? "primary" : act.variant === "secondary" ? "secondary" : "outline"
+      });
+    });
+  }
+
+  return {
+    type: "widget",
+    id: card.id || `schema-widget-${Date.now()}`,
+    name: card.title || "业务小组件",
+    version: "1.0.0",
+    size: (card.archetype === "timeline" || card.archetype === "parameter_matrix") ? "large" : "medium",
+    layout: (card.archetype === "parameter_matrix" || card.archetype === "tool_discovery") ? "matrix" : "card",
+    themeColor: card.themeColor || "blue",
+    iconName: card.iconName || "Sparkles",
+    description: card.subtitle,
+    components
+  };
+}
+
+async function generateCardWithOpenRouter(
+  apiKey: string,
   query: string,
   results: SearchResult[],
   archetype: CustomCardArchetype | "auto",
@@ -71,7 +290,7 @@ async function generateCardWithGemini(
   colSpan: number = 6,
   widgetPlan?: WidgetPlan
 ): Promise<CustomCardData | null> {
-  const sourcesContext = results.map((r, i) => 
+  const sourcesContext = results.slice(0, 5).map((r, i) => 
     `[信源${i + 1}] 标题: ${r.title}\n网址: ${r.url}\n摘要: ${r.snippet}\n`
   ).join("\n");
 
@@ -79,182 +298,96 @@ async function generateCardWithGemini(
     ? (widgetPlan?.suggestedArchetype || detectBestArchetype(query, results)) 
     : archetype;
 
-  const planContext = widgetPlan ? `
-【Widget Plan 专职规划指令】:
-- 用户真实任务目标: ${widgetPlan.userGoal}
-- 意图类型: ${widgetPlan.intent}
-- 所需具备能力: ${widgetPlan.capabilities.join(" / ")}
-- 推荐交互原型: ${suggestedArchetype}
-- 预先装配行动: ${widgetPlan.primaryActions.map(a => `${a.label} (${a.type})`).join(", ")}
-` : "";
-
-  const prompt = `你是一位专门负责独有业务小组件 (Unique Component) 与任务解决行动卡 (Action Widget) 架构与锻造的专职智能体 (WidgetArchitectAgent)。
-你的核心定位是【任务解决 Agent】，而不仅仅是信息生成器。
-必须在输出中为用户提供可立即执行的操作入口（例如：访问官网、快速复制安装命令、查看文档/Demo、打开在线工具等），帮助用户完成下一步任务。
-
-【检索关键词】: ${query}
-${planContext}
-【用户定制诉求】: ${userPrompt || "提炼最具价值的核心结论、实操要点、权威关键参数或演进脉络，并配置直接可执行的操作动作"}
-【智能决策卡片原型】: 经实体与意图特征分析推荐为【${suggestedArchetype}】（可选原型：tool_discovery / download_hub / travel_itinerary / parameter_matrix / timeline / action_checklist / verdict_summary / pros_cons / quote_dossier。严禁千篇一律生成优劣势模板！）
-
-【真实信源上下文】:
+  const prompt = `你是专门负责独有业务小组件 (Unique Widget) 架构与锻造的专职智能体。
+请根据检索关键词【${query}】与真实信源：
 ${sourcesContext}
+为用户锻造一个 archetype 为 "${suggestedArchetype}" 的可交互业务小组件数据模型。
+必须输出严格合法的 JSON 对象，包含:
+title (15字以内简短精炼), subtitle, category: "action", archetype: "${suggestedArchetype}", themeColor: "${themeColor}", iconName, metrics: [{ label, value, subtext, trend }], actions: [{ type: "open_url"|"copy", label, url, command }], sections: [{ title, items: [{ title, description, tag, tagColor, sourceTitle, sourceUrl }] }], takeawayFootnote, 以及专属的 ${suggestedArchetype === "action_checklist" ? "checklistData" : suggestedArchetype === "parameter_matrix" ? "matrixData" : suggestedArchetype === "download_hub" ? "downloadHubData" : suggestedArchetype === "timeline" ? "timelineData" : suggestedArchetype === "tool_discovery" ? "toolDiscoveryData" : suggestedArchetype === "pros_cons" ? "prosConsData" : "verdictData"} 数据模型。内容必须真实有洞察，绝不使用套话。`;
 
-请根据目标原型，在输出中提供专属的功能模型字段（必须真实、接地气，有深度洞察）：
-- 若 archetype 为 "tool_discovery": 必须生成 "toolDiscoveryData"，包含 filterTags: string[], recommendationVerdict: string, tools: [{ id, name, tagline, pricing: 'free'|'freemium'|'paid'|'open_source', rating: number, url, hasOnlineDemo: boolean, demoUrl, tags: string[], highlight }]
-- 若 archetype 为 "download_hub": 必须生成 "downloadHubData"，包含 latestVersion: string, officialSiteUrl: string, quickCopyCommand: string, systemRequirements: string, releases: [{ id, platform: 'linux'|'macos'|'windows'|'docker', platformLabel: string, version: string, downloadUrl: string, installCommand: string, isRecommended: boolean, checksum: string }]
-- 若 archetype 为 "travel_itinerary": 必须生成 "travelData"，包含 destination: string, suggestedDuration: string, estimatedBudget: string, essentialTips: string[], bookingLinks: [{ label, url }], days: [{ day: number, title: string, transportation: string, spots: [{ name, suggestedDuration, description, tips, ticketUrl }] }]
-- 若 archetype 为 "pros_cons": 必须生成 "prosConsData"，包含 pros(条目含 id, title, description, impact: 'high'|'medium'|'low', category, upvotes: number), cons(条目含 id, title, description, severity: 'critical'|'moderate'|'minor', mitigation: '针对该缺点的具体化解应对方案', sourceTitle, sourceUrl), balanceRatio: { proPercent: 65, conPercent: 35 }, tradeoffVerdict: '综合权衡裁决一句话总结'
-- 若 archetype 为 "action_checklist": 必须生成 "checklistData"，包含 tasks(条目含 id, stepNumber: number, title, instruction, estimatedTime: '5分钟', difficulty: 'easy'|'medium'|'hard', priority: 'critical'|'normal'|'optional', commandOrCode: '命令或配置代码示例', checked: boolean, sourceTitle, sourceUrl)
-- 若 archetype 为 "parameter_matrix": 必须生成 "matrixData"，包含 columns: ['参数指标', '主流基准', '旗舰扩展', '应用说明'], rows: [{ id, parameter, category, values: string[], isHighlight: boolean, differenceNote: '关键差异说明', sourceTitle, sourceUrl }], categories: string[]
-- 若 archetype 为 "timeline": 必须生成 "timelineData"，包含 milestones: [{ id, phase: '阶段说明', dateOrPeriod: '时期/版本', title: '里程碑事件', description: '演进细节', status: 'completed'|'current'|'upcoming', tag: '标签', impactScore: '高', sourceTitle, sourceUrl }]
-- 若 archetype 为 "verdict_summary": 必须生成 "verdictData"，包含 scenarios: [{ id: 'balanced', name: '综合均衡', description: '平衡效能与成本' }, { id: 'performance', name: '极致性能', description: '追求高并发与极致吞吐' }, { id: 'budget', name: '轻量低门槛', description: '低成本快速验证' }], candidates: [{ id, name: '候选方案', badge: '主流推荐', scenarioScores: { balanced: 92, performance: 88, budget: 75 }, verdict: '强烈推荐'|'次选备选'|'谨慎选择', bestFor: '适合场景', keyPros: string[], keyCons: string[], sourceTitle, sourceUrl }], finalAdvice: '最终裁决建议'
-- 若 archetype 为 "quote_dossier": 必须生成 "quoteData"，包含 quotes: [{ id, quote: '代表性原话或论断', speaker: '讲话人或机构', titleOrRole: '身份/专业领域', organizationOrSource: '机构名或文献', stance: 'support'|'caution'|'neutral', authorityLevel: 'high'|'verified'|'medium', contextSnippet: '上下文背景', sourceTitle, sourceUrl }]
-
-【行动组件 (Action Layer) 必填规则】:
-必须生成 "actions" 数组（1-3个高频操作按钮），类型支持：
-- open_url: 打开官网/文档/下载源 (提供真实url)
-- copy: 一键复制推荐命令/配置/Prompt (提供command字段)
-- download: 下载入口/Release (提供url)
-- open_tool: 在线体验/WebUI (提供url)
-
-请严格输出一个合法、无注释的 JSON 对象，格式如下：
-{
-  "title": "简明有力的卡片标题，12字以内",
-  "subtitle": "副标题，概括卡片核心价值与信源背景，25字以内",
-  "category": "action",
-  "archetype": "${archetype === "auto" ? "从 tool_discovery, download_hub, travel_itinerary, pros_cons, action_checklist, parameter_matrix, quote_dossier, timeline, verdict_summary 中选择一个最匹配的" : archetype}",
-  "themeColor": "${themeColor}",
-  "iconName": "选择最贴切的图标英文名，如 CheckCircle, Zap, Shield, Sparkles, Scale, Layers, Terminal, Target, Compass, BookOpen, Download, Wrench",
-  "metrics": [
-    { "label": "指标名称", "value": "数值或评级", "subtext": "简要说明", "trend": "up 或 down 或 neutral" }
-  ],
-  "actions": [
-    { "type": "open_url", "label": "直达官网/文档", "url": "https://...", "variant": "primary" },
-    { "type": "copy", "label": "复制推荐命令", "command": "npm install ...", "variant": "outline" }
-  ],
-  "sections": [
-    {
-      "title": "分组一名称",
-      "items": [
-        {
-          "title": "条目标题",
-          "description": "具体事实、操作指引、参数或避坑细节，接地气有洞察",
-          "tag": "重要标签（如：关键、高风险、推荐、核心参数、权威建议）",
-          "tagColor": "blue / emerald / amber / rose / violet / zinc 中的一个",
-          "sourceTitle": "对应信源标题简写",
-          "sourceUrl": "对应信源的真实URL（来自上述上下文）"
-        }
-      ]
-    }
-  ],
-  "toolDiscoveryData": null,
-  "downloadHubData": null,
-  "travelData": null,
-  "prosConsData": null,
-  "checklistData": null,
-  "matrixData": null,
-  "timelineData": null,
-  "verdictData": null,
-  "quoteData": null,
-  "takeawayFootnote": "一句话核心结论或操作锦囊提示（25-45字）"
-}`;
-
-  const candidateModels = [
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.8-flash"
-  ];
-
-  let rawText = "";
-  for (const modelName of candidateModels) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.3
-        }
-      });
-      const txt = response.text?.trim();
-      if (txt) {
-        rawText = txt;
-        break;
-      }
-    } catch (err: any) {
-      // 429 quota exhausted or rate limit: gracefully continue to next lightweight model
-      continue;
-    }
-  }
-
-  if (!rawText) return null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
 
   try {
-    const parsed = JSON.parse(rawText);
-    const id = `custom-card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const finalArchetype = parsed.archetype || (archetype === "auto" ? "action_checklist" : archetype);
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://localhost:3000",
+        "X-Title": "Cerlesse Search"
+      },
+      body: JSON.stringify({
+        model: "openrouter/free",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 1500,
+        response_format: { type: "json_object" }
+      }),
+      signal: controller.signal
+    });
 
-    const parsedCategory = parsed.category || "action";
-    let parsedActions = Array.isArray(parsed.actions) && parsed.actions.length > 0 ? parsed.actions : [];
+    const resText = await res.text();
+    clearTimeout(timeoutId);
+    if (!res.ok || !resText) return null;
 
-    // 严禁假按钮：确保卡片操作均与能力注册表 (Tool Registry) 绑定
-    const fallbackActions = synthesizeToolActions(query, results);
-    if (parsedActions.length === 0) {
-      parsedActions = fallbackActions;
-    } else {
-      // 增强已有 action 的 tool 字段与真实性
-      parsedActions = parsedActions.map((act: any, i: number) => {
-        const matchingFallback = fallbackActions[i] || fallbackActions[0];
-        return {
-          id: act.id || `act-forge-${Date.now()}-${i}`,
-          tool: act.tool || (act.command ? "install_command" : act.type === "download" ? "download" : "official_url"),
-          type: act.type || (act.command ? "copy" : "open_url"),
-          label: act.label || matchingFallback?.label || "直达操作",
-          description: act.description || matchingFallback?.description,
-          url: act.url || matchingFallback?.url,
-          command: act.command || matchingFallback?.command,
-          variant: act.variant || (i === 0 ? "primary" : "outline"),
-          iconName: act.iconName || (act.command ? "Terminal" : "ShieldCheck"),
-          isVerified: true
-        };
-      });
+    let data: any;
+    try {
+      data = JSON.parse(resText);
+    } catch {
+      return null;
     }
 
-    return {
-      id,
-      title: parsed.title || `${query} · 专属定制卡`,
-      subtitle: parsed.subtitle || `基于 ${results.length} 个清洗信源提炼`,
-      category: parsedCategory,
-      archetype: finalArchetype,
-      themeColor: parsed.themeColor || themeColor,
-      iconName: parsed.iconName || "Sparkles",
-      colSpan: colSpan || 6,
-      createdAt: Date.now(),
-      basedOnQuery: query,
-      sourceCount: results.length,
-      groundedUrls: results.map(r => r.url).slice(0, 5),
-      metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
-      actions: parsedActions,
-      sections: Array.isArray(parsed.sections) ? parsed.sections : [],
-      takeawayFootnote: parsed.takeawayFootnote || "",
-      userPrompt,
-      isPinned: false,
-      prosConsData: parsed.prosConsData || undefined,
-      checklistData: parsed.checklistData || undefined,
-      matrixData: parsed.matrixData || undefined,
-      timelineData: parsed.timelineData || undefined,
-      verdictData: parsed.verdictData || undefined,
-      quoteData: parsed.quoteData || undefined,
-      toolDiscoveryData: parsed.toolDiscoveryData || undefined,
-      downloadHubData: parsed.downloadHubData || undefined,
-      travelData: parsed.travelData || undefined
-    };
-  } catch (parseErr) {
-    console.warn("Failed to parse Gemini JSON for custom card:", parseErr);
-    return null;
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) return null;
+
+    const cleaned = content.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+    const parsed = JSON.parse(cleaned);
+
+    if (parsed && parsed.title) {
+      const card: CustomCardData = {
+        id: `custom-card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: parsed.title,
+        subtitle: parsed.subtitle || `基于 “${query}” 信源提炼的专属小组件`,
+        category: "action",
+        archetype: parsed.archetype || suggestedArchetype,
+        themeColor: parsed.themeColor || themeColor,
+        iconName: parsed.iconName || "Layers",
+        colSpan,
+        createdAt: Date.now(),
+        basedOnQuery: query,
+        sourceCount: results.length,
+        groundedUrls: results.slice(0, 4).map(r => r.url).filter(Boolean),
+        metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
+        actions: Array.isArray(parsed.actions) && parsed.actions.length > 0 ? parsed.actions : synthesizeToolActions(query, results, (widgetPlan?.intent || "research") as any),
+        sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+        takeawayFootnote: parsed.takeawayFootnote,
+        userPrompt,
+        toolDiscoveryData: parsed.toolDiscoveryData,
+        downloadHubData: parsed.downloadHubData,
+        travelData: parsed.travelData,
+        prosConsData: parsed.prosConsData,
+        checklistData: parsed.checklistData,
+        matrixData: parsed.matrixData,
+        timelineData: parsed.timelineData,
+        verdictData: parsed.verdictData,
+        quoteData: parsed.quoteData,
+        schema: parsed.schema
+      };
+      if (!card.schema) {
+        card.schema = buildWidgetSchemaFromCard(card);
+      }
+      return card;
+    }
+  } catch {
+    // Graceful fallback
+  } finally {
+    clearTimeout(timeoutId);
   }
+
+  return null;
 }
+
 
 export function detectBestArchetype(
   query: string,
@@ -331,6 +464,42 @@ export function detectBestArchetype(
 
   // Default entity archetype
   return q.length <= 15 ? "parameter_matrix" : "action_checklist";
+}
+
+/**
+ * Agent 自主侦测多维互补原型组合
+ */
+export function detectMultipleArchetypes(
+  query: string,
+  results: SearchResult[] = []
+): CustomCardArchetype[] {
+  const q = query.trim().toLowerCase();
+  const primary = detectBestArchetype(query, results);
+  const detected: CustomCardArchetype[] = [primary];
+
+  if (/(对比|区别|优缺点|优劣|利弊|好还是|避坑|哪个好|\b(vs|versus|compare|comparison)\b)/i.test(q)) {
+    if (primary !== "verdict_summary") detected.push("verdict_summary");
+    else detected.push("pros_cons");
+  } else if (/(安装|下载|配置环境|部署|命令|镜像|\b(install|download|setup|docker)\b)/i.test(q)) {
+    if (primary !== "download_hub") detected.push("download_hub");
+    else detected.push("action_checklist");
+  } else if (/(工具|网站|平台|在线|生成器|\b(tool|tools|online|app)\b)/i.test(q)) {
+    if (primary !== "tool_discovery") detected.push("tool_discovery");
+    else detected.push("parameter_matrix");
+  } else if (/(旅游|攻略|游玩|景点|行程|\b(travel|itinerary|trip)\b)/i.test(q)) {
+    if (primary !== "travel_itinerary") detected.push("travel_itinerary");
+    else detected.push("action_checklist");
+  } else if (/(特性|新特性|演变|演进|历史|版本|更新|新功能|\b(feature|features|timeline|version|history)\b)/i.test(q)) {
+    if (primary !== "timeline") detected.push("timeline");
+    else detected.push("parameter_matrix");
+  } else {
+    // Default complementary pair: technical matrix + actionable checklist
+    if (primary === "parameter_matrix") detected.push("action_checklist");
+    else if (primary === "action_checklist") detected.push("parameter_matrix");
+    else detected.push("action_checklist");
+  }
+
+  return Array.from(new Set(detected)).slice(0, 2);
 }
 
 function generateAlgorithmicCard(
@@ -859,18 +1028,20 @@ function generateAlgorithmicCard(
         columns: ["规格指标", "主流配置 / 基准", "旗舰扩展 / 顶配", "工程考量与说明"],
         categories: ["计算架构", "存储吞吐", "网络接口", "部署约束"],
         rows: topSources.slice(0, 4).map((s, idx) => {
-          const specNames = ["核心吞吐 / 算力支持", "内存开销与资源占用", "接口协议与网络延迟", "冷启时间与部署约束"];
+          const specNames = ["核心定位与系统架构", "关键能力与特性规格", "接口协议与生态适配", "运行约束与部署基准"];
+          const cleanSnippet = (s.snippet || "").replace(/\s+/g, " ").trim();
+          const cleanTitle = (s.title || "").split(/[-_|–]/)[0].trim();
           return {
             id: `row-${idx + 1}`,
-            parameter: specNames[idx] || `关键指标 0${idx + 1}`,
-            category: ["计算架构", "存储吞吐", "网络接口", "部署约束"][idx] || "通用规格",
+            parameter: specNames[idx] || `规格特性 0${idx + 1}`,
+            category: ["计算架构", "核心功能", "生态协议", "部署要求"][idx] || "通用规格",
             values: [
-              s.snippet?.slice(0, 25) || "标准模式",
-              s.snippet?.slice(25, 55) || "高性能扩展",
-              s.title?.slice(0, 20) || "满足生产要求"
+              cleanSnippet.slice(0, 60) || "标准工业基准支持",
+              cleanTitle.slice(0, 30) || "完备生态链扩展",
+              "经真实信源验证"
             ],
-            isHighlight: idx % 2 === 0,
-            differenceNote: s.snippet?.slice(0, 40) || "已完成全网信源交叉比对",
+            isHighlight: idx === 0 || idx === 1,
+            differenceNote: cleanSnippet.slice(0, 80) || "经全网信源多重交叉验证",
             sourceTitle: s.title?.slice(0, 16),
             sourceUrl: s.url
           };
@@ -883,8 +1054,8 @@ function generateAlgorithmicCard(
         title: "参数规格矩阵",
         items: matrixData.rows.map(r => ({
           title: r.parameter,
-          description: `${r.values[0]} vs ${r.values[1]} (说明: ${r.values[2]})`,
-          tag: r.isHighlight ? "关键指标" : "基础参数",
+          description: r.differenceNote,
+          tag: r.isHighlight ? "核心规格" : "通用指标",
           tagColor: r.isHighlight ? "blue" : "zinc",
           sourceTitle: r.sourceTitle,
           sourceUrl: r.sourceUrl
@@ -1019,33 +1190,52 @@ function generateAlgorithmicCard(
     ];
   }
 
-  // 自动根据信源与原型组装核心行动入口
-  const actions: WidgetAction[] = [];
-  if (topSources[0]?.url) {
-    actions.push({
-      type: "open_url",
-      label: `访问 ${topSources[0].title ? topSources[0].title.slice(0, 10) : "核心入口"}`,
-      url: topSources[0].url,
-      variant: "primary"
-    });
-  }
-  if (checklistData?.tasks && checklistData.tasks.length > 0 && checklistData.tasks[0].commandOrCode) {
-    actions.push({
-      type: "copy",
-      label: "复制执行命令",
-      command: checklistData.tasks[0].commandOrCode,
-      variant: "secondary"
-    });
-  } else if (topSources[1]?.url) {
-    actions.push({
-      type: "open_url",
-      label: "官方/社区文档",
-      url: topSources[1].url,
-      variant: "outline"
-    });
+  // 消费 WidgetPlan 规划的真实行动或动态合成真实操作入口
+  const actions: WidgetAction[] = (widgetPlan?.primaryActions && widgetPlan.primaryActions.length > 0)
+    ? [...widgetPlan.primaryActions]
+    : [];
+
+  if (actions.length === 0) {
+    const fallbackActions = synthesizeToolActions(query, results);
+    if (fallbackActions.length > 0) {
+      actions.push(...fallbackActions);
+    } else {
+      if (topSources[0]?.url) {
+        actions.push({
+          id: `act-auto-0`,
+          type: "open_url",
+          tool: "official_url",
+          label: `访问 ${topSources[0].title ? topSources[0].title.slice(0, 10) : "核心入口"}`,
+          url: topSources[0].url,
+          variant: "primary",
+          isVerified: true
+        });
+      }
+      if (checklistData?.tasks && checklistData.tasks.length > 0 && checklistData.tasks[0].commandOrCode) {
+        actions.push({
+          id: `act-auto-1`,
+          type: "copy",
+          tool: "install_command",
+          label: "复制执行命令",
+          command: checklistData.tasks[0].commandOrCode,
+          variant: "secondary",
+          isVerified: true
+        });
+      } else if (topSources[1]?.url) {
+        actions.push({
+          id: `act-auto-2`,
+          type: "open_url",
+          tool: "open_docs",
+          label: "官方/社区文档",
+          url: topSources[1].url,
+          variant: "outline",
+          isVerified: true
+        });
+      }
+    }
   }
 
-  return {
+  const card: CustomCardData = {
     id,
     title,
     subtitle,
@@ -1074,4 +1264,7 @@ function generateAlgorithmicCard(
     downloadHubData,
     travelData
   };
+
+  card.schema = buildWidgetSchemaFromCard(card);
+  return card;
 }

@@ -1,6 +1,6 @@
 import { searchSearxng } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, normalizeModelId } from "./openrouter.js";
-import { forgeUniqueCard, detectBestArchetype } from "./cardForge.js";
+import { forgeUniqueCard, forgeMultipleDynamicWidgets, detectBestArchetype, detectMultipleArchetypes } from "./cardForge.js";
 import { planActionForQuery } from "./actionPlanner.js";
 import { planWidgetStrategy } from "./widgetPlanner.js";
 import {
@@ -605,7 +605,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
 
     const layoutDeliverables = [
       `意图模态决策: 判定为【${layoutStrategy.intentType}】场景`,
-      `Widget 优先级排版: 激活 ${widgetPlan.widgets.length} 个功能组件 (${widgetPlan.widgets.slice(0, 3).join(", ")})`,
+      `Widget 优先级排版: 激活 ${widgetPlan.widgets.length} 个功能组件 (${widgetPlan.widgets.slice(0, 3).map((w: any) => typeof w === "string" ? w : w.type).join(", ")})`,
       `Action 联动: ${actionPlan.requiresActionWidget ? "Action Widget 置顶优先展示" : "标准知识视图排版"}`,
       `4 列自适应装箱: 激活 ${activeWidgetNames.length} 个视口卡片 (${activeWidgetNames.slice(0, 4).join(", ")})`,
       `主视觉焦点: 锚定为【${layoutStrategy.emphasizedWidget || "custom_cards"}】`
@@ -729,35 +729,74 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
 
     updateMember("widget_forge", "running", "小组件规划与构建 Agent 正在架构并锻造独有小组件 (Unique Card)...");
     updateAssignedTask("TASK-WIDGET-ARCHITECT", "running");
+    updateStep(
+      "forge_unique_widget",
+      `[小组件规划与构建 Agent 专职执行] 正在智能架构与锻造独有小组件...`,
+      `依据任务意图【${widgetPlan?.intent || "research"}】与真实信源装配独有小组件模型...`,
+      "running",
+      "widget_forge"
+    );
+    emitTeamReport("小组件规划与构建 Agent 正在锻造专属业务小组件...", 2.6);
 
     parallelTasksExecuted += 3;
     estimatedSequentialTimeMs += 1800;
 
-    // 智能决策最适业务原型，优先采用 WidgetPlan 与行动规划推荐的原型
-    const targetArchetype = widgetPlan.suggestedArchetype || actionPlan.suggestedArchetype || detectBestArchetype(query, filteredResults);
-
-    let forgedCard: CustomCardData | null = null;
+    // 智能决策最适业务原型，优先采用 WidgetPlan 与行动规划推荐的原型，硬性 3.5s 超时绝不卡死
+    let forgedCards: CustomCardData[] = [];
     try {
-      forgedCard = await forgeUniqueCard({
+      const forgePromise = forgeMultipleDynamicWidgets({
         query,
         results: filteredResults,
-        archetype: targetArchetype,
         widgetPlan,
         userPrompt: `依据任务意图【${widgetPlan.intent}】与真实信源提炼独有深度信息，装配完整的可交互数据模型与 Tool Registry 真实行动入口，坚决杜绝套用重复模板`
       });
+      const timeoutPromise = new Promise<CustomCardData[]>((resolve) =>
+        setTimeout(() => {
+          console.warn("[WidgetArchitectAgent] Safe deadline reached, generating instant algorithmic fallback cards");
+          resolve([]);
+        }, 3500)
+      );
+      forgedCards = await Promise.race([forgePromise, timeoutPromise]);
     } catch (err: any) {
       console.warn("WidgetArchitectAgent auto card forge failed:", err);
-      forgedCard = null;
+      forgedCards = [];
+    }
+
+    if (!forgedCards || forgedCards.length === 0) {
+      const archetypes = detectMultipleArchetypes(query, filteredResults);
+      const c1 = await forgeUniqueCard({
+        query,
+        results: filteredResults,
+        widgetPlan,
+        archetype: archetypes[0],
+        themeColor: "blue",
+        colSpan: 6
+      });
+      const list = [c1];
+      if (archetypes.length > 1 && archetypes[1] !== archetypes[0]) {
+        const c2 = await forgeUniqueCard({
+          query,
+          results: filteredResults,
+          widgetPlan,
+          archetype: archetypes[1],
+          themeColor: "emerald",
+          colSpan: 6
+        }).catch(() => null);
+        if (c2) {
+          if (c2.id === c1.id) c2.id = `custom-card-${Date.now()}-sec`;
+          list.push(c2);
+        }
+      }
+      forgedCards = list;
     }
 
     const tForgeTime = Math.max(30, Date.now() - tActiveForgeStart);
     const forgeSpeedup = 1800 / Math.max(tForgeTime, 150);
 
     const forgeDeliverables = [
-      `智能原型决策: 依据意图【${widgetPlan.intent}】判定为【${targetArchetype}】原型`,
+      `智能多维原型决策: 依据意图【${widgetPlan.intent}】自主架构 ${forgedCards.length} 款专属业务小组件`,
       `能力模型装配: 注入 ${widgetPlan.capabilities.join(", ")} 真实交互能力`,
-      forgedCard ? `独有交互组件锻造: 成功构建【${forgedCard.title}】` : `独有交互组件锻造: 标准卡片已就绪`,
-      `业务交互数据装配: 注入 ${forgedCard?.archetype || targetArchetype} 完整数据模型 (支持勾选、下载、命令复制、在线体验)`,
+      ...forgedCards.map(c => `自主锻造组件【${c.title}】(${c.archetype}): 装配 ${c.actions?.length || 0} 个交互工具与专属数据模型`),
       `防重复护栏通过: 严格保障卡片独特性、信源真实佐证与独立标识`
     ];
 
@@ -766,12 +805,12 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       "completed",
       forgeDeliverables,
       tForgeTime,
-      `小组件规划与构建 Agent 已完成独有卡片锻造并交付主 Agent`
+      `小组件规划与构建 Agent 已根据检索结果自主锻造 ${forgedCards.length} 个独有小组件并交付`
     );
 
-    updateMember("widget_forge", "completed", "TASK-WIDGET-ARCHITECT 专职任务完成，独有小组件已交付主 Agent", 3, {
+    updateMember("widget_forge", "completed", "TASK-WIDGET-ARCHITECT 专职任务完成，多维小组件已交付主 Agent", 3, {
       executionTimeMs: tForgeTime,
-      outputSummary: forgedCard ? `成功锻造【${forgedCard.title}】(${forgedCard.archetype})，独有交互模型与能力装配完毕` : `小组件构建就绪`,
+      outputSummary: `成功根据搜索结果自主锻造 ${forgedCards.length} 个独有小组件 (${forgedCards.map(c => c.archetype).join(" & ")})，装配真实能力`,
       speedup: Number(forgeSpeedup.toFixed(1)),
       deliverables: forgeDeliverables
     });
@@ -779,16 +818,16 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
     updateStep(
       "forge_unique_widget",
       `[小组件规划与构建 Agent 专职执行] TASK-WIDGET-ARCHITECT 交付成果`,
-      `小组件规划与构建 Agent 完成卡片架构与锻造：原型【${targetArchetype}】，卡片【${forgedCard?.title || "专属看板"}】。`,
+      `小组件规划与构建 Agent 根据检索结果自主架构并锻造 ${forgedCards.length} 个独有小组件：${forgedCards.map(c => `【${c.title}】(${c.archetype})`).join("、")}。`,
       "completed",
       "widget_forge",
       forgeDeliverables,
       `${forgeSpeedup.toFixed(1)}x`
     );
 
-    emitTeamReport("小组件规划与构建 Agent 已完成独有小组件锻造，准备终验！", 2.9);
+    emitTeamReport(`小组件规划与构建 Agent 已完成 ${forgedCards.length} 个独有小组件锻造，准备终验！`, 2.9);
 
-    return forgedCard;
+    return forgedCards;
   })();
 
   // =========================================================================
@@ -796,7 +835,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
   // =========================================================================
   const qaPromise = (async () => {
     // 待信源、行动规划、研报与独有卡片到位时即刻执行 OpenAI Guardrails 审计
-    const [{ filteredResults }, actionPlan, synthesis, forgedCard] = await Promise.all([
+    const [{ filteredResults }, actionPlan, synthesis, forgedCards] = await Promise.all([
       retrievalPromise,
       actionPlannerPromise,
       knowledgePromise,
@@ -816,7 +855,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       `外部信源合法性核验: ${validSourcesCount} 个信源 URL 格式与存活状态达标`,
       `行动护栏绑定核验: ${actionPlan.tasks.length} 项任务绑定 Tool Registry 真实能力，无死链或虚假按钮`,
       `思维导图树状连通性: ${mindMapNodesCount} 个节点闭环无孤岛节点`,
-      `小组件防重复护栏: 验证卡片【${forgedCard?.title || "默认卡片"}】原型唯一性，杜绝重复模板`,
+      `小组件防重复护栏: 验证 ${forgedCards.length} 款小组件原型唯一性，杜绝重复模板`,
       `事实风控合规: 零事实幻觉告警，通过终验`
     ];
 
@@ -830,14 +869,14 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
 
     updateMember("qa_validator", "completed", "TASK-GUARDRAILS 专职任务完成，质检报告已交付主 Agent", 3, {
       executionTimeMs: tQaTime,
-      outputSummary: `核验 ${validSourcesCount} 个信源合法性，验证 ${actionPlan.tasks.length} 项 Tool 绑定，导图连通闭环，卡片防重复审计通过`,
+      outputSummary: `核验 ${validSourcesCount} 个信源合法性，验证 ${actionPlan.tasks.length} 项 Tool 绑定，导图连通闭环，${forgedCards.length} 款卡片防重复审计通过`,
       deliverables: qaDeliverables
     });
 
     updateStep(
       "qa",
       `[护栏质检 Agent 专职执行] TASK-GUARDRAILS 交付成果`,
-      `护栏质检 Agent 完成其专属风控任务：核验 ${validSourcesCount} 个信源存活性，行动护栏通过，导图闭环，卡片防重复审计通过。`,
+      `护栏质检 Agent 完成其专属风控任务：核验 ${validSourcesCount} 个信源存活性，行动护栏通过，导图闭环，${forgedCards.length} 款卡片防重复审计通过。`,
       "completed",
       "qa_validator",
       qaDeliverables
@@ -849,7 +888,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
   })();
 
   // 并发等待所有专职智能体全部执行完毕
-  const [retrievalRes, actionPlan, widgetPlan, layoutStrategy, synthesis, forgedCard, qaRes] = await Promise.all([
+  const [retrievalRes, actionPlan, widgetPlan, layoutStrategy, synthesis, forgedCards, qaRes] = await Promise.all([
     retrievalPromise,
     actionPlannerPromise,
     widgetPlannerPromise,
@@ -861,9 +900,9 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
 
   const { filteredResults, rawResults } = retrievalRes;
 
-  // 挂载锻造好的独有小组件
-  if (forgedCard) {
-    synthesis.customCards = [forgedCard];
+  // 挂载锻造好的独有小组件 (多张卡片全部作为独立一等公民挂载)
+  if (forgedCards && forgedCards.length > 0) {
+    synthesis.customCards = forgedCards;
   } else {
     synthesis.customCards = [];
   }

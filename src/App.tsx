@@ -28,9 +28,13 @@ import { AgentProgressStream } from "./components/AgentProgressStream.js";
 import { SearchHistoryDrawer } from "./components/SearchHistoryDrawer.js";
 import { AdaptiveLayoutControl } from "./components/AdaptiveLayoutControl.js";
 import { AdaptiveMasonryGrid } from "./components/AdaptiveMasonryGrid.js";
+import { TileDesktopView } from "./components/desktop/TileDesktopView.js";
+import { WidgetMarketplaceDrawer } from "./components/desktop/WidgetMarketplaceDrawer.js";
 import { CockpitWorkspace } from "./components/CockpitWorkspace.js";
 import { UniqueCardWidget } from "./components/widgets/UniqueCardWidget.js";
 import { UniqueCardForgeModal } from "./components/UniqueCardForgeModal.js";
+import { ForgedWidgetsHub } from "./components/widgets/ForgedWidgetsHub.js";
+import { WidgetRegistry, WidgetRuntime } from "./widgets/index.js";
 import { 
   AgentStep, 
   SearchSynthesisResult, 
@@ -43,6 +47,7 @@ import {
   AutoFillGapsMode,
   AgentTeamReport,
   CustomCardData,
+  WidgetPlannedSize,
   ALL_RESULT_WIDGET_KEYS
 } from "./types.js";
 import { 
@@ -198,10 +203,10 @@ export default function App() {
   const [layoutPreset, setLayoutPreset] = useState<LayoutIntentType | "custom">("deep_research");
   const [customWidgetOrder, setCustomWidgetOrder] = useState<ResultWidgetKey[] | null>(null);
 
-  // Interaction Mode: "bento" (4-column Bento grid of atomic widgets) vs "cockpit" (Zero-scroll click-only cockpit)
+  // Interaction Mode: default to "bento" (iOS & Android 4-column Modular Desktop Grid of widgets)
   const [interactionMode, setInteractionMode] = useState<"cockpit" | "bento">(() => {
     const saved = localStorage.getItem("search_interaction_mode");
-    return (saved === "bento" || saved === "cockpit") ? saved : "bento"; // default: 4-column modular Bento grid of atomic widgets
+    return saved === "cockpit" ? "bento" : (saved || "bento");
   });
 
   const handleToggleInteractionMode = (mode: "cockpit" | "bento") => {
@@ -265,6 +270,9 @@ export default function App() {
     return saved !== null ? saved === "false" : false; // default hidden
   });
 
+  // Widget Marketplace Drawer Open State
+  const [isMarketplaceOpen, setIsMarketplaceOpen] = useState<boolean>(false);
+
   const handleToggleLayoutControl = () => {
     if (activeTab !== "bento") {
       setActiveTab("bento");
@@ -307,7 +315,13 @@ export default function App() {
     const targetOrder: ResultWidgetKey[] = customWidgetOrder || baseRec.componentOrder;
     // Filter down to enabled widgets only for the visual layout
     const visibleOrder: ResultWidgetKey[] = targetOrder.filter((k) => activeEnabled.includes(k));
-    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? visibleOrder : resolveDynamicCapabilityWidgets(baseRec.intentType);
+    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? [...visibleOrder] : [...resolveDynamicCapabilityWidgets(baseRec.intentType)];
+
+    const hasCards = (customCards && customCards.length > 0) || (activeResult.customCards && activeResult.customCards.length > 0);
+    if (hasCards && !safeVisibleOrder.includes("custom_cards")) {
+      const insertIdx = safeVisibleOrder.indexOf("quick_answer") !== -1 ? safeVisibleOrder.indexOf("quick_answer") + 1 : 1;
+      safeVisibleOrder.splice(insertIdx, 0, "custom_cards");
+    }
 
     const emphasized: ResultWidgetKey = safeVisibleOrder.includes(baseRec.emphasizedWidget)
       ? baseRec.emphasizedWidget
@@ -668,213 +682,118 @@ export default function App() {
     if (placement) {
       return getWidgetGridClass(placement);
     }
-    switch (key) {
-      case "comparison":
-        return isEmphasized ? "col-span-12" : "col-span-12 lg:col-span-6";
-      case "mindmap":
-        return isEmphasized ? "col-span-12" : "col-span-12 lg:col-span-6";
-      case "ai_overview":
-        return "col-span-12 lg:col-span-8";
-      case "takeaways":
-        return "col-span-12 lg:col-span-4";
-      case "official_portal":
-        return "col-span-12 sm:col-span-6 lg:col-span-3";
-      case "followup":
-        return "col-span-12 sm:col-span-6 lg:col-span-3";
-      case "sources":
-        return "col-span-12";
-      case "custom_cards":
-        return "col-span-12 lg:col-span-6";
-      default:
-        return "col-span-12";
+    const mod = WidgetRegistry.get(key);
+    if (mod) {
+      if (mod.defaultSize === "full") return "col-span-12";
+      if (mod.defaultSize === "large") return isEmphasized ? "col-span-12" : "col-span-12 lg:col-span-6";
+      if (mod.defaultSize === "small") return "col-span-12 sm:col-span-6 lg:col-span-3";
+      return "col-span-12 lg:col-span-6";
     }
+    return "col-span-12";
   };
 
-  const renderWidgetContent = (key: ResultWidgetKey, overrideCompact?: boolean) => {
+  // 同步所有自定卡片与 Agent 锻造卡片至插件注册中心
+  useEffect(() => {
+    const allCards = [
+      ...(customCards || []),
+      ...(activeResult?.customCards || [])
+    ];
+    allCards.forEach((card) => {
+      WidgetRegistry.registerCustomCard(card, {
+        onUpdateCard: handleUpdateCard,
+        onDeleteCard: handleDeleteCard
+      });
+    });
+  }, [customCards, activeResult?.customCards, handleUpdateCard, handleDeleteCard]);
+
+  const renderWidgetContent = (
+    key: ResultWidgetKey, 
+    overrideCompact?: boolean,
+    size?: WidgetPlannedSize,
+    onResize?: (nextSize: WidgetPlannedSize) => void
+  ) => {
     if (!activeResult) return null;
     const placement = currentStrategy.gridConfig?.[key];
-    const isCompact = overrideCompact ?? placement?.isCompact ?? (placement?.colSpanLg ? placement.colSpanLg <= 4 : false);
+    const isCompact = overrideCompact ?? (size === "small") ?? placement?.isCompact ?? (placement?.colSpanLg ? placement.colSpanLg <= 4 : false);
 
-    switch (key) {
-      case "custom_cards": {
-        const activeNormQ = (activeResult?.query || "").trim().toLowerCase();
-        let relevantCards = customCards.filter(c => {
-          if (c.isPinned) return true;
-          const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
-          return cardQ === activeNormQ;
-        });
+    // 1. 若为旧版 custom_cards 聚合组件且包含多张卡片，平铺展示
+    if (key === "custom_cards") {
+      const activeNormQ = (activeResult?.query || "").trim().toLowerCase();
+      let relevantCards = customCards.filter(c => {
+        if (c.isPinned) return true;
+        const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
+        return cardQ === activeNormQ;
+      });
 
-        // Fallback to activeResult.customCards if local state is empty or pending
-        if (relevantCards.length === 0 && activeResult.customCards && activeResult.customCards.length > 0) {
-          relevantCards = activeResult.customCards;
-        }
-
-        const seenArch = new Set<string>();
-        const displayCards = relevantCards.filter(c => {
-          if (seenArch.has(c.archetype)) return false;
-          seenArch.add(c.archetype);
-          return true;
-        });
-
-        if (displayCards.length === 0) return null;
-        return (
-          <div className="space-y-4 w-full">
-            {displayCards.map((card) => (
-              <UniqueCardWidget
-                key={card.id}
-                card={card}
-                onUpdateCard={handleUpdateCard}
-                onDeleteCard={handleDeleteCard}
-                isCompact={isCompact}
-              />
-            ))}
-          </div>
-        );
+      if (relevantCards.length === 0 && activeResult.customCards && activeResult.customCards.length > 0) {
+        relevantCards = activeResult.customCards;
       }
-      case "quick_answer":
-        return (
-          <QuickAnswerWidget
-            query={activeResult.query}
-            summary={activeResult.summary}
-            keyTakeaways={activeResult.keyTakeaways}
-          />
-        );
-      case "metrics_telemetry":
-        return (
-          <MetricsTelemetryWidget
-            result={activeResult}
-          />
-        );
-      case "actions_toolbox":
-        if (activeResult.actionPlan && activeResult.actionPlan.tasks && activeResult.actionPlan.tasks.length > 0) {
-          return (
-            <ActionPlanWidget
-              actionPlan={activeResult.actionPlan}
-              query={activeResult.query}
-              isCompact={isCompact}
-            />
-          );
-        }
-        return (
-          <QuickActionsToolboxWidget
-            result={activeResult}
-            onReSearch={() => executeSearch(activeResult.query, settings.enableDeepSearch)}
-            onOpenForgeModal={() => handleOpenForgeModal()}
-          />
-        );
-      case "analytics_trend":
-        return (
-          <AnalyticsTrendWidget
-            result={activeResult}
-            onViewDeepAnalysis={() => setActiveTab("sources")}
-          />
-        );
-      case "verification_checklist":
-        return (
-          <VerificationChecklistWidget
-            result={activeResult}
-          />
-        );
-      case "fast_chat":
-        return (
-          <FastChatWidget
-            query={activeResult.query}
-            followUpQuestions={activeResult.followUpQuestions}
-            onAsk={(q) => executeSearch(q, settings.enableDeepSearch)}
-          />
-        );
-      case "mobile_qr":
-        return (
-          <MobileQRConnectWidget
-            query={activeResult.query}
-            url={officialSite?.url}
-          />
-        );
-      case "topic_digest":
-        return (
-          <TopicDigestWidget
-            query={activeResult.query}
-            summary={activeResult.summary}
-            filteredResults={activeResult.filteredResults}
-          />
-        );
-      case "agent_workflow":
-        return (
-          <AgentAuditWidget
-            steps={activeResult.steps}
-            query={activeResult.query}
-            executionTimeMs={activeResult.executionTimeMs}
-            modelUsed={activeResult.modelUsed}
-            agentTeam={activeResult.agentTeam || agentTeam}
-            onViewDetails={() => setActiveTab("reasoning")}
-          />
-        );
-      case "comparison":
-        return (
-          <ComparisonMatrixWidget
-            comparisonTable={activeResult.comparisonTable}
-            query={activeResult.query}
-          />
-        );
-      case "mindmap":
-        return (
-          <MindMapWidget
-            rootNode={activeResult.mindMap}
-            query={activeResult.query}
-            isDark={darkMode}
-          />
-        );
-      case "official_portal":
-        return (
-          <OfficialPortalWidget
-            query={activeResult.query}
-            officialWebsite={officialSite}
-            detectedLanguage={activeResult.detectedLanguage}
-            rawResultCount={activeResult.rawResultCount}
-            filteredCount={activeResult.filteredResults.length}
-            isCompact={isCompact}
-          />
-        );
-      case "takeaways":
-        return (
-          <KeyTakeawaysWidget
-            keyTakeaways={activeResult.keyTakeaways}
-            isCompact={isCompact}
-          />
-        );
-      case "ai_overview":
-        return (
-          <AIOverviewWidget
-            summary={activeResult.summary}
-            query={activeResult.query}
-            modelUsed={activeResult.modelUsed}
-            filteredResults={activeResult.filteredResults}
-            detectedLanguage={activeResult.detectedLanguage}
-            onOpenMindMap={() => setActiveTab("mindmap")}
-            onOpenComparison={() => setActiveTab("comparison")}
-          />
-        );
-      case "sources":
-        return (
-          <SourcesListWidget
-            results={activeResult.filteredResults}
-            rawResultCount={activeResult.rawResultCount}
-            isCompact={isCompact}
-            onForgeCardFromSource={(srcId) => handleOpenForgeModal([srcId])}
-            onOpenForgeModal={() => handleOpenForgeModal()}
-          />
-        );
-      case "followup":
-        return (
-          <FollowUpWidget
-            questions={activeResult.followUpQuestions}
-            onQuestionClick={(q) => executeSearch(q, settings.enableDeepSearch)}
-            isCompact={isCompact}
-          />
-        );
-      default:
-        return null;
+
+      const seenArch = new Set<string>();
+      const displayCards = relevantCards.filter(c => {
+        if (seenArch.has(c.archetype)) return false;
+        seenArch.add(c.archetype);
+        return true;
+      });
+
+      if (displayCards.length === 0) return null;
+      return (
+        <div className="space-y-4 w-full">
+          {displayCards.map((card) => {
+            const cardModule = WidgetRegistry.get(`custom_card__${card.id}`) 
+              || WidgetRegistry.registerCustomCard(card, {
+                  onUpdateCard: handleUpdateCard,
+                  onDeleteCard: handleDeleteCard
+                });
+            return (
+              <WidgetRuntime
+                key={card.id}
+                module={cardModule}
+                activeResult={activeResult}
+                size={size}
+                isCompact={isCompact}
+                onResize={onResize}
+                onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+              />
+            );
+          })}
+        </div>
+      );
     }
+
+    // 2. 插件系统架构核心：统一通过 WidgetRegistry 调度渲染所有官方与 AI 动态插件模块
+    const widgetModule = WidgetRegistry.get(key);
+    if (!widgetModule) {
+      console.warn(`Widget module not found in registry: ${key}`);
+      return null;
+    }
+
+    // 注入应用层动作回调 (Actions)
+    const boundModule = {
+      ...widgetModule,
+      actions: {
+        ...(widgetModule.actions || {}),
+        openMindMap: () => setActiveTab("mindmap"),
+        openComparison: () => setActiveTab("comparison"),
+        openForgeModal: (sourceIds?: string[]) => handleOpenForgeModal(sourceIds),
+        forgeCardFromSource: (sourceId: string) => handleOpenForgeModal([sourceId]),
+        reSearch: () => executeSearch(activeResult.query, settings.enableDeepSearch),
+        viewDeepAnalysis: () => setActiveTab("sources"),
+        viewDetails: () => setActiveTab("reasoning")
+      }
+    };
+
+    return (
+      <WidgetRuntime
+        key={String(key)}
+        module={boundModule}
+        activeResult={activeResult}
+        size={size}
+        isCompact={isCompact}
+        onResize={onResize}
+        onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+      />
+    );
   };
 
   return (
@@ -1118,17 +1037,21 @@ export default function App() {
                         onOpenForgeModal={handleOpenForgeModal}
                       />
                     ) : (
-                      /* Mode B: 4-CELL FREE-FLOW BENTO GRID (Multi-row scrollable bento layout) */
+                      /* Mode B: 动态 Live Tile 12 栅格磁贴桌面系统 (iOS 毛玻璃拟物 + Windows Phone Live Tile) */
                       <div className="space-y-4">
-                        <AdaptiveMasonryGrid
+                        <TileDesktopView
                           strategy={currentStrategy}
                           enabledWidgets={currentStrategy.componentOrder}
+                          widgetPlan={activeResult.widgetPlan}
+                          customCards={customCards.length > 0 ? customCards : activeResult.customCards}
+                          activeResult={activeResult}
                           isWideCanvas={isWideCanvas}
-                          alignmentMode={alignmentMode}
-                          autoFillGaps={autoFillGaps}
-                          autoFillMode={autoFillMode}
-                          renderWidget={(key, isCompact) => renderWidgetContent(key, isCompact)}
-                          getGridClassForWidget={(key, isEmphasized) => getGridClassForWidget(key, isEmphasized)}
+                          onOpenMarketplace={() => setIsMarketplaceOpen(true)}
+                          onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+                          onOpenForgeModal={(sourceIds) => handleOpenForgeModal(sourceIds)}
+                          onNavigateTab={(tab) => setActiveTab(tab)}
+                          onUpdateCard={handleUpdateCard}
+                          onDeleteCard={handleDeleteCard}
                         />
                       </div>
                     )}
@@ -1214,6 +1137,41 @@ export default function App() {
           preselectedResultIds={preselectedSourceIds}
         />
       )}
+
+      {/* Widget Marketplace Drawer (小组件商店 / 磁贴中心) */}
+      <WidgetMarketplaceDrawer
+        isOpen={isMarketplaceOpen}
+        onClose={() => setIsMarketplaceOpen(false)}
+        activeTileIds={(currentStrategy?.componentOrder || []).map(String)}
+        customCards={customCards.length > 0 ? customCards : activeResult?.customCards}
+        onAddTile={(id) => {
+          setCustomEnabledWidgets((prev) => {
+            const current = prev || currentStrategy?.componentOrder || [];
+            if (!current.includes(id as any)) {
+              return [...current, id as any];
+            }
+            return current;
+          });
+          setCustomWidgetOrder((prev) => {
+            const current = prev || currentStrategy?.componentOrder || [];
+            if (!current.includes(id as any)) {
+              return [...current, id as any];
+            }
+            return current;
+          });
+        }}
+        onRemoveTile={(id) => {
+          setCustomEnabledWidgets((prev) => {
+            const current = prev || currentStrategy?.componentOrder || [];
+            return current.filter((k) => String(k) !== id);
+          });
+          setCustomWidgetOrder((prev) => {
+            const current = prev || currentStrategy?.componentOrder || [];
+            return current.filter((k) => String(k) !== id);
+          });
+        }}
+        onOpenForgeModal={() => handleOpenForgeModal()}
+      />
 
       {/* iOS Minimalist Footer in Gray & White */}
       <footer className="w-full border-t border-zinc-200/80 dark:border-zinc-800/80 bg-white/50 dark:bg-[#121214]/50 text-xs text-zinc-500 dark:text-zinc-400 mt-auto">

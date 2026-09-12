@@ -53,6 +53,7 @@ import {
   getWidgetLabel,
   getWidgetSpanLabel
 } from "../lib/adaptiveLayout.js";
+import { WidgetRegistry } from "../widgets/index.js";
 
 const ALL_POSSIBLE_WIDGETS: ResultWidgetKey[] = [
   "quick_answer",
@@ -183,44 +184,14 @@ export const AdaptiveLayoutControl: React.FC<AdaptiveLayoutControlProps> = ({
   };
 
   const getWidgetIcon = (key: ResultWidgetKey) => {
-    switch (key) {
-      case "quick_answer":
-        return <Zap className="w-4 h-4 text-amber-500" />;
-      case "official_portal":
-        return <ShieldCheck className="w-4 h-4 text-emerald-500" />;
-      case "takeaways":
-        return <Sparkles className="w-4 h-4 text-amber-500" />;
-      case "metrics_telemetry":
-        return <SlidersHorizontal className="w-4 h-4 text-indigo-500" />;
-      case "actions_toolbox":
-        return <Power className="w-4 h-4 text-emerald-500" />;
-      case "topic_digest":
-        return <LayoutGrid className="w-4 h-4 text-blue-500" />;
-      case "ai_overview":
-        return <FileText className="w-4 h-4 text-blue-500" />;
-      case "mindmap":
-        return <GitFork className="w-4 h-4 text-purple-500" />;
-      case "comparison":
-        return <Scale className="w-4 h-4 text-rose-500" />;
-      case "sources":
-        return <Database className="w-4 h-4 text-indigo-500" />;
-      case "followup":
-        return <Compass className="w-4 h-4 text-cyan-500" />;
-      case "analytics_trend":
-        return <TrendingUp className="w-4 h-4 text-sky-500" />;
-      case "verification_checklist":
-        return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
-      case "fast_chat":
-        return <MessageSquare className="w-4 h-4 text-blue-500" />;
-      case "mobile_qr":
-        return <QrCode className="w-4 h-4 text-purple-500" />;
-      case "agent_workflow":
-        return <Sparkles className="w-4 h-4 text-violet-500" />;
-      case "custom_cards":
-        return <Sparkles className="w-4 h-4 text-blue-500" />;
-      default:
-        return <LayoutGrid className="w-4 h-4 text-zinc-500" />;
+    const mod = WidgetRegistry.get(key);
+    if (mod && mod.icon) {
+      if (typeof mod.icon === "function") {
+        const IconComp = mod.icon as React.ComponentType<{ className?: string }>;
+        return <IconComp className="w-4 h-4 text-blue-500" />;
+      }
     }
+    return <LayoutGrid className="w-4 h-4 text-zinc-500" />;
   };
 
   const isCustomized = selectedPreset === "custom";

@@ -1,3 +1,5 @@
+import type { WidgetSchema } from "./widgets/sdk/types.js";
+
 export interface SearchResult {
   id: string;
   title: string;
@@ -192,7 +194,7 @@ export interface WidgetStatusDetail {
 
 export type WidgetSemanticWidth = "full" | "large" | "medium" | "small" | "compact" | "wide" | "half";
 
-export type LayoutStructureType = "single_column" | "two_column" | "dashboard";
+export type LayoutStructureType = "single_column" | "two_column" | "dashboard" | "modular_grid";
 
 export type ToolCapabilityType = 
   | "official_url"       // 打开已认证的官方门户主站/主入口
@@ -238,12 +240,24 @@ export type QueryIntent =
   | "explain"          // 概念解释/原理科普 (如 什么是 Docker, 量子计算原理)
   | "research";        // 深度研报/全产业链/学术探讨
 
+export type WidgetPlannedSize = "small" | "medium" | "large" | "full";
+
+export interface WidgetPlannedItem {
+  type: ResultWidgetKey;
+  priority: number; // 1 to 100, higher = higher visual prominence
+  size: WidgetPlannedSize; // "small" (4 cols) | "medium" (6 cols) | "large" (8 cols) | "full" (12 cols)
+  flexible?: boolean; // Whether layout engine can expand or shrink this widget to fill bento row gaps
+  reason?: string; // Justification from the capability resolver
+  capabilities?: string[]; // Capabilities matched to this widget
+}
+
 export interface WidgetPlan {
   intent: QueryIntent;
   userGoal: string;
   suggestedArchetype: CustomCardArchetype;
   capabilities: string[]; // ["official_url", "download", "install_command", "install_step", "try_online", "compare_table", "pros_cons", "timeline", "itinerary_timeline"]
-  widgets: ResultWidgetKey[]; // Decided widget order based on capabilities & information priority
+  widgets: WidgetPlannedItem[]; // Decided widgets with priority, size and flex specifications
+  widgetOrder?: ResultWidgetKey[]; // Flattened sequence of widget keys for direct consumption
   primaryActions: WidgetAction[]; // Standardized executable actions
   widgetCustomizations?: {
     cardTitle?: string;
@@ -289,7 +303,8 @@ export type CustomCardArchetype =
   | "quote_dossier"
   | "tool_discovery"
   | "download_hub"
-  | "travel_itinerary";
+  | "travel_itinerary"
+  | "schema";
 
 export interface ToolDiscoveryItem {
   id: string;
@@ -695,4 +710,5 @@ export interface CustomCardData {
   toolDiscoveryData?: ToolDiscoveryData;
   downloadHubData?: DownloadHubData;
   travelData?: TravelItineraryData;
+  schema?: WidgetSchema;
 }

@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import {
   QueryIntent,
   TaskCapabilityRequirements,
@@ -6,15 +5,7 @@ import {
   ResultWidgetKey,
   WidgetQualityGuardReport
 } from "../src/types.js";
-
-let genAIClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI | null {
-  if (genAIClient) return genAIClient;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") return null;
-  genAIClient = new GoogleGenAI({ apiKey: apiKey.trim() });
-  return genAIClient;
-}
+import { callOpenRouterChat } from "./openrouter.js";
 
 /**
  * 确定性 Intent -> Widget 映射基准表 (Deterministic Baseline Mapping)
@@ -67,9 +58,8 @@ export async function classifyQueryIntent(
   results: SearchResult[] = []
 ): Promise<{ intent: QueryIntent; userGoal: string; confidence: number }> {
   const normalized = query.toLowerCase().trim();
-  const ai = getGenAI();
-
-  if (ai) {
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (openRouterKey && openRouterKey.trim() !== "") {
     try {
       const prompt = `你是一位专门负责【用户意图精准分类 (Intent Classification Agent)】的专职智能体。
 必须判断【用户究竟想完成什么任务】，而不是做被动的字面分类。
@@ -93,27 +83,21 @@ export async function classifyQueryIntent(
   "confidence": 0.95
 }`;
 
-      const candidateModels = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
-      for (const m of candidateModels) {
-        try {
-          const resp = await ai.models.generateContent({
-            model: m,
-            contents: prompt,
-            config: { responseMimeType: "application/json", temperature: 0.1 }
-          });
-          const txt = resp.text?.trim();
-          if (txt) {
-            const parsed = JSON.parse(txt);
-            if (parsed.intent && INTENT_WIDGET_MAP[parsed.intent as QueryIntent]) {
-              return {
-                intent: parsed.intent as QueryIntent,
-                userGoal: parsed.userGoal || `用户希望完成 ${parsed.intent} 相关任务`,
-                confidence: parsed.confidence || 0.9
-              };
-            }
-          }
-        } catch {
-          continue;
+      const txt = await callOpenRouterChat({
+        messages: [{ role: "user", content: prompt }],
+        model: "openrouter/free",
+        timeoutMs: 1800,
+        responseFormatJson: true
+      });
+
+      if (txt) {
+        const parsed = JSON.parse(txt);
+        if (parsed.intent && INTENT_WIDGET_MAP[parsed.intent as QueryIntent]) {
+          return {
+            intent: parsed.intent as QueryIntent,
+            userGoal: parsed.userGoal || `用户希望完成 ${parsed.intent} 相关任务`,
+            confidence: parsed.confidence || 0.9
+          };
         }
       }
     } catch {
@@ -208,9 +192,9 @@ export async function planTaskCapabilities(
   results: SearchResult[]
 ): Promise<TaskCapabilityRequirements> {
   const baseline = INTENT_WIDGET_MAP[intent] || INTENT_WIDGET_MAP.explain;
-  const ai = getGenAI();
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-  if (ai) {
+  if (openRouterKey && openRouterKey.trim() !== "") {
     try {
       const prompt = `你是一位专门负责【任务规划与能力需求定义 (Task Planning & Capability Agent)】的专职智能体。
 你的职责是：根据用户意图，输出完成该目标所必须具备的【真实能力清单 (required_capabilities)】，绝不要直接指定死板的 UI。
@@ -245,28 +229,22 @@ export async function planTaskCapabilities(
   "forbidden_widget_patterns": ["若非 explain 任务，必须标明禁止纯文字卡片"]
 }`;
 
-      const candidateModels = ["gemini-3.1-flash-lite", "gemini-flash-latest"];
-      for (const m of candidateModels) {
-        try {
-          const resp = await ai.models.generateContent({
-            model: m,
-            contents: prompt,
-            config: { responseMimeType: "application/json", temperature: 0.1 }
-          });
-          const txt = resp.text?.trim();
-          if (txt) {
-            const parsed = JSON.parse(txt);
-            if (Array.isArray(parsed.required_capabilities) && parsed.required_capabilities.length > 0) {
-              return {
-                task_type: intent,
-                user_goal: parsed.user_goal || userGoal,
-                required_capabilities: parsed.required_capabilities,
-                forbidden_widget_patterns: parsed.forbidden_widget_patterns || (intent !== "explain" ? ["pure_text_cards"] : [])
-              };
-            }
-          }
-        } catch {
-          continue;
+      const txt = await callOpenRouterChat({
+        messages: [{ role: "user", content: prompt }],
+        model: "openrouter/free",
+        timeoutMs: 1800,
+        responseFormatJson: true
+      });
+
+      if (txt) {
+        const parsed = JSON.parse(txt);
+        if (Array.isArray(parsed.required_capabilities) && parsed.required_capabilities.length > 0) {
+          return {
+            task_type: intent,
+            user_goal: parsed.user_goal || userGoal,
+            required_capabilities: parsed.required_capabilities,
+            forbidden_widget_patterns: parsed.forbidden_widget_patterns || (intent !== "explain" ? ["pure_text_cards"] : [])
+          };
         }
       }
     } catch {

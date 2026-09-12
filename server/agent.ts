@@ -486,64 +486,59 @@ function calculateServerAdaptiveBinPacking(
   const intent = options.intentType || "balanced";
 
   const getSemanticSpan = (key: ResultWidgetKey): number => {
-    if (key === emphasized) {
-      if (key === "mindmap" || key === "comparison" || key === "ai_overview" || key === "quick_answer" || key === "custom_cards") {
-        return 12; // Emphasized analytical or task views take full row
-      }
-      if (key === "official_portal" || key === "actions_toolbox") {
-        return 12;
-      }
-      if (key === "takeaways" || key === "verification_checklist") {
-        return 12;
-      }
-    }
-
     switch (key) {
+      case "ai_overview":
+        return 12;
       case "mindmap":
       case "comparison":
+        return 6;
       case "quick_answer":
       case "sources":
       case "custom_cards":
-      case "ai_overview":
-        return 12;
-      case "takeaways":
-        return intent === "quick_definition" ? 8 : 12;
-      case "official_portal":
-        return 12;
-      case "verification_checklist":
-        return intent === "fact_check" || intent === "troubleshooting" ? 12 : 6;
       case "actions_toolbox":
-        return intent === "install" || intent === "troubleshooting" || intent === "code_tutorial" ? 12 : 6;
+      case "takeaways":
+      case "official_portal":
+      case "verification_checklist":
       case "analytics_trend":
       case "topic_digest":
       case "fast_chat":
+        return 6;
       case "followup":
       case "metrics_telemetry":
       case "mobile_qr":
       case "agent_workflow":
-        return 6;
+        return 3;
       default:
-        return 12;
+        return 6;
     }
   };
 
   const gridConfig: Record<string, any> = {};
+  let currentRowIndex = 0;
+  let currentUsedSpan = 0;
 
-  order.forEach((key, index) => {
+  order.forEach((key) => {
     const span = getSemanticSpan(key);
+    if (currentUsedSpan + span > 12) {
+      currentRowIndex++;
+      currentUsedSpan = 0;
+    }
+
     gridConfig[key] = {
       colSpanLg: span,
       colSpanMd: span <= 6 ? 6 : 12,
-      rowIndex: index,
+      rowIndex: currentRowIndex,
       semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
       isCompact: span <= 4,
       isAutoFilled: false
     };
+
+    currentUsedSpan += span;
   });
 
   return {
     gridConfig: gridConfig as Record<ResultWidgetKey, any>,
-    totalRows: order.length
+    totalRows: currentRowIndex + 1
   };
 }
 
@@ -1121,15 +1116,24 @@ export function determineAdaptiveLayout(params: {
     else if (wpIntent === "explain") intentType = "quick_definition";
 
     if (widgetPlan.widgets && widgetPlan.widgets.length > 0) {
-      baseOrder = widgetPlan.widgets;
-      preferredEmphasized = widgetPlan.widgets[0];
-      // 确保 WidgetPlan 中规划的组件全量激活
-      widgetPlan.widgets.forEach(w => {
-        if (activation.widgetStatusMap[w]) {
-          activation.widgetStatusMap[w].enabled = true;
-          if (!activation.enabledWidgets.includes(w)) {
-            activation.enabledWidgets.push(w);
+      const plannedKeys: ResultWidgetKey[] = widgetPlan.widgetOrder || widgetPlan.widgets.map((w: any) => typeof w === "string" ? w : w.type);
+      baseOrder = plannedKeys;
+      preferredEmphasized = plannedKeys[0];
+      // 确保 WidgetPlan 中规划的组件全量激活，并将 Agent 决策的尺寸同步到排版中
+      if (!activation.customWidgetSpans) {
+        activation.customWidgetSpans = {};
+      }
+      widgetPlan.widgets.forEach((item: any) => {
+        const key: ResultWidgetKey = typeof item === "string" ? item : item.type;
+        if (activation.widgetStatusMap[key]) {
+          activation.widgetStatusMap[key].enabled = true;
+          if (!activation.enabledWidgets.includes(key)) {
+            activation.enabledWidgets.push(key);
           }
+        }
+        if (typeof item === "object" && item.size) {
+          const span = item.size === "full" ? 12 : item.size === "large" ? 8 : item.size === "medium" ? 6 : 4;
+          activation.customWidgetSpans![key] = span;
         }
       });
     }
@@ -1173,14 +1177,17 @@ export function determineAdaptiveLayout(params: {
 
   // 6. 构造专职 UI Layout Planner Agent 规范格式对象（包含 Action Layer 任务解决属性）
   const agentLayoutPlan = {
-    layout_type: (isComparisonQuery || intentType === "comparison" || isNewsTrendQuery) ? "two_column" : "single_column",
+    layout_type: "modular_grid" as const,
     widgets: activeOrder.map((key, idx) => {
-      const semWidth = widthMap[key] || "full";
-      let size: "full" | "large" | "medium" | "small" | "compact" = "full";
+      const semWidth = widthMap[key] || "half";
+      let size: "full" | "large" | "medium" | "small" | "compact" = "medium";
       if (semWidth === "full") size = "full";
       else if (semWidth === "wide") size = "large";
       else if (semWidth === "half") size = "medium";
-      else if (semWidth === "compact") size = "compact";
+      else if (semWidth === "compact") size = "small";
+
+      if (key === "custom_cards" || key === "mindmap") size = "large";
+      if (key === "metrics_telemetry" || key === "mobile_qr" || key === "followup") size = "small";
 
       let category: "information" | "action" | "hybrid" | "comparison" | "visualization" = "information";
       if (key === "official_portal" || key === "custom_cards" || isCodeTutorialQuery) {

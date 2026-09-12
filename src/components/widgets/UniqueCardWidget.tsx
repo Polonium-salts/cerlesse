@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { IOSWidget } from "../ui/IOSWidget.js";
-import { CustomCardData, CustomCardSectionItem, WidgetAction } from "../../types.js";
+import { CustomCardData, CustomCardSectionItem, WidgetAction, WidgetPlannedSize } from "../../types.js";
 import {
   Sparkles,
   CheckCircle2,
@@ -46,6 +46,8 @@ interface UniqueCardWidgetProps {
   onDeleteCard?: (id: string) => void;
   onReForgeCard?: (card: CustomCardData) => void;
   isCompact?: boolean;
+  size?: WidgetPlannedSize;
+  onResize?: (size: WidgetPlannedSize) => void;
 }
 
 const THEME_STYLES: Record<string, {
@@ -149,7 +151,9 @@ export const UniqueCardWidget: React.FC<UniqueCardWidgetProps> = ({
   onUpdateCard,
   onDeleteCard,
   onReForgeCard: _onReForgeCard,
-  isCompact = false
+  isCompact = false,
+  size,
+  onResize
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedActionId, setCopiedActionId] = useState<string | null>(null);
@@ -262,6 +266,8 @@ export const UniqueCardWidget: React.FC<UniqueCardWidgetProps> = ({
       id={`unique-card-${card.id}`}
       title={card.title}
       subtitle={card.subtitle}
+      size={size}
+      onResize={onResize}
       icon={
         <div className={`w-8 h-8 rounded-xl ${theme.iconBg} ${theme.iconText} flex items-center justify-center shrink-0`}>
           {renderCardIcon(card.iconName)}

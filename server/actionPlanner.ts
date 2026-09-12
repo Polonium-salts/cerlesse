@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import {
   ActionPlan,
   PlannedTask,
@@ -8,15 +7,7 @@ import {
   WidgetAction
 } from "../src/types.js";
 import { createToolAction, synthesizeToolActions, TOOL_REGISTRY } from "./toolRegistry.js";
-
-let genAIClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI | null {
-  if (genAIClient) return genAIClient;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") return null;
-  genAIClient = new GoogleGenAI({ apiKey: apiKey.trim() });
-  return genAIClient;
-}
+import { callOpenRouterChat } from "./openrouter.js";
 
 export interface ActionPlannerOptions {
   query: string;
@@ -38,11 +29,11 @@ export interface ActionPlannerOptions {
 export async function planActionForQuery(options: ActionPlannerOptions): Promise<ActionPlan> {
   const { query, results, targetLanguage = "zh" } = options;
   const validResults = (results || []).slice(0, 8);
-  const ai = getGenAI();
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-  if (ai && validResults.length > 0) {
+  if (openRouterKey && validResults.length > 0) {
     try {
-      const plan = await planActionWithGemini(ai, query, validResults, targetLanguage);
+      const plan = await planActionWithOpenRouter(query, validResults, targetLanguage);
       if (plan) return plan;
     } catch (err: any) {
       // Graceful fallback to algorithmic action planner
@@ -52,8 +43,7 @@ export async function planActionForQuery(options: ActionPlannerOptions): Promise
   return generateAlgorithmicActionPlan(query, validResults, targetLanguage);
 }
 
-async function planActionWithGemini(
-  ai: GoogleGenAI,
+async function planActionWithOpenRouter(
   query: string,
   results: SearchResult[],
   targetLanguage: string
@@ -124,32 +114,12 @@ ${sourcesContext}
   }
 }`;
 
-  const candidateModels = [
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.8-flash"
-  ];
-
-  let rawText = "";
-  for (const modelName of candidateModels) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.2
-        }
-      });
-      const txt = response.text?.trim();
-      if (txt) {
-        rawText = txt;
-        break;
-      }
-    } catch {
-      continue;
-    }
-  }
+  let rawText = await callOpenRouterChat({
+    messages: [{ role: "user", content: prompt }],
+    model: "openrouter/free",
+    timeoutMs: 2200,
+    responseFormatJson: true
+  });
 
   if (!rawText) return null;
 

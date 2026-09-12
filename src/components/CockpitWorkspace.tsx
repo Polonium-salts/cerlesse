@@ -453,40 +453,47 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
         {/* Dedicated Active Stage Content (Scrollable internally without window scroll) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-white dark:bg-[#1c1c1e]">
           {activeTab === "overview" && (
-            <div className="max-w-5xl mx-auto space-y-6">
-              {/* 行动规划与能力调度组件：当存在明确操作目标时优先置顶 */}
-              {activeResult.actionPlan && activeResult.actionPlan.tasks && activeResult.actionPlan.tasks.length > 0 && (
-                <div className="w-full">
-                  <ActionPlanWidget
-                    actionPlan={activeResult.actionPlan}
-                    query={activeResult.query}
-                  />
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* 行动规划与 Agent 自主创建的定制独有小组件：采用 2D 模组并排排列 */}
+              {(Boolean(activeResult.actionPlan?.tasks?.length) || displayCustomCards.length > 0) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
+                  {/* 行动规划与能力调度组件：当存在明确操作目标时优先置顶 */}
+                  {activeResult.actionPlan && activeResult.actionPlan.tasks && activeResult.actionPlan.tasks.length > 0 && (
+                    <div className={displayCustomCards.length === 0 ? "lg:col-span-2" : "col-span-1"}>
+                      <ActionPlanWidget
+                        actionPlan={activeResult.actionPlan}
+                        query={activeResult.query}
+                      />
+                    </div>
+                  )}
+
+                  {/* 搜索定制独有小组件：每张卡片作为独立的桌面模组并排并列呈现 */}
+                  {displayCustomCards.map((card) => {
+                    const isFull = displayCustomCards.length === 1 && !activeResult.actionPlan?.tasks?.length;
+                    return (
+                      <div key={card.id} className={isFull ? "lg:col-span-2" : "col-span-1"}>
+                        <UniqueCardWidget
+                          card={card}
+                          onUpdateCard={onUpdateCard}
+                          onDeleteCard={onDeleteCard}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* 搜索定制独有小组件：与固定组件拥有完全相同的排列效果与UI风格 */}
-              {displayCustomCards.length > 0 && (
-                <div className="space-y-4 w-full">
-                  {displayCustomCards.map((card) => (
-                    <UniqueCardWidget
-                      key={card.id}
-                      card={card}
-                      onUpdateCard={onUpdateCard}
-                      onDeleteCard={onDeleteCard}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <AIOverviewWidget
-                summary={activeResult.summary}
-                query={activeResult.query}
-                modelUsed={activeResult.modelUsed}
-                filteredResults={activeResult.filteredResults}
-                detectedLanguage={activeResult.detectedLanguage}
-                onOpenMindMap={() => setActiveTab("mindmap")}
-                onOpenComparison={() => setActiveTab("comparison")}
-              />
+              <div className="w-full">
+                <AIOverviewWidget
+                  summary={activeResult.summary}
+                  query={activeResult.query}
+                  modelUsed={activeResult.modelUsed}
+                  filteredResults={activeResult.filteredResults}
+                  detectedLanguage={activeResult.detectedLanguage}
+                  onOpenMindMap={() => setActiveTab("mindmap")}
+                  onOpenComparison={() => setActiveTab("comparison")}
+                />
+              </div>
             </div>
           )}
 

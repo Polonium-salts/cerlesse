@@ -1,69 +1,48 @@
-import { GoogleGenAI } from "@google/genai";
 import { SearchResult, ComparisonDimension, MindMapNode, SearchSynthesisResult, AgentPlan, OpenRouterModel, DetectedLanguage } from "../src/types.js";
 
-let genAIClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI | null {
-  if (genAIClient) return genAIClient;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") return null;
-  genAIClient = new GoogleGenAI({ apiKey: apiKey.trim() });
-  return genAIClient;
-}
-
+/**
+ * 全面基于 OpenRouter 免费 AI 路由池的可用模型规范
+ */
 export const AVAILABLE_FREE_MODELS: OpenRouterModel[] = [
   {
-    id: "gemini-3.1-flash-lite",
-    name: "Gemini 3.1 Flash Lite (极速高可用 · 推荐)",
-    description: "高并发极速秒级响应 (~1.5s)，专为多源研报、思维导图与对比矩阵优化，杜绝高耗时与超时",
-    contextLength: "1M",
+    id: "openrouter/free",
+    name: "OpenRouter Free Router (智能免费 AI 路由 · 推荐)",
+    description: "通过 OpenRouter 官方免费路由器，全自动在 Qwen 72B、Llama 3.3 70B 等免费顶尖模型间智能均衡调度",
+    contextLength: "128k",
     pricing: "Free",
     isRecommended: true
   },
   {
-    id: "gemini-3.8-flash",
-    name: "Gemini 3.8 Flash (高智能大模型)",
-    description: "深度综合提炼与专业排版能力出色",
-    contextLength: "1M",
-    pricing: "Free"
-  },
-  {
-    id: "openrouter/free",
-    name: "OpenRouter 智能路由",
-    description: "平台官方自动负载均衡免费模型，免配额高可用保障",
-    contextLength: "128k",
-    pricing: "Free"
-  },
-  {
-    id: "deepseek/deepseek-r1",
-    name: "DeepSeek R1 (旗舰推理)",
-    description: "深度思考与长链推理大模型，针对复杂多源对比与架构解析优化",
-    contextLength: "64k",
-    pricing: "Official"
-  },
-  {
     id: "meta-llama/llama-3.3-70b-instruct:free",
-    name: "Llama 3.3 70B Instruct",
-    description: "Meta高智能开源大模型，指令遵循与多源综合能力出色",
+    name: "Llama 3.3 70B Instruct (Free)",
+    description: "Meta 旗舰 70B 开源大模型，多源深度综合研报与逻辑推演能力极强",
     contextLength: "128k",
-    pricing: "Free"
-  },
-  {
-    id: "google/gemma-4-31b-it:free",
-    name: "Google Gemma 4 31B",
-    description: "Google最新开源轻量高速模型，实时信息处理效率高",
-    contextLength: "32k",
     pricing: "Free"
   },
   {
     id: "qwen/qwen-2.5-72b-instruct:free",
-    name: "Qwen 2.5 72B Instruct",
-    description: "通义千问超大参数模型，中文理解与结构化生成优异",
+    name: "Qwen 2.5 72B Instruct (Free)",
+    description: "阿里通义千问 72B 开源版，中文长文本理解与结构化组件生成顶尖",
     contextLength: "128k",
     pricing: "Free"
   },
   {
+    id: "google/gemini-2.0-flash-exp:free",
+    name: "Gemini 2.0 Flash Exp (Free via OpenRouter)",
+    description: "通过 OpenRouter 路由的 Google 次世代极速实验模型，兼顾响应与推理",
+    contextLength: "1M",
+    pricing: "Free"
+  },
+  {
+    id: "google/gemma-4-31b-it:free",
+    name: "Google Gemma 4 31B (Free via OpenRouter)",
+    description: "Google 开源轻量高效大模型，实时信息处理效率高",
+    contextLength: "32k",
+    pricing: "Free"
+  },
+  {
     id: "minimax/minimax-m3:free",
-    name: "MiniMax M3",
+    name: "MiniMax M3 (Free via OpenRouter)",
     description: "高响应速度多语言模型，适合长文本提炼与概要总结",
     contextLength: "64k",
     pricing: "Free"
@@ -72,14 +51,71 @@ export const AVAILABLE_FREE_MODELS: OpenRouterModel[] = [
 
 export function normalizeModelId(requestedModel?: string): string {
   if (!requestedModel || requestedModel.trim() === "") {
-    return process.env.GEMINI_API_KEY ? "gemini-3.1-flash-lite" : "openrouter/free";
+    return "openrouter/free";
   }
   const trimmed = requestedModel.trim();
-  // Auto-migrate deprecated deepseek-r1:free to official deepseek/deepseek-r1
-  if (trimmed === "deepseek/deepseek-r1:free") {
-    return "deepseek/deepseek-r1";
+  // 若请求为旧版或专有模型，自动统一路由至 openrouter/free
+  if (trimmed.startsWith("gemini-") || trimmed.includes("deepseek/deepseek-r1:free") || trimmed.includes("MY_GEMINI")) {
+    return "openrouter/free";
   }
   return trimmed;
+}
+
+/**
+ * 通用 OpenRouter Chat 驱动函数，供整个 Multi-Agent 团队调用
+ */
+export async function callOpenRouterChat(options: {
+  messages: Array<{ role: string; content: string }>;
+  model?: string;
+  apiKey?: string;
+  responseFormatJson?: boolean;
+  timeoutMs?: number;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<string | null> {
+  const apiKey = options.apiKey || process.env.OPENROUTER_API_KEY;
+  if (!apiKey || apiKey.trim() === "") return null;
+
+  const model = normalizeModelId(options.model);
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs || 2500;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey.trim()}`,
+        "HTTP-Referer": "https://cerlesse.ai",
+        "X-Title": "Cerlesse AI Agent"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: options.temperature ?? 0.2,
+        max_tokens: options.maxTokens ?? 2200,
+        response_format: options.responseFormatJson !== false ? { type: "json_object" } : undefined,
+        messages: options.messages
+      }),
+      signal: controller.signal
+    });
+
+    const resText = await res.text();
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`OpenRouter Free Router error (${res.status}) for ${model}:`, resText.slice(0, 150));
+      return null;
+    }
+
+    const parsedData = JSON.parse(resText);
+    let content = parsedData?.choices?.[0]?.message?.content || "";
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    return content || null;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    return null;
+  }
 }
 
 interface SynthesisOptions {
@@ -93,170 +129,7 @@ interface SynthesisOptions {
 }
 
 /**
- * Ultra-fast native Gemini synthesis engine (takes ~800ms)
- */
-export async function synthesizeWithGemini(options: SynthesisOptions): Promise<{
-  summary: string;
-  keyTakeaways: string[];
-  comparisonTable: ComparisonDimension[];
-  mindMap: MindMapNode;
-  followUpQuestions: string[];
-  modelUsed: string;
-  isMockFallback?: boolean;
-}> {
-  const ai = getGenAI();
-  if (!ai) {
-    throw new Error("GEMINI_API_KEY is not configured in environment");
-  }
-
-  const targetLang = options.targetLanguage || { code: "zh", name: "中文", flag: "🇨🇳" };
-  const prompt = buildSynthesisPrompt(options.query, options.plan, options.results, targetLang, options.detectedLanguage);
-
-  let rawText = "";
-  let successfullyUsedModel = "Gemini Flash";
-
-  // Build candidate model list prioritizing high-availability models
-  const initialReqModel = options.model ? normalizeModelId(options.model) : "";
-  const candidatePool = [
-    ...(initialReqModel && initialReqModel.includes("gemini") ? [initialReqModel] : []),
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.8-flash"
-  ];
-  const modelCandidates = Array.from(new Set(candidatePool));
-  let lastErr: any = null;
-
-  for (const modelName of modelCandidates) {
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Gemini API call timed out on model ${modelName}`)), 8500)
-      );
-
-      const systemInstruction = `You are an expert multilingual AI Search Synthesis Agent and Knowledge Architect.
-Your role: analyze real multi-source web search results, verify facts, eliminate redundant noise, and construct structured intelligence reports and hierarchical mind maps.
-
-CRITICAL MULTILINGUAL MANDATE:
-- Target output language: ${targetLang.name} (${targetLang.code}).
-- You MUST write the ENTIRE JSON output in ${targetLang.name}.
-
-OUTPUT FORMAT:
-Respond with pure JSON only, conforming strictly to this structure:
-{
-  "summary": "Detailed Markdown report synthesizing core findings, verified portals, key architectural details, and numbered citations like [1], [2] in ${targetLang.name}.",
-  "keyTakeaways": ["Key takeaway 1 in ${targetLang.name}", "Key takeaway 2 in ${targetLang.name}", "Key takeaway 3 in ${targetLang.name}"],
-  "comparisonTable": [
-    {
-      "dimension": "Comparison dimension name in ${targetLang.name}",
-      "summary": "Synthesized perspective summary in ${targetLang.name}",
-      "sourcesBreakdown": [
-        {
-          "sourceTitle": "Source title",
-          "sourceUrl": "Source URL",
-          "sourceType": "Official / Tech / Community",
-          "pointOfView": "Perspective in ${targetLang.name}",
-          "confidence": "高"
-        }
-      ]
-    }
-  ],
-  "mindMap": {
-    "id": "root",
-    "label": "Central query in ${targetLang.name}",
-    "description": "Core overview in ${targetLang.name}",
-    "type": "root",
-    "children": [
-      {
-        "id": "node-1",
-        "label": "Main Category 1",
-        "type": "category",
-        "children": [
-          {
-            "id": "node-1-1",
-            "label": "Concept or feature",
-            "type": "concept"
-          }
-        ]
-      }
-    ]
-  },
-  "followUpQuestions": ["In-depth follow-up question 1 in ${targetLang.name}", "Question 2", "Question 3"]
-}`;
-
-      const generatePromise = ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          temperature: 0.2,
-          maxOutputTokens: 2048
-        }
-      });
-
-      const response = await Promise.race([generatePromise, timeoutPromise]);
-      rawText = response.text || "";
-      if (rawText) {
-        successfullyUsedModel = modelName === "gemini-3.1-flash-lite"
-          ? "Gemini 3.1 Flash Lite (极速秒级直出)"
-          : modelName === "gemini-3.8-flash"
-          ? "Gemini 3.8 Flash (极速秒级直出)"
-          : "Gemini Flash (极速秒级直出)";
-        break;
-      }
-    } catch (err: any) {
-      lastErr = err;
-      continue;
-    }
-  }
-
-  if (!rawText) {
-    throw lastErr || new Error("Gemini models failed to return content");
-  }
-
-  let parsed: any;
-  try {
-    const cleaned = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-    parsed = JSON.parse(cleaned);
-  } catch {
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      parsed = JSON.parse(jsonMatch[0]);
-    } else {
-      throw new Error("Gemini returned invalid JSON structure");
-    }
-  }
-
-  const defaultFollowUps = targetLang.code === "en"
-    ? [
-        `What are the latest technological breakthroughs and future roadmap for "${options.query}"?`,
-        `What are the most critical architectural pitfalls and optimization practices in production?`,
-        `How do the total cost of ownership and ecosystem support compare across alternative solutions?`
-      ]
-    : [
-        `针对 “${options.query}”，业界有哪些最新演进趋势与未来技术路线？`,
-        `在生产环境实际落地与架构设计中，最核心的避坑指南与性能调优手段是什么？`,
-        `与同类型其他替代技术方案相比，其综合迁移成本与生态成熟度如何？`
-      ];
-
-  return {
-    summary: typeof parsed.summary === "string" ? parsed.summary : "未能生成完整摘要",
-    keyTakeaways: Array.isArray(parsed.keyTakeaways) && parsed.keyTakeaways.length > 0 ? parsed.keyTakeaways : [
-      `围绕 “${options.query}” 聚合的多源权威结论`,
-      `信源均已通过一致性与可信度核验`
-    ],
-    comparisonTable: Array.isArray(parsed.comparisonTable) ? parsed.comparisonTable : [],
-    mindMap: parsed.mindMap && parsed.mindMap.label ? parsed.mindMap : generateFallbackMindMap(options.query, options.results, targetLang.code),
-    followUpQuestions: Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0 ? parsed.followUpQuestions : defaultFollowUps,
-    modelUsed: successfullyUsedModel,
-    isMockFallback: false
-  };
-}
-
-/**
- * Call Synthesis Engine with high-speed priority:
- * 1. Native Gemini Flash (if configured or requested): ~0.8s
- * 2. OpenRouter (tight 2s timeout to prevent high latency stalls): fallback to algorithmic
- * 3. Algorithmic synthesis fallback: <10ms
+ * 完全由 OpenRouter 免费 AI 路由驱动的研报综合引擎 (带高并发快速熔断与算法兜底)
  */
 export async function synthesizeWithOpenRouter(options: SynthesisOptions): Promise<{
   summary: string;
@@ -271,36 +144,9 @@ export async function synthesizeWithOpenRouter(options: SynthesisOptions): Promi
   const initialModel = normalizeModelId(options.model);
   const targetLang = options.targetLanguage || { code: "zh", name: "中文", flag: "🇨🇳" };
 
-  // Priority 1: If requested model is Gemini or Gemini API key is available
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
-  const wantsGemini = initialModel.includes("gemini") || initialModel === "openrouter/free";
-
-  if (hasGemini && (wantsGemini || !apiKey)) {
-    try {
-      const geminiResult = await synthesizeWithGemini(options);
-      return geminiResult;
-    } catch (err: any) {
-      console.warn("Gemini Flash synthesis exception, falling back instantly to algorithmic synthesis:", err.message || err);
-      return generateAlgorithmicSynthesis(
-        options.query,
-        options.plan,
-        options.results,
-        "极速智能分析引擎",
-        targetLang.code
-      );
-    }
-  }
-
-  // If no OpenRouter API key provided, fall back immediately
+  // 若无 OpenRouter API Key，直接由超高性能算法引擎直出
   if (!apiKey || apiKey.trim() === "") {
-    if (hasGemini) {
-      try {
-        return await synthesizeWithGemini(options);
-      } catch {
-        // Continue to algorithmic
-      }
-    }
-    console.log("No external LLM key available, executing instant algorithmic synthesis (<10ms)");
+    console.log("No OpenRouter API key provided, executing instant algorithmic synthesis (<10ms)");
     return generateAlgorithmicSynthesis(
       options.query,
       options.plan,
@@ -312,28 +158,11 @@ export async function synthesizeWithOpenRouter(options: SynthesisOptions): Promi
 
   const prompt = buildSynthesisPrompt(options.query, options.plan, options.results, targetLang, options.detectedLanguage);
 
-  // Single attempt with strict 2.2s timeout to eliminate high latency stalls completely
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2200);
-
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey.trim()}`,
-        "HTTP-Referer": "https://ai.studio/build",
-        "X-Title": "AI Search Agent"
-      },
-      body: JSON.stringify({
-        model: initialModel,
-        temperature: 0.2,
-          max_tokens: 2200,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: `You are an expert multilingual AI Search Synthesis Agent and Knowledge Architect.
+  const content = await callOpenRouterChat({
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert multilingual AI Search Synthesis Agent and Knowledge Architect.
 Your role: analyze real multi-source web search results, verify facts, eliminate redundant noise, and construct structured intelligence reports and hierarchical mind maps.
 
 CRITICAL MULTILINGUAL MANDATE:
@@ -385,109 +214,82 @@ Respond with pure JSON only, conforming exactly to this structure:
   },
   "followUpQuestions": ["In-depth follow-up question 1 in ${targetLang.name}", "Follow-up question 2", "Follow-up question 3"]
 }`
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ]
-        }),
-        signal: controller.signal
-      });
-
-      // Keep timeout active until res.text() finishes reading, then clear
-      const resText = await res.text();
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        console.warn(`OpenRouter API error response (${res.status}) for ${initialModel}:`, resText.slice(0, 150));
-        return generateAlgorithmicSynthesis(
-          options.query, 
-          options.plan, 
-          options.results, 
-          `${initialModel} (自动降级兜底)`, 
-          targetLang.code
-        );
+      },
+      {
+        role: "user",
+        content: prompt
       }
+    ],
+    model: initialModel,
+    apiKey,
+    timeoutMs: 2500
+  });
 
-      let parsedData: any;
+  if (!content) {
+    return generateAlgorithmicSynthesis(
+      options.query,
+      options.plan,
+      options.results,
+      `${initialModel} (自动降级兜底)`,
+      targetLang.code
+    );
+  }
+
+  let parsed: any;
+  try {
+    const cleaned = content.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+    parsed = JSON.parse(cleaned);
+  } catch {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
       try {
-        parsedData = JSON.parse(resText);
+        parsed = JSON.parse(jsonMatch[0]);
       } catch {
-        console.warn("Failed to parse response body as JSON");
+        // failed
       }
-
-      let content = parsedData?.choices?.[0]?.message?.content || "";
-      // Strip reasoning <think> tags from thinking models
-      content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-
-      if (!content) {
-        return generateAlgorithmicSynthesis(options.query, options.plan, options.results, `${initialModel} (空响应兜底)`, targetLang.code);
-      }
-
-      // Parse inner LLM JSON
-      let parsed: any;
-      try {
-        const cleaned = content.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            parsed = JSON.parse(jsonMatch[0]);
-          } catch {
-            // Json match failed
-          }
-        }
-      }
-
-      if (!parsed || typeof parsed !== "object" || !parsed.summary) {
-        console.warn(`OpenRouter ${initialModel} returned unparseable content, proceeding gracefully`);
-        return generateAlgorithmicSynthesis(options.query, options.plan, options.results, `${initialModel} (结构提炼兜底)`, targetLang.code);
-      }
-
-      const defaultFollowUps = targetLang.code === "en"
-        ? [
-            `What are the latest technological breakthroughs and future roadmap for "${options.query}"?`,
-            `What are the most critical architectural pitfalls and optimization practices in production?`,
-            `How do the total cost of ownership and ecosystem support compare across alternative solutions?`
-          ]
-        : targetLang.code === "ja"
-        ? [
-            `「${options.query}」の最新動向と今後の技術ロードマップはどうなっていますか？`,
-            `本番環境での導入において注意すべきベストプラクティスや落とし穴は何ですか？`,
-            `他の主要な選択肢との機能比較や運用コストの違いについて詳しく知りたいですか？`
-          ]
-        : [
-            `针对 “${options.query}”，业界有哪些最新演进趋势与未来技术路线？`,
-            `在生产环境实际落地与架构设计中，最核心的避坑指南与性能调优手段是什么？`,
-            `与同类型其他替代技术方案相比，其综合迁移成本与生态成熟度如何？`
-          ];
-
-      return {
-        summary: typeof parsed.summary === "string" ? parsed.summary : "未能生成完整摘要",
-        keyTakeaways: Array.isArray(parsed.keyTakeaways) && parsed.keyTakeaways.length > 0 ? parsed.keyTakeaways : [
-          `围绕 “${options.query}” 聚合的多源权威结论`,
-          `信源均已通过一致性与可信度核验`
-        ],
-        comparisonTable: Array.isArray(parsed.comparisonTable) ? parsed.comparisonTable : [],
-        mindMap: parsed.mindMap && parsed.mindMap.label ? parsed.mindMap : generateFallbackMindMap(options.query, options.results, targetLang.code),
-        followUpQuestions: Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0 ? parsed.followUpQuestions : defaultFollowUps,
-        modelUsed: initialModel,
-        isMockFallback: false
-      };
-
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      console.warn(`Attempt with ${initialModel} encountered error or timeout:`, err.message || err);
-      return generateAlgorithmicSynthesis(
-        options.query, 
-        options.plan, 
-        options.results, 
-        `${initialModel} (自适应降级提炼)`, 
-        targetLang.code
-      );
     }
+  }
+
+  if (!parsed || typeof parsed !== "object" || !parsed.summary) {
+    return generateAlgorithmicSynthesis(
+      options.query,
+      options.plan,
+      options.results,
+      `${initialModel} (结构提炼兜底)`,
+      targetLang.code
+    );
+  }
+
+  const defaultFollowUps = targetLang.code === "en"
+    ? [
+        `What are the latest technological breakthroughs and future roadmap for "${options.query}"?`,
+        `What are the most critical architectural pitfalls and optimization practices in production?`,
+        `How do the total cost of ownership and ecosystem support compare across alternative solutions?`
+      ]
+    : targetLang.code === "ja"
+    ? [
+        `「${options.query}」の最新動向と今後の技術ロードマップはどうなっていますか？`,
+        `本番環境での導入において注意すべきベストプラクティスや落とし穴は何ですか？`,
+        `他の主要な選択肢との機能比較や運用コストの違いについて詳しく知りたいですか？`
+      ]
+    : [
+        `针对 “${options.query}”，业界有哪些最新演进趋势与未来技术路线？`,
+        `在生产环境实际落地与架构设计中，最核心的避坑指南与性能调优手段是什么？`,
+        `与同类型其他替代技术方案相比，其综合迁移成本与生态成熟度如何？`
+      ];
+
+  return {
+    summary: typeof parsed.summary === "string" ? parsed.summary : "未能生成完整摘要",
+    keyTakeaways: Array.isArray(parsed.keyTakeaways) && parsed.keyTakeaways.length > 0 ? parsed.keyTakeaways : [
+      `围绕 “${options.query}” 聚合的多源权威结论`,
+      `信源均已通过一致性与可信度核验`
+    ],
+    comparisonTable: Array.isArray(parsed.comparisonTable) ? parsed.comparisonTable : [],
+    mindMap: parsed.mindMap && parsed.mindMap.label ? parsed.mindMap : generateFallbackMindMap(options.query, options.results, targetLang.code),
+    followUpQuestions: Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0 ? parsed.followUpQuestions : defaultFollowUps,
+    modelUsed: initialModel,
+    isMockFallback: false
+  };
 }
 
 function buildSynthesisPrompt(

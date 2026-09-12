@@ -216,7 +216,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "quick_answer",
     label: "即时答案速递",
     iconName: "Zap",
-    defaultWidth: "full",
+    defaultWidth: "half",
     minColSpan: 6,
     basePriority: 10,
     category: "primary"
@@ -225,7 +225,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "takeaways",
     label: "核心结论要点",
     iconName: "Sparkles",
-    defaultWidth: "wide",
+    defaultWidth: "half",
     minColSpan: 4,
     basePriority: 9,
     category: "primary",
@@ -235,8 +235,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "comparison",
     label: "多维对比矩阵",
     iconName: "Scale",
-    defaultWidth: "full",
-    minColSpan: 8,
+    defaultWidth: "wide",
+    minColSpan: 6,
     basePriority: 8,
     category: "analytical",
     requiresData: (s) => s.comparisonRows > 0
@@ -245,8 +245,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "mindmap",
     label: "知识架构导图",
     iconName: "GitFork",
-    defaultWidth: "full",
-    minColSpan: 8,
+    defaultWidth: "wide",
+    minColSpan: 6,
     basePriority: 8,
     category: "analytical",
     requiresData: (s) => s.mindMapBranches > 0
@@ -255,7 +255,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "official_portal",
     label: "官方认证门户",
     iconName: "ShieldCheck",
-    defaultWidth: "full",
+    defaultWidth: "half",
     minColSpan: 6,
     basePriority: 9,
     category: "primary",
@@ -265,7 +265,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "sources",
     label: "文献信源库",
     iconName: "Database",
-    defaultWidth: "full",
+    defaultWidth: "half",
     minColSpan: 6,
     basePriority: 8,
     category: "primary",
@@ -367,7 +367,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "custom_cards",
     label: "搜索定制独有组件",
     iconName: "Sparkles",
-    defaultWidth: "full",
+    defaultWidth: "half",
     minColSpan: 6,
     basePriority: 8,
     category: "primary"
@@ -1241,26 +1241,36 @@ export function calculateAdaptiveBinPacking(
     ? options.enabledWidgets
     : (order && order.length > 0 ? order : resolveDynamicCapabilityWidgets(options.intentType || "balanced"));
 
-  activeKeys.forEach((key, index) => {
+  let currentRowIndex = 0;
+  let currentUsedSpan = 0;
+
+  activeKeys.forEach((key) => {
     const custom = options.customSpans?.[key];
     const span = normalizeWidgetSpan(
       custom,
       custom ? undefined : WIDGET_REGISTRY[key]?.defaultWidth
     );
 
+    if (currentUsedSpan + span > 12) {
+      currentRowIndex++;
+      currentUsedSpan = 0;
+    }
+
     gridConfig[key] = {
       colSpanLg: span,
       colSpanMd: span <= 6 ? 6 : 12,
-      rowIndex: index,
+      rowIndex: currentRowIndex,
       semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
       isCompact: span <= 4,
       isAutoFilled: false
     };
+
+    currentUsedSpan += span;
   });
 
   return {
     gridConfig: gridConfig as Record<ResultWidgetKey, WidgetGridPlacement>,
-    totalRows: activeKeys.length,
+    totalRows: currentRowIndex + 1,
     filledGapsCount: 0
   };
 }

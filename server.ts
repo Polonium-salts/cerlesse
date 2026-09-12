@@ -25,12 +25,11 @@ app.get("/api/health", (req, res) => {
 
 // System & Model Status
 app.get("/api/config", (req, res) => {
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "");
   res.json({
-    hasGeminiKey: hasGemini,
+    hasGeminiKey: false,
     hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim() !== ""),
     hasCustomSearxngUrl: Boolean(process.env.SEARXNG_URL && process.env.SEARXNG_URL.trim() !== ""),
-    defaultModel: hasGemini ? "gemini-3.1-flash-lite" : "openrouter/free",
+    defaultModel: "openrouter/free",
     models: AVAILABLE_FREE_MODELS,
     supportedLanguages: SUPPORTED_LANGUAGES
   });
