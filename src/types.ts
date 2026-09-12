@@ -57,12 +57,8 @@ export interface AgentPlan {
 
 export type AgentRole = 
   | "coordinator"           // 主 Agent / 调度总控: 负责全局意图解析、任务拆解与派发、进度监控与最终验收交付
-  | "retrieval"             // 全网检索 Agent: 负责主 Agent 派发的专职任务——全网多引擎嗅探、跨语言关键词扩展、权威官网甄别与垃圾清洗
-  | "action_planner"        // 行动规划 Agent: 负责分析用户最终任务目标、规划下一步动作 (Next-Step Action) 与调度 Tool Registry
-  | "knowledge_synthesis"   // 深度研报 Agent: 负责主 Agent 派发的专职任务——核心速览提炼、多维对比矩阵、拓扑思维导图与延伸追问构建
-  | "widget_forge"          // 专属小组件构建 Agent: 负责主 Agent 派发的专职任务——独有交互小组件 (Unique Card) 架构与锻造，多原型智能匹配与防重工程
-  | "orchestrator"          // 排版编排 Agent: 负责主 Agent 派发的专职任务——自适应 4 列装箱算法、组件视觉跨度与启停休眠决策
-  | "qa_validator";         // 护栏质检 Agent: 负责主 Agent 派发的专职任务——输入/输出 Guardrails 审计、信源复核与防重复风控
+  | "retrieval"             // 全网检索 Agent: 负责全网多引擎检索、跨语言关键词扩展、权威官网甄别与垃圾清洗
+  | "widget_forge";         // 专属小组件构建 Agent: 负责独有交互小组件 (Unique Card) 架构与锻造，多原型智能匹配与防重工程
 
 /**
  * 由主 Agent 专门派发给特定智能体的独立子任务定义

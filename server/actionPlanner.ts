@@ -7,12 +7,14 @@ import {
   WidgetAction
 } from "../src/types.js";
 import { createToolAction, synthesizeToolActions, TOOL_REGISTRY } from "./toolRegistry.js";
-import { callOpenRouterChat } from "./openrouter.js";
+import { callOpenRouterChat, resolveOpenRouterApiKey } from "./openrouter.js";
 
 export interface ActionPlannerOptions {
   query: string;
   results: SearchResult[];
   targetLanguage?: string;
+  apiKey?: string;
+  env?: Record<string, string | undefined>;
 }
 
 /**
@@ -29,11 +31,11 @@ export interface ActionPlannerOptions {
 export async function planActionForQuery(options: ActionPlannerOptions): Promise<ActionPlan> {
   const { query, results, targetLanguage = "zh" } = options;
   const validResults = (results || []).slice(0, 8);
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const openRouterKey = resolveOpenRouterApiKey(options.apiKey, options.env);
 
   if (openRouterKey && validResults.length > 0) {
     try {
-      const plan = await planActionWithOpenRouter(query, validResults, targetLanguage);
+      const plan = await planActionWithOpenRouter(query, validResults, targetLanguage, openRouterKey);
       if (plan) return plan;
     } catch (err: any) {
       // Graceful fallback to algorithmic action planner
@@ -46,7 +48,8 @@ export async function planActionForQuery(options: ActionPlannerOptions): Promise
 async function planActionWithOpenRouter(
   query: string,
   results: SearchResult[],
-  targetLanguage: string
+  targetLanguage: string,
+  apiKey?: string
 ): Promise<ActionPlan | null> {
   const sourcesContext = results.map((r, i) => 
     `[信源${i + 1}] 标题: ${r.title}\n网址: ${r.url}\n摘要: ${r.snippet}\n`
@@ -117,6 +120,7 @@ ${sourcesContext}
   let rawText = await callOpenRouterChat({
     messages: [{ role: "user", content: prompt }],
     model: "openrouter/free",
+    apiKey,
     timeoutMs: 2200,
     responseFormatJson: true
   });

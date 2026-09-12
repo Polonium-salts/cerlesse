@@ -61,6 +61,23 @@ export function normalizeModelId(requestedModel?: string): string {
   return trimmed;
 }
 
+export function resolveOpenRouterApiKey(explicitKey?: string, env?: Record<string, string | undefined>): string | undefined {
+  if (explicitKey && typeof explicitKey === "string" && explicitKey.trim() !== "" && explicitKey !== "undefined" && explicitKey !== "null") {
+    return explicitKey.trim();
+  }
+  const fromEnv = env?.OPENROUTER_KEY || env?.OPENROUTER_API_KEY;
+  if (fromEnv && fromEnv.trim() !== "") {
+    return fromEnv.trim();
+  }
+  if (typeof process !== "undefined" && process.env) {
+    const fromProc = process.env.OPENROUTER_KEY || process.env.OPENROUTER_API_KEY;
+    if (fromProc && fromProc.trim() !== "") {
+      return fromProc.trim();
+    }
+  }
+  return undefined;
+}
+
 /**
  * 通用 OpenRouter Chat 驱动函数，供整个 Multi-Agent 团队调用
  */
@@ -68,12 +85,13 @@ export async function callOpenRouterChat(options: {
   messages: Array<{ role: string; content: string }>;
   model?: string;
   apiKey?: string;
+  env?: Record<string, string | undefined>;
   responseFormatJson?: boolean;
   timeoutMs?: number;
   temperature?: number;
   maxTokens?: number;
 }): Promise<string | null> {
-  const apiKey = options.apiKey || process.env.OPENROUTER_API_KEY;
+  const apiKey = resolveOpenRouterApiKey(options.apiKey, options.env);
   if (!apiKey || apiKey.trim() === "") return null;
 
   const model = normalizeModelId(options.model);
@@ -124,6 +142,7 @@ interface SynthesisOptions {
   results: SearchResult[];
   apiKey?: string;
   model?: string;
+  env?: Record<string, string | undefined>;
   targetLanguage?: { code: string; name: string; flag: string };
   detectedLanguage?: DetectedLanguage;
 }
@@ -140,7 +159,7 @@ export async function synthesizeWithOpenRouter(options: SynthesisOptions): Promi
   modelUsed: string;
   isMockFallback?: boolean;
 }> {
-  const apiKey = options.apiKey || process.env.OPENROUTER_API_KEY;
+  const apiKey = resolveOpenRouterApiKey(options.apiKey, options.env);
   const initialModel = normalizeModelId(options.model);
   const targetLang = options.targetLanguage || { code: "zh", name: "中文", flag: "🇨🇳" };
 

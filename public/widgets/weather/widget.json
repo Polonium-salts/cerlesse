@@ -1,0 +1,14 @@
+{
+  "id": "weather",
+  "name": "实时气象看板",
+  "version": "1.0.0",
+  "size": "small",
+  "category": "utility",
+  "capabilities": [
+    "weather_current",
+    "weather_forecast",
+    "weather_indices",
+    "air_quality"
+  ],
+  "cacheControl": "max-age=3600"
+}

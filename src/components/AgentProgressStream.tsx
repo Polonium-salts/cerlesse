@@ -61,12 +61,9 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
     const hasPlanDone = steps.some(s => s.id === "plan" && s.status === "completed");
     const isPlanRunning = steps.some(s => s.id === "plan" && s.status === "running");
 
-    const hasSearchDone = steps.some(s => s.id === "search" && s.status === "completed");
-    const hasSynthDone = steps.some(s => s.id === "synthesize" && s.status === "completed");
-    const hasLayoutDone = steps.some(s => s.id === "layout" && s.status === "completed");
-    const hasQaDone = steps.some(s => s.id === "qa" && s.status === "completed");
+    const hasSearchDone = steps.some(s => (s.id === "search_main" || s.id === "search") && s.status === "completed");
+    const hasForgeDone = steps.some(s => s.id === "forge_unique_widget" && s.status === "completed");
 
-    // Once the Master Agent has dispatched the plan, all 4 specialist agents work concurrently!
     const isConcurrentTeamActive = hasPlanDone && !isComplete;
 
     return [
@@ -76,13 +73,13 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         name: "主 Agent (调度总控)",
         title: "意图感知与任务派发中枢",
         isMaster: true,
-        dedicatedDuty: "全局需求研判、协作任务拆解、向专职 Agent 派发独立任务指令并最终验收交付",
+        dedicatedDuty: "全局需求研判、协作任务拆解、向检索与小组件专职 Agent 派发独立任务指令并最终验收交付",
         avatarIcon: "Bot",
         status: hasPlanDone ? "completed" : isPlanRunning ? "running" : "idle",
-        currentTask: hasPlanDone ? "任务委派完毕，4 位专门 Agent 正在同时并发作业" : isPlanRunning ? "剖析意图并分发专职任务" : "待命统筹",
+        currentTask: hasPlanDone ? "任务委派完毕，检索 Agent 与小组件 Agent 正在协同作业" : isPlanRunning ? "剖析意图并分发专职任务" : "待命统筹",
         completedTasksCount: hasPlanDone ? 2 : 0,
         totalTasksCount: 2,
-        outputSummary: "完成原词、跨语言与深度探索维度的任务解构，向 4 位专职 Agent 派发独立任务"
+        outputSummary: "完成原词与多维检索规划，向全网检索 Agent 与小组件构建 Agent 派发独立任务"
       },
       {
         id: "agent-retrieval",
@@ -90,57 +87,29 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         name: "全网检索 Agent",
         title: "信源抓取与权威官网甄别专家",
         isMaster: false,
-        dedicatedDuty: "专职全网多源检索、跨语言分词召回、官方网站甄别与垃圾杂音清洗（绝不参与排版或研报撰写）",
+        dedicatedDuty: "专职全网多源检索、跨语言分词召回、官方网站甄别与垃圾杂音清洗（专职信源保障）",
         avatarIcon: "Search",
         status: hasSearchDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
         currentTask: hasSearchDone ? "TASK-RETRIEVE 专职检索完成并交付" : isConcurrentTeamActive ? "正在专职并发执行多路全网检索" : "等待主 Agent 派发检索任务",
-        completedTasksCount: hasSearchDone ? 3 : 0,
-        totalTasksCount: 3,
+        completedTasksCount: hasSearchDone ? 2 : 0,
+        totalTasksCount: 2,
         speedupMultiplier: 2.4,
         outputSummary: "完成主词、跨语言与深度词抓取，甄别官方入口并清洗低质信源"
       },
       {
         id: "agent-forge",
         role: "widget_forge",
-        name: "组件创建 Agent",
-        title: "多维研报与结构化组件加工专家",
+        name: "小组件规划与构建 Agent",
+        title: "小组件能力模型与交互卡片锻造专家",
         isMaster: false,
-        dedicatedDuty: "专职知识萃取加工，提炼核心速览、多维对比矩阵、拓扑思维导图与延伸探索追问（专职结构化数据生成）",
+        dedicatedDuty: "专职小组件能力规划 (WidgetPlan) 与独有业务小组件锻造 (CustomCardData)，装配交互模型并执行防重复护栏",
         avatarIcon: "Blocks",
-        status: hasSynthDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
-        currentTask: hasSynthDone ? "TASK-FORGE 专职组件构建完成并交付" : isConcurrentTeamActive ? "正在专职并发加工知识导图与对比矩阵" : "等待主 Agent 派发构建任务",
-        completedTasksCount: hasSynthDone ? 6 : 0,
-        totalTasksCount: 6,
-        speedupMultiplier: 2.8,
-        outputSummary: "构建完成速览、思维导图、多维对比矩阵与启发式延伸探索"
-      },
-      {
-        id: "agent-orchestrator",
-        role: "orchestrator",
-        name: "排版编排 Agent",
-        title: "拓扑装箱与组件启停专家",
-        isMaster: false,
-        dedicatedDuty: "专职视口几何规划与 4 列流式装箱排布，根据内容密度激活契合组件、休眠冗余卡片（专职视觉工程）",
-        avatarIcon: "LayoutGrid",
-        status: hasLayoutDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
-        currentTask: hasLayoutDone ? "TASK-LAYOUT 自适应装箱已生效" : isConcurrentTeamActive ? "正在专职并发计算 4 列流式装箱排布" : "等待主 Agent 派发排版任务",
-        completedTasksCount: hasLayoutDone ? 3 : 0,
-        totalTasksCount: 3,
-        outputSummary: "完成 4 列瀑布流装箱规划，动态激活关键组件并休眠空白组件"
-      },
-      {
-        id: "agent-qa",
-        role: "qa_validator",
-        name: "质检验真 Agent",
-        title: "事实风控与拓扑闭环审计专家",
-        isMaster: false,
-        dedicatedDuty: "专职全流程合规复核，核验外部信源 URL 活性、导图拓扑连通闭环与事实佐证可信度（专职合规风控）",
-        avatarIcon: "ShieldCheck",
-        status: isComplete || hasQaDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
-        currentTask: isComplete || hasQaDone ? "TASK-QA 事实风控与存活核验通过" : isConcurrentTeamActive ? "正在专职并发核验信源活性与事实闭环" : "等待主 Agent 派发质检任务",
-        completedTasksCount: isComplete || hasQaDone ? 2 : 0,
+        status: hasForgeDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
+        currentTask: hasForgeDone ? "TASK-WIDGET-ARCHITECT 专职组件构建完成并交付" : isConcurrentTeamActive ? "正在专职架构能力模型与锻造专属小组件" : "等待主 Agent 派发构建任务",
+        completedTasksCount: hasForgeDone ? 2 : 0,
         totalTasksCount: 2,
-        outputSummary: "完成信源真实存活性验证与知识导图拓扑连通闭环"
+        speedupMultiplier: 2.6,
+        outputSummary: "规划小组件能力模型并自主锻造独有交互式业务卡片"
       }
     ];
   };
@@ -151,10 +120,8 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
     }
 
     const hasPlanDone = steps.some(s => s.id === "plan" && s.status === "completed");
-    const hasSearchDone = steps.some(s => s.id === "search" && s.status === "completed");
-    const hasSynthDone = steps.some(s => s.id === "synthesize" && s.status === "completed");
-    const hasLayoutDone = steps.some(s => s.id === "layout" && s.status === "completed");
-    const hasQaDone = steps.some(s => s.id === "qa" && s.status === "completed");
+    const hasSearchDone = steps.some(s => (s.id === "search_main" || s.id === "search") && s.status === "completed");
+    const hasForgeDone = steps.some(s => s.id === "forge_unique_widget" && s.status === "completed");
 
     const isConcurrentTeamActive = hasPlanDone && !isComplete;
 
@@ -169,31 +136,13 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         deliverables: hasSearchDone ? ["多源原始网页记录已抓取", "甄别官方权威认证门户", "已清洗低质冗余信源"] : undefined
       },
       {
-        id: "TASK-FORGE",
+        id: "TASK-WIDGET-ARCHITECT",
         assignedToRole: "widget_forge",
-        assignedAgentName: "组件创建 Agent",
-        taskName: "多模态结构化小组件全量构建",
-        mandate: "基于检索返回的清洗信源，专职提炼核心结论速览、结构化多维对比矩阵、拓扑思维导图节点与延伸探索追问。",
-        status: hasSynthDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
-        deliverables: hasSynthDone ? ["核心结论速览组件已生成", "多维对比矩阵已提取", "知识架构思维导图拓扑已闭环", "延伸探索追问已预测"] : undefined
-      },
-      {
-        id: "TASK-LAYOUT",
-        assignedToRole: "orchestrator",
-        assignedAgentName: "排版编排 Agent",
-        taskName: "自适应 4 列瀑布流装箱与组件启停决策",
-        mandate: "根据用户查询意图与生成内容密度，执行 4 列自适应装箱算法，动态激活契合组件并休眠冗余卡片。",
-        status: hasLayoutDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
-        deliverables: hasLayoutDone ? ["4 列自适应瀑布流装箱计算完毕", "动态启停匹配意图模式", "网格跨度按信息密度优化"] : undefined
-      },
-      {
-        id: "TASK-QA",
-        assignedToRole: "qa_validator",
-        assignedAgentName: "质检验真 Agent",
-        taskName: "信源真实性复核与事实防幻觉审计",
-        mandate: "对交付的信源进行真实 URL 可达性审计，核验思维导图拓扑连通性闭环与事实依据佐证度。",
-        status: isComplete || hasQaDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
-        deliverables: isComplete || hasQaDone ? ["外部信源真实存活性验证通过", "思维导图树状连通性 100%", "核心速览与研报事实支撑合规"] : undefined
+        assignedAgentName: "小组件规划与构建 Agent",
+        taskName: "专属独有小组件架构与智能锻造",
+        mandate: "专职分析实体类型与语义，规划能力模型 (WidgetPlan)，智能决策最契合交互原型，构建独有业务交互模型并执行防重复护栏。",
+        status: hasForgeDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
+        deliverables: hasForgeDone ? ["小组件意图与能力模型已就绪", "独有业务小组件已锻造", "防重复护栏核验通过"] : undefined
       }
     ];
   };
@@ -204,10 +153,10 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
     name: "主 Agent (调度总控)",
     role: "coordinator" as AgentRole,
     title: "意图感知、任务委派与全局验收中枢",
-    mandateSummary: "负责全局需求剖析，制定任务委派清单，向各专职 Agent 派发独立专有指令，并最终集中验收交付。"
+    mandateSummary: "负责全局需求剖析，制定任务委派清单，向检索 Agent 与小组件 Agent 派发独立专有指令，并最终集中验收交付。"
   };
 
-  const speedup = agentTeam?.speedupMultiplier || (isComplete ? 2.8 : 2.2);
+  const speedup = agentTeam?.speedupMultiplier || (isComplete ? 2.6 : 2.2);
   const completedCount = steps.filter((s) => s.status === "completed").length;
   const runningMembers = members.filter(m => m.status === "running").length;
   const completedMembers = members.filter(m => m.status === "completed").length;
@@ -218,26 +167,20 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         return <Bot className={className} />;
       case "retrieval":
         return <Search className={className} />;
-      case "knowledge_synthesis":
-        return <BookOpen className={className} />;
       case "widget_forge":
         return <Blocks className={className} />;
-      case "orchestrator":
-        return <LayoutGrid className={className} />;
-      case "qa_validator":
-        return <ShieldCheck className={className} />;
       default:
-        return <Cpu className={className} />;
+        return <Workflow className={className} />;
     }
   };
 
   return (
     <IOSWidget
       id="widget-agent-team"
-      title="AgentTeam 多智能体协作中枢"
+      title="AgentTeam 双核智能体协作中枢"
       subtitle={
         isComplete
-          ? `主 Agent 统筹验收交付 · 耗时 ${((executionTimeMs || 0) / 1000).toFixed(1)} 秒 · 4 位专职智能体各司其职已闭环`
+          ? `主 Agent 统筹验收交付 · 耗时 ${((executionTimeMs || 0) / 1000).toFixed(1)} 秒 · 检索 Agent 与小组件 Agent 协同已闭环`
           : `主 Agent 正在统筹调度：${runningMembers} 位专职智能体正在执行独立任务...`
       }
       icon={<Workflow className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
@@ -280,7 +223,7 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
             }`}
           >
-            智能体专家成员 ({completedMembers}/5)
+            智能体专家成员 ({completedMembers}/{members.length})
           </button>
           <button
             type="button"
@@ -308,11 +251,11 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
               <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <span>主 Agent 任务分派与专职协同机制</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-medium">
-                  非重复任务 · 专人专事
+                  双核专职 · 拒绝重复
                 </span>
               </div>
               <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
-                由<strong>主 Agent (调度总控)</strong>研判意图并下达《专属任务委派书》，<strong>4 位专门智能体各自专注负责专属领域</strong>（检索嗅探、组件构建、自适应排版、风控质检），互不重叠并在最后交付主 Agent 验收。
+                由<strong>主 Agent (调度总控)</strong>研判意图并下达《专属任务委派书》，<strong>全网检索 Agent 与小组件规划构建 Agent</strong> 各自专注负责专属领域（全网检索嗅探、业务小组件架构与锻造），互不重叠并在最后交付主 Agent 验收。
               </p>
             </div>
           </div>
@@ -365,7 +308,7 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
 
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-medium px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                  已向 4 位专长 Agent 派发独立委派单
+                  已向 2 位专长 Agent 派发独立委派单
                 </span>
               </div>
             </div>

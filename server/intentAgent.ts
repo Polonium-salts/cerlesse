@@ -5,13 +5,18 @@ import {
   ResultWidgetKey,
   WidgetQualityGuardReport
 } from "../src/types.js";
-import { callOpenRouterChat } from "./openrouter.js";
+import { callOpenRouterChat, resolveOpenRouterApiKey } from "./openrouter.js";
+import type { CanonicalCapability } from "../src/widgets/capabilityTaxonomy.js";
 
 /**
  * 确定性 Intent -> Widget 映射基准表 (Deterministic Baseline Mapping)
+ *
+ * ⚠️ capabilities 取值必须来自 src/widgets/capabilityTaxonomy.ts 的 CANONICAL_CAPABILITIES。
+ * 改造前这里是一份独立的近似词表 (pricing_model / step_list / copy_code / key_takeaways ...)，
+ * 与组件侧词表不相通，且与 widgetIntentAnalyzer 的意图判定互相污染。
  */
 export const INTENT_WIDGET_MAP: Record<QueryIntent, {
-  capabilities: string[];
+  capabilities: CanonicalCapability[];
   recommendedWidgets: ResultWidgetKey[];
   forbiddenCategories?: string[];
 }> = {
@@ -24,28 +29,28 @@ export const INTENT_WIDGET_MAP: Record<QueryIntent, {
     recommendedWidgets: ["comparison", "custom_cards", "takeaways", "quick_answer", "sources"]
   },
   tool_discovery: {
-    capabilities: ["tool_cards", "demo_button", "try_online", "website_links", "pricing_comparison"],
-    recommendedWidgets: ["custom_cards", "comparison", "official_portal", "quick_answer", "sources"]
+    capabilities: ["tool_cards", "demo_button", "pricing_comparison", "try_online", "official_portal"],
+    recommendedWidgets: ["custom_cards", "actions_toolbox", "official_portal", "sources"]
   },
   tutorial: {
-    capabilities: ["code_snippet", "step_by_step", "execution_guide", "troubleshooting_tips"],
-    recommendedWidgets: ["actions_toolbox", "custom_cards", "topic_digest", "quick_answer", "sources"]
+    capabilities: ["step_by_step", "code_snippet", "copy_text", "fix_command", "official_portal"],
+    recommendedWidgets: ["mindmap", "actions_toolbox", "custom_cards", "sources"]
   },
   troubleshooting: {
-    capabilities: ["error_diagnosis", "fix_command", "troubleshooting_checklist", "official_docs"],
-    recommendedWidgets: ["actions_toolbox", "verification_checklist", "custom_cards", "quick_answer", "sources"]
+    capabilities: ["error_diagnosis", "fix_command", "troubleshooting_audit", "official_portal"],
+    recommendedWidgets: ["actions_toolbox", "custom_cards", "quick_answer", "sources"]
   },
   travel: {
-    capabilities: ["itinerary_timeline", "booking_resources", "travel_budget", "attractions_map"],
-    recommendedWidgets: ["custom_cards", "official_portal", "takeaways", "quick_answer", "sources"]
+    capabilities: ["itinerary_timeline", "attractions_map", "travel_budget", "weather_forecast"],
+    recommendedWidgets: ["custom_cards", "mindmap", "takeaways", "sources"]
   },
   explain: {
-    capabilities: ["concept_definition", "mindmap_tree", "key_takeaways", "literature_sources"],
-    recommendedWidgets: ["quick_answer", "takeaways", "mindmap", "sources"]
+    capabilities: ["concept_definition", "mindmap_tree", "high_density_takeaways", "literature_sources"],
+    recommendedWidgets: ["quick_answer", "mindmap", "takeaways", "sources", "custom_cards"]
   },
   research: {
-    capabilities: ["deep_report", "industry_matrix", "timeline_evolution", "source_telemetry"],
-    recommendedWidgets: ["quick_answer", "takeaways", "mindmap", "custom_cards", "analytics_trend", "sources"]
+    capabilities: ["trend_signals", "literature_sources", "compare_table", "expert_opinion"],
+    recommendedWidgets: ["quick_answer", "takeaways", "comparison", "sources", "custom_cards"]
   }
 };
 
@@ -55,10 +60,11 @@ export const INTENT_WIDGET_MAP: Record<QueryIntent, {
  */
 export async function classifyQueryIntent(
   query: string,
-  results: SearchResult[] = []
+  results: SearchResult[] = [],
+  context?: { env?: Record<string, string | undefined>; apiKey?: string }
 ): Promise<{ intent: QueryIntent; userGoal: string; confidence: number }> {
   const normalized = query.toLowerCase().trim();
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const openRouterKey = resolveOpenRouterApiKey(context?.apiKey, context?.env);
   if (openRouterKey && openRouterKey.trim() !== "") {
     try {
       const prompt = `你是一位专门负责【用户意图精准分类 (Intent Classification Agent)】的专职智能体。
@@ -189,10 +195,11 @@ export async function planTaskCapabilities(
   intent: QueryIntent,
   userGoal: string,
   query: string,
-  results: SearchResult[]
+  results: SearchResult[],
+  context?: { env?: Record<string, string | undefined>; apiKey?: string }
 ): Promise<TaskCapabilityRequirements> {
   const baseline = INTENT_WIDGET_MAP[intent] || INTENT_WIDGET_MAP.explain;
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const openRouterKey = resolveOpenRouterApiKey(context?.apiKey, context?.env);
 
   if (openRouterKey && openRouterKey.trim() !== "") {
     try {

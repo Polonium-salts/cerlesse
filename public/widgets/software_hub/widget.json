@@ -1,0 +1,17 @@
+{
+  "id": "software_hub",
+  "name": "软件官方与下载枢纽",
+  "version": "1.0.0",
+  "size": "large",
+  "category": "software",
+  "capabilities": [
+    "software_info",
+    "download_button",
+    "version_compare",
+    "system_requirement",
+    "security_hash",
+    "install_command",
+    "official_portal"
+  ],
+  "cacheControl": "max-age=3600"
+}

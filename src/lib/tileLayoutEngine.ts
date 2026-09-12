@@ -117,35 +117,35 @@ export function solveTileLayout(
     return { items: [], totalColumns, totalRows: 0, gapCount: 0 };
   }
 
-  // 二维占用布尔表 matrix[y][x]
-  const matrix: boolean[][] = [];
+  // 二维占用布尔表 matrix[y][x] -> SolvedTileItem | null
+  const matrix: (SolvedTileItem | null)[][] = [];
 
-  const getCell = (y: number, x: number): boolean => {
-    if (!matrix[y]) return false;
-    return Boolean(matrix[y][x]);
+  const getCell = (y: number, x: number): SolvedTileItem | null => {
+    if (!matrix[y]) return null;
+    return matrix[y][x] || null;
   };
 
-  const setCell = (y: number, x: number, val: boolean) => {
+  const setCell = (y: number, x: number, item: SolvedTileItem | null) => {
     while (matrix.length <= y) {
-      matrix.push(new Array(totalColumns).fill(false));
+      matrix.push(new Array(totalColumns).fill(null));
     }
-    matrix[y][x] = val;
+    matrix[y][x] = item;
   };
 
   const isSlotFree = (y: number, x: number, w: number, h: number): boolean => {
     if (x + w > totalColumns) return false;
     for (let r = 0; r < h; r++) {
       for (let c = 0; c < w; c++) {
-        if (getCell(y + r, x + c)) return false;
+        if (getCell(y + r, x + c) !== null) return false;
       }
     }
     return true;
   };
 
-  const occupySlot = (y: number, x: number, w: number, h: number) => {
+  const occupySlot = (y: number, x: number, w: number, h: number, item: SolvedTileItem) => {
     for (let r = 0; r < h; r++) {
       for (let c = 0; c < w; c++) {
-        setCell(y + r, x + c, true);
+        setCell(y + r, x + c, item);
       }
     }
   };
@@ -159,8 +159,7 @@ export function solveTileLayout(
     const clampedW = Math.min(w, totalColumns);
     const x = Math.min(t.x!, totalColumns - clampedW);
     const y = t.y!;
-    occupySlot(y, x, clampedW, h);
-    solved.push({
+    const item: SolvedTileItem = {
       id: t.id,
       size: t.size,
       x,
@@ -173,12 +172,14 @@ export function solveTileLayout(
         gridColumn: `${x + 1} / span ${clampedW}`,
         gridRow: `${y + 1} / span ${h}`
       }
-    });
+    };
+    occupySlot(y, x, clampedW, h, item);
+    solved.push(item);
   }
 
   // 2. 排序待自动重力吸附放置的磁贴：聚焦项优先，优先级高的优先
   const fixedIds = new Set(fixedTiles.map(t => t.id));
-  const autoTiles = inputs
+  const remainingAutoTiles = inputs
     .filter(t => !fixedIds.has(t.id))
     .sort((a, b) => {
       if (a.isEmphasized && !b.isEmphasized) return -1;
@@ -186,58 +187,160 @@ export function solveTileLayout(
       return (b.priority ?? 50) - (a.priority ?? 50);
     });
 
-  // 3. 逐个搜寻最顶最左无碰撞空位
-  for (const t of autoTiles) {
-    const { w, h } = getTileDimensions(t.size, totalColumns);
-    const clampedW = Math.min(w, totalColumns);
+  // 3. 单元格二维紧凑吸附扫描 (Cell-by-cell Gravity Bin-Packing with Lookahead & Elastic Stretch)
+  let y = 0;
+  const maxSearchRows = 100;
 
-    let placed = false;
-    let y = 0;
-    const maxSearchRows = 100;
+  while (remainingAutoTiles.length > 0 && y < maxSearchRows) {
+    for (let x = 0; x < totalColumns; x++) {
+      if (getCell(y, x) !== null) {
+        continue;
+      }
 
-    while (!placed && y < maxSearchRows) {
-      for (let x = 0; x <= totalColumns - clampedW; x++) {
-        if (isSlotFree(y, x, clampedW, h)) {
-          occupySlot(y, x, clampedW, h);
-          solved.push({
-            id: t.id,
-            size: t.size,
-            x,
-            y,
-            w: clampedW,
-            h,
-            isEmphasized: t.isEmphasized,
-            priority: t.priority ?? 50,
-            gridStyle: {
-              gridColumn: `${x + 1} / span ${clampedW}`,
-              gridRow: `${y + 1} / span ${h}`
+      // 计算当前行从 x 开始的连续空闲列数
+      let freeW = 0;
+      while (x + freeW < totalColumns && getCell(y, x + freeW) === null) {
+        freeW++;
+      }
+
+      if (freeW === 0) continue;
+
+      // 阶段 1：寻找候选磁贴
+      let bestCandidateIdx = -1;
+
+      if (x === 0) {
+        // 行首：优先放置待放置队列中优先级最高项
+        bestCandidateIdx = 0;
+      } else {
+        // 行内空隙：前瞻查找能填补 freeW 的最佳磁贴 (Lookahead Hole Plugging)
+        let candidateMatchQuality = 0; // 2 = exact width, 1 = partial width
+        for (let i = 0; i < remainingAutoTiles.length; i++) {
+          const t = remainingAutoTiles[i];
+          const dims = getTileDimensions(t.size, totalColumns);
+          const clampedW = Math.min(dims.w, totalColumns);
+
+          if (isSlotFree(y, x, clampedW, dims.h)) {
+            if (clampedW === freeW) {
+              bestCandidateIdx = i;
+              candidateMatchQuality = 2;
+              break; // 宽度精确对齐，优先填入
+            } else if (clampedW < freeW && candidateMatchQuality < 1) {
+              bestCandidateIdx = i;
+              candidateMatchQuality = 1;
             }
-          });
-          placed = true;
-          break;
+          } else if (dims.h > 2 && isSlotFree(y, x, clampedW, 2)) {
+            // 高度可降级为 2 槽位
+            if (clampedW === freeW && candidateMatchQuality < 2) {
+              bestCandidateIdx = i;
+              candidateMatchQuality = 2;
+            }
+          }
         }
       }
-      y++;
-    }
 
-    if (!placed) {
-      // 容错底部开辟新行放置
-      const fallbackY = matrix.length;
-      occupySlot(fallbackY, 0, clampedW, h);
-      solved.push({
-        id: t.id,
-        size: t.size,
-        x: 0,
-        y: fallbackY,
-        w: clampedW,
-        h,
-        isEmphasized: t.isEmphasized,
-        priority: t.priority ?? 50,
-        gridStyle: {
-          gridColumn: `1 / span ${clampedW}`,
-          gridRow: `${fallbackY + 1} / span ${h}`
+      if (bestCandidateIdx !== -1) {
+        const [chosen] = remainingAutoTiles.splice(bestCandidateIdx, 1);
+        const dims = getTileDimensions(chosen.size, totalColumns);
+        let actualW = Math.min(dims.w, totalColumns);
+        let actualH = dims.h;
+
+        // 如果宽度超出当前行剩余空间，自适应压缩宽度以适应
+        if (!isSlotFree(y, x, actualW, actualH)) {
+          if (isSlotFree(y, x, actualW, 2)) {
+            actualH = 2;
+          } else {
+            actualW = Math.min(actualW, freeW);
+            actualH = isSlotFree(y, x, actualW, 2) ? 2 : 1;
+          }
         }
-      });
+
+        // 如果这是最后一个磁贴且还有剩余列空间，自动扩展占满整行
+        if (remainingAutoTiles.length === 0 && actualW < freeW) {
+          actualW = freeW;
+        }
+
+        const item: SolvedTileItem = {
+          id: chosen.id,
+          size: chosen.size,
+          x,
+          y,
+          w: actualW,
+          h: actualH,
+          isEmphasized: chosen.isEmphasized,
+          priority: chosen.priority ?? 50,
+          gridStyle: {
+            gridColumn: `${x + 1} / span ${actualW}`,
+            gridRow: `${y + 1} / span ${actualH}`
+          }
+        };
+
+        occupySlot(y, x, actualW, actualH, item);
+        solved.push(item);
+        x += actualW - 1;
+      } else {
+        // 阶段 2：未找到合适磁贴，行内横向弹性延伸消除空隙
+        const leftNeighbor = x > 0 ? getCell(y, x - 1) : null;
+        if (leftNeighbor && leftNeighbor.y === y && isSlotFree(y, x, freeW, leftNeighbor.h)) {
+          // 左侧磁贴高度允许延伸
+          leftNeighbor.w += freeW;
+          leftNeighbor.gridStyle.gridColumn = `${leftNeighbor.x + 1} / span ${leftNeighbor.w}`;
+          occupySlot(y, x, freeW, leftNeighbor.h, leftNeighbor);
+          x += freeW - 1;
+        } else if (remainingAutoTiles.length > 0) {
+          // 强制适配当前尺寸放入下一个磁贴
+          const [forced] = remainingAutoTiles.splice(0, 1);
+          const actualW = freeW;
+          const actualH = 2;
+          const item: SolvedTileItem = {
+            id: forced.id,
+            size: forced.size,
+            x,
+            y,
+            w: actualW,
+            h: actualH,
+            isEmphasized: forced.isEmphasized,
+            priority: forced.priority ?? 50,
+            gridStyle: {
+              gridColumn: `${x + 1} / span ${actualW}`,
+              gridRow: `${y + 1} / span ${actualH}`
+            }
+          };
+          occupySlot(y, x, actualW, actualH, item);
+          solved.push(item);
+          x += actualW - 1;
+        }
+      }
+    }
+    y++;
+  }
+
+  // 阶段 3：末尾留白全网格消除清扫 (Zero-Gap Sweep)
+  for (let r = 0; r < matrix.length; r++) {
+    for (let c = 0; c < totalColumns; c++) {
+      if (matrix[r][c] === null) {
+        let emptyW = 0;
+        while (c + emptyW < totalColumns && matrix[r][c + emptyW] === null) {
+          emptyW++;
+        }
+
+        // 寻找同行左侧磁贴拉伸
+        let leftTile: SolvedTileItem | null = null;
+        for (let checkCol = c - 1; checkCol >= 0; checkCol--) {
+          if (matrix[r][checkCol]) {
+            leftTile = matrix[r][checkCol];
+            break;
+          }
+        }
+
+        if (leftTile) {
+          leftTile.w += emptyW;
+          leftTile.gridStyle.gridColumn = `${leftTile.x + 1} / span ${leftTile.w}`;
+          for (let k = 0; k < emptyW; k++) {
+            matrix[r][c + k] = leftTile;
+          }
+        }
+        c += emptyW - 1;
+      }
     }
   }
 

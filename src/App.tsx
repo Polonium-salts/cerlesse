@@ -331,7 +331,9 @@ export default function App() {
       emphasizedWidget: emphasized,
       intentType: layoutPreset === "custom" ? baseRec.intentType : (layoutPreset as LayoutIntentType),
       customSpans: customWidgetSpans,
-      enabledWidgets: safeVisibleOrder
+      enabledWidgets: safeVisibleOrder,
+      autoFillGaps,
+      autoFillMode
     });
 
     return {
@@ -348,11 +350,11 @@ export default function App() {
       widgetStatusMap: baseRec.widgetStatusMap,
       customWidgetSpans,
       alignmentMode,
-      autoFillGaps: false,
-      autoFillMode: "off",
-      filledGapsCount: 0
+      autoFillGaps,
+      autoFillMode,
+      filledGapsCount: packing.filledGapsCount ?? 0
     };
-  }, [activeResult, layoutPreset, customWidgetOrder, customEnabledWidgets, customWidgetSpans, alignmentMode]);
+  }, [activeResult, layoutPreset, customWidgetOrder, customEnabledWidgets, customWidgetSpans, alignmentMode, autoFillGaps, autoFillMode]);
 
   const currentEnabledWidgets = currentStrategy.enabledWidgets || ALL_RESULT_WIDGET_KEYS;
 

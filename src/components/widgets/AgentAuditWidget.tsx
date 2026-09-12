@@ -27,10 +27,10 @@ export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
       name: "主 Agent (调度总控)",
       title: "意图研判与任务派发中枢",
       isMaster: true,
-      dedicatedDuty: "全局需求感知、协作图谱分解、向各专职 Agent 派发独立任务并最终验收交付",
+      dedicatedDuty: "全局需求感知、协作图谱分解、向检索与小组件专职 Agent 派发独立任务并最终验收交付",
       avatarIcon: "Bot",
       status: "completed",
-      currentTask: "任务委派完毕，各专门 Agent 已在执行",
+      currentTask: "任务委派完毕，检索与小组件 Agent 已完成协同",
       assignedTaskId: "TASK-MASTER",
       completedTasksCount: 2,
       totalTasksCount: 2
@@ -46,65 +46,34 @@ export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
       status: "completed",
       currentTask: "TASK-RETRIEVE 专职检索完成并交付",
       assignedTaskId: "TASK-RETRIEVE",
-      completedTasksCount: 3,
-      totalTasksCount: 3,
+      completedTasksCount: 2,
+      totalTasksCount: 2,
       speedupMultiplier: 2.4
     },
     {
       id: "3",
       role: "widget_forge",
-      name: "组件创建 Agent",
-      title: "多维研报与结构化组件加工专家",
+      name: "小组件规划与构建 Agent",
+      title: "小组件能力模型与交互卡片锻造专家",
       isMaster: false,
-      dedicatedDuty: "专职多模态知识组件提炼，生成核心速览要点、多维对比矩阵、拓扑思维导图与延伸追问",
+      dedicatedDuty: "专职小组件能力规划 (WidgetPlan) 与独有业务小组件锻造 (CustomCardData)，装配交互模型并执行防重复护栏",
       avatarIcon: "Blocks",
       status: "completed",
-      currentTask: "TASK-FORGE 专职组件构建完成并交付",
-      assignedTaskId: "TASK-FORGE",
-      completedTasksCount: 6,
-      totalTasksCount: 6,
-      speedupMultiplier: 2.8
-    },
-    {
-      id: "4",
-      role: "orchestrator",
-      name: "排版编排 Agent",
-      title: "拓扑装箱与组件启停专家",
-      isMaster: false,
-      dedicatedDuty: "专职视口空间与瀑布流装箱规划，根据内容密度智能启停组件并计算 4 列自适应网格跨度",
-      avatarIcon: "LayoutGrid",
-      status: "completed",
-      currentTask: "TASK-LAYOUT 4列自适应装箱生效",
-      assignedTaskId: "TASK-LAYOUT",
-      completedTasksCount: 3,
-      totalTasksCount: 3
-    },
-    {
-      id: "5",
-      role: "qa_validator",
-      name: "质检验真 Agent",
-      title: "事实风控与拓扑闭环审计专家",
-      isMaster: false,
-      dedicatedDuty: "专职全流程合规复核，核验外部信源 URL 活性、验证思维导图连通性与事实支撑度",
-      avatarIcon: "ShieldCheck",
-      status: "completed",
-      currentTask: "TASK-QA 事实风控与存活核验通过",
-      assignedTaskId: "TASK-QA",
+      currentTask: "TASK-WIDGET-ARCHITECT 专属卡片构建完成并交付",
+      assignedTaskId: "TASK-WIDGET-ARCHITECT",
       completedTasksCount: 2,
-      totalTasksCount: 2
+      totalTasksCount: 2,
+      speedupMultiplier: 2.6
     }
   ];
 
-  const speedup = agentTeam?.speedupMultiplier || 2.8;
+  const speedup = agentTeam?.speedupMultiplier || 2.4;
 
   const renderIcon = (role: AgentRole) => {
     switch (role) {
       case "coordinator": return <Bot className="w-3.5 h-3.5 text-blue-500" />;
       case "retrieval": return <Search className="w-3.5 h-3.5 text-indigo-500" />;
-      case "knowledge_synthesis": return <BookOpen className="w-3.5 h-3.5 text-cyan-500" />;
       case "widget_forge": return <Blocks className="w-3.5 h-3.5 text-purple-500" />;
-      case "orchestrator": return <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />;
-      case "qa_validator": return <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />;
       default: return <Workflow className="w-3.5 h-3.5 text-blue-500" />;
     }
   };
@@ -113,7 +82,7 @@ export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
     <IOSWidget
       id="widget-agent-team-audit"
       title="Agent 专属任务分派矩阵"
-      subtitle="OpenAI Agents 架构 · 主 Agent 统筹派发与验收"
+      subtitle="OpenAI Agents 架构 · 检索与小组件双核协同"
       icon={<Workflow className="w-4 h-4 text-blue-500" />}
       badge={
         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1 font-mono">
@@ -130,7 +99,7 @@ export const AgentAuditWidget: React.FC<AgentAuditWidgetProps> = ({
           <div className="min-w-0">
             <span className="font-bold text-zinc-900 dark:text-zinc-100">主 Agent (调度总控)：</span>
             <span className="text-zinc-600 dark:text-zinc-300">
-              精准拆解 4 项独立专职任务，分发专责指令，拒绝重复执行
+              精准拆解 2 项独立专职任务，分发专责指令给检索与小组件专职 Agent
             </span>
           </div>
         </div>

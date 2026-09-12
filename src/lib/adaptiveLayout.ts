@@ -1219,7 +1219,8 @@ export function determineClientWidgetActivation(params: {
 }
 
 /**
- * Backward compatible wrapper for legacy calculateAdaptiveBinPacking
+ * 自适应阅读流与组件装箱算法 (Adaptive Bin-Packing Layout Solver)
+ * 支持 dense (前瞻调配补缺) 与 stretch (自适应拉伸闭合) 模式，彻底消除栅格留白空隙
  */
 export function calculateAdaptiveBinPacking(
   order: ResultWidgetKey[],
@@ -1234,44 +1235,196 @@ export function calculateAdaptiveBinPacking(
 ): {
   gridConfig: Record<ResultWidgetKey, WidgetGridPlacement>;
   totalRows: number;
-  filledGapsCount?: number;
+  filledGapsCount: number;
 } {
-  const gridConfig: Record<string, WidgetGridPlacement> = {};
   const activeKeys = (options.enabledWidgets && options.enabledWidgets.length > 0)
-    ? options.enabledWidgets
-    : (order && order.length > 0 ? order : resolveDynamicCapabilityWidgets(options.intentType || "balanced"));
+    ? [...options.enabledWidgets]
+    : (order && order.length > 0 ? [...order] : resolveDynamicCapabilityWidgets(options.intentType || "balanced"));
 
-  let currentRowIndex = 0;
-  let currentUsedSpan = 0;
-
-  activeKeys.forEach((key) => {
+  const getItemSpan = (key: ResultWidgetKey): number => {
     const custom = options.customSpans?.[key];
-    const span = normalizeWidgetSpan(
+    return normalizeWidgetSpan(
       custom,
       custom ? undefined : WIDGET_REGISTRY[key]?.defaultWidth
     );
+  };
 
-    if (currentUsedSpan + span > 12) {
+  const autoFillGaps = options.autoFillGaps !== false && options.autoFillMode !== "off";
+  const autoFillMode: AutoFillGapsMode = options.autoFillMode || (autoFillGaps ? "dense" : "off");
+
+  const gridConfig: Record<string, WidgetGridPlacement> = {};
+  let filledGapsCount = 0;
+
+  if (!autoFillGaps || autoFillMode === "off") {
+    // 原始普通顺序排布 (Off 模式)
+    let currentRowIndex = 0;
+    let currentUsedSpan = 0;
+
+    activeKeys.forEach((key) => {
+      const span = getItemSpan(key);
+      if (currentUsedSpan + span > 12) {
+        currentRowIndex++;
+        currentUsedSpan = 0;
+      }
+
+      gridConfig[key] = {
+        colSpanLg: span,
+        colSpanMd: span <= 6 ? 6 : 12,
+        rowIndex: currentRowIndex,
+        semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
+        isCompact: span <= 4,
+        isAutoFilled: false
+      };
+
+      currentUsedSpan += span;
+    });
+
+    return {
+      gridConfig: gridConfig as Record<ResultWidgetKey, WidgetGridPlacement>,
+      totalRows: currentRowIndex + 1,
+      filledGapsCount: 0
+    };
+  }
+
+  // 1. 模式 A: dense (前瞻调配补位 + 缝隙闭合)
+  if (autoFillMode === "dense") {
+    const remaining = [...activeKeys];
+    let currentRowIndex = 0;
+
+    while (remaining.length > 0) {
+      const rowKeys: ResultWidgetKey[] = [];
+      const spans: Record<string, number> = {};
+      const autoFilledFlags: Record<string, boolean> = {};
+      let currentUsedSpan = 0;
+
+      while (remaining.length > 0) {
+        const spaceLeft = 12 - currentUsedSpan;
+        if (spaceLeft < 4) break;
+
+        let candidateIdx = -1;
+        if (currentUsedSpan === 0) {
+          candidateIdx = 0;
+        } else {
+          // 前瞻查找能放入 spaceLeft 的最佳项
+          let bestDiff = 999;
+          for (let i = 0; i < remaining.length; i++) {
+            const s = getItemSpan(remaining[i]);
+            if (s <= spaceLeft) {
+              const diff = spaceLeft - s;
+              if (diff === 0) {
+                candidateIdx = i;
+                break;
+              } else if (diff < bestDiff) {
+                bestDiff = diff;
+                candidateIdx = i;
+              }
+            }
+          }
+        }
+
+        if (candidateIdx !== -1) {
+          const [chosen] = remaining.splice(candidateIdx, 1);
+          const s = getItemSpan(chosen);
+          const allocated = Math.min(s, spaceLeft);
+          const wasPulledForward = currentUsedSpan > 0 && candidateIdx > 0;
+          if (wasPulledForward) {
+            filledGapsCount++;
+          }
+          rowKeys.push(chosen);
+          spans[chosen] = allocated;
+          autoFilledFlags[chosen] = wasPulledForward;
+          currentUsedSpan += allocated;
+        } else {
+          break;
+        }
+      }
+
+      // 如果当前行仍有多余空隙 (如还余 2 或 4 格)，拉伸行内组件彻底填满 12 列 (消除留白)
+      const spaceLeft = 12 - currentUsedSpan;
+      if (spaceLeft > 0 && rowKeys.length > 0) {
+        const lastKey = rowKeys[rowKeys.length - 1];
+        spans[lastKey] = (spans[lastKey] || 4) + spaceLeft;
+        autoFilledFlags[lastKey] = true;
+        filledGapsCount++;
+        currentUsedSpan = 12;
+      }
+
+      rowKeys.forEach((key) => {
+        const span = spans[key];
+        gridConfig[key] = {
+          colSpanLg: span,
+          colSpanMd: span <= 6 ? 6 : 12,
+          rowIndex: currentRowIndex,
+          semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
+          isCompact: span <= 4,
+          isAutoFilled: autoFilledFlags[key] || false
+        };
+      });
+
       currentRowIndex++;
-      currentUsedSpan = 0;
     }
 
-    gridConfig[key] = {
-      colSpanLg: span,
-      colSpanMd: span <= 6 ? 6 : 12,
-      rowIndex: currentRowIndex,
-      semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
-      isCompact: span <= 4,
-      isAutoFilled: false
+    return {
+      gridConfig: gridConfig as Record<ResultWidgetKey, WidgetGridPlacement>,
+      totalRows: currentRowIndex,
+      filledGapsCount
     };
+  }
 
+  // 2. 模式 B: stretch (保持原始阅读流顺序，由行内末尾组件弹性拉伸占满该行)
+  const remaining = [...activeKeys];
+  let currentRowIndex = 0;
+  let rowKeys: ResultWidgetKey[] = [];
+  const spans: Record<string, number> = {};
+  const autoFilledFlags: Record<string, boolean> = {};
+  let currentUsedSpan = 0;
+
+  const finalizeRow = () => {
+    if (rowKeys.length === 0) return;
+    const spaceLeft = 12 - currentUsedSpan;
+    if (spaceLeft > 0) {
+      const lastKey = rowKeys[rowKeys.length - 1];
+      spans[lastKey] = (spans[lastKey] || 4) + spaceLeft;
+      autoFilledFlags[lastKey] = true;
+      filledGapsCount++;
+    }
+
+    rowKeys.forEach((key) => {
+      const span = spans[key];
+      gridConfig[key] = {
+        colSpanLg: span,
+        colSpanMd: span <= 6 ? 6 : 12,
+        rowIndex: currentRowIndex,
+        semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
+        isCompact: span <= 4,
+        isAutoFilled: autoFilledFlags[key] || false
+      };
+    });
+
+    currentRowIndex++;
+    rowKeys = [];
+    currentUsedSpan = 0;
+  };
+
+  while (remaining.length > 0) {
+    const key = remaining.shift()!;
+    const span = getItemSpan(key);
+
+    if (currentUsedSpan + span > 12) {
+      finalizeRow();
+    }
+
+    rowKeys.push(key);
+    spans[key] = span;
     currentUsedSpan += span;
-  });
+  }
+
+  finalizeRow();
 
   return {
     gridConfig: gridConfig as Record<ResultWidgetKey, WidgetGridPlacement>,
-    totalRows: currentRowIndex + 1,
-    filledGapsCount: 0
+    totalRows: currentRowIndex,
+    filledGapsCount
   };
 }
 

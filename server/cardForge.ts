@@ -18,6 +18,7 @@ import {
 } from "../src/types.js";
 import { WidgetSchema, WidgetSchemaNode } from "../src/widgets/sdk/types.js";
 import { synthesizeToolActions } from "./toolRegistry.js";
+import { resolveOpenRouterApiKey } from "./openrouter.js";
 
 export interface ForgeCardOptions {
   query: string;
@@ -28,6 +29,8 @@ export interface ForgeCardOptions {
   themeColor?: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
   colSpan?: number;
   iconName?: string;
+  apiKey?: string;
+  env?: Record<string, string | undefined>;
 }
 
 export async function forgeUniqueCard(options: ForgeCardOptions): Promise<CustomCardData> {
@@ -43,7 +46,7 @@ export async function forgeUniqueCard(options: ForgeCardOptions): Promise<Custom
   // 2. 严密受限的 OpenRouter 免费 AI 路由锻造尝试（硬性 2.5 秒截止，超时立刻秒级降级兜底，杜绝任何卡死）
   try {
     const llmTask = (async (): Promise<CustomCardData | null> => {
-      const openRouterKey = process.env.OPENROUTER_API_KEY;
+      const openRouterKey = resolveOpenRouterApiKey(options.apiKey, options.env);
       if (openRouterKey && openRouterKey.trim() !== "") {
         try {
           const card = await generateCardWithOpenRouter(
@@ -82,8 +85,10 @@ export async function forgeMultipleDynamicWidgets(options: {
   results: SearchResult[];
   widgetPlan?: WidgetPlan;
   userPrompt?: string;
+  apiKey?: string;
+  env?: Record<string, string | undefined>;
 }): Promise<CustomCardData[]> {
-  const { query, results, widgetPlan, userPrompt } = options;
+  const { query, results, widgetPlan, userPrompt, apiKey, env } = options;
   const validResults = (results || []).slice(0, 8);
   if (validResults.length === 0) return [];
 
@@ -97,7 +102,9 @@ export async function forgeMultipleDynamicWidgets(options: {
     archetype: archetypes[0],
     userPrompt,
     themeColor: "blue",
-    colSpan: 6
+    colSpan: 6,
+    apiKey,
+    env
   });
 
   const card2Promise = (archetypes.length > 1 && archetypes[1] !== archetypes[0])
@@ -108,7 +115,9 @@ export async function forgeMultipleDynamicWidgets(options: {
         archetype: archetypes[1],
         userPrompt: userPrompt ? `${userPrompt} (互补维度)` : undefined,
         themeColor: "emerald",
-        colSpan: 6
+        colSpan: 6,
+        apiKey,
+        env
       }).catch(() => null)
     : Promise.resolve(null);
 

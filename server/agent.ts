@@ -10,6 +10,7 @@ interface AgentRunOptions {
   model?: string;
   targetLanguage?: string;
   enableDeepSearch?: boolean;
+  env?: Record<string, string | undefined>;
   onProgress?: (step: AgentStep, allSteps: AgentStep[]) => void;
 }
 
@@ -96,7 +97,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     const primaryRes = await searchSearxng(query, {
       customUrl: options.customSearxngUrl,
       categories: "general",
-      language: targetLang.code
+      language: targetLang.code,
+      env: options.env
     });
     rawResults.push(...primaryRes.results);
     instanceUsed = primaryRes.instanceUsed;
@@ -107,7 +109,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       try {
         const secondaryRes = await searchSearxng(crossLingualQuery, {
           customUrl: options.customSearxngUrl,
-          language: targetLang.code
+          language: targetLang.code,
+          env: options.env
         });
         rawResults.push(...secondaryRes.results);
       } catch {
@@ -120,7 +123,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       try {
         const deepRes = await searchSearxng(plan.subQueries[2], {
           customUrl: options.customSearxngUrl,
-          language: targetLang.code
+          language: targetLang.code,
+          env: options.env
         });
         rawResults.push(...deepRes.results);
       } catch {
@@ -562,6 +566,7 @@ function inferWidgetActivationStrategy(params: {
   enabledWidgets: ResultWidgetKey[];
   disabledWidgets: ResultWidgetKey[];
   widgetStatusMap: Record<ResultWidgetKey, any>;
+  customWidgetSpans?: Partial<Record<ResultWidgetKey, number>>;
 } {
   const {
     isComparisonQuery,
@@ -776,7 +781,8 @@ function inferWidgetActivationStrategy(params: {
   return {
     enabledWidgets,
     disabledWidgets,
-    widgetStatusMap
+    widgetStatusMap,
+    customWidgetSpans: {} as Partial<Record<ResultWidgetKey, number>>
   };
 }
 
@@ -1132,7 +1138,14 @@ export function determineAdaptiveLayout(params: {
           }
         }
         if (typeof item === "object" && item.size) {
-          const span = item.size === "full" ? 12 : item.size === "large" ? 8 : item.size === "medium" ? 6 : 4;
+          // WidgetPlannedSize 已与 TileSize 统一为同一套磁贴语义，这里映射到
+          // 自适应网格 (bento) 使用的 4/6/8/12 列跨度。
+          const span =
+            item.size === "full" ? 12
+              : item.size === "wide" ? 6
+              : item.size === "large" ? 8
+              : item.size === "medium" ? 6
+              : 4;
           activation.customWidgetSpans![key] = span;
         }
       });

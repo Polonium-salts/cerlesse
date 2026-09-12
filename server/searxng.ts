@@ -107,7 +107,9 @@ export function decodeBingUrl(url: string): string {
     if (uParam) {
       let b64 = uParam[1].replace(/-/g, "+").replace(/_/g, "/");
       while (b64.length % 4 !== 0) b64 += "=";
-      const decoded = Buffer.from(b64, "base64").toString("utf-8");
+      const decoded = typeof atob !== "undefined"
+        ? atob(b64)
+        : (typeof Buffer !== "undefined" ? Buffer.from(b64, "base64").toString("utf-8") : b64);
       if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
         return decoded;
       }
@@ -341,6 +343,7 @@ export async function searchSearxng(
     language?: string;
     categories?: string;
     page?: number;
+    env?: Record<string, string | undefined>;
   } = {}
 ): Promise<{ results: SearchResult[]; instanceUsed: string }> {
   const validCustomUrl = options.customUrl && 
@@ -351,9 +354,11 @@ export async function searchSearxng(
     ? options.customUrl.trim()
     : undefined;
 
-  const validEnvUrl = process.env.SEARXNG_URL && 
-    !isInstanceDead(process.env.SEARXNG_URL)
-    ? process.env.SEARXNG_URL
+  const rawEnvUrl = options.env?.SEARXNG_URL || 
+    (typeof process !== "undefined" ? process.env?.SEARXNG_URL : undefined);
+
+  const validEnvUrl = rawEnvUrl && !isInstanceDead(rawEnvUrl)
+    ? rawEnvUrl
     : undefined;
 
   const instances = [

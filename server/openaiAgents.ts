@@ -2,96 +2,29 @@
  * OpenAI Agents JS Ecosystem Implementation
  * Strictly adheres to: https://github.com/openai/openai-agents-js
  * 
- * Defines specialized Agent classes, tool sets, and handoff triage routing:
- * - MasterOrchestratorAgent (Triage & Global Orchestrator)
- * - RetrievalAgent (Search & Source Verification)
- * - KnowledgeSynthesisAgent (AI Overview, MindMap, Table)
- * - WidgetArchitectAgent (Unique Interactive Card Archetype Architecture & Forging)
- * - LayoutAgent (Adaptive 4-column bin-packing & widget lifecycle)
- * - GuardrailAgent (OpenAI Guardrails safety, URL reachability & anti-duplication auditing)
+ * Focused Dual-Agent Architecture:
+ * - MasterOrchestratorAgent (Triage & Global Coordinator)
+ * - RetrievalAgent (Search & Official Source Verification - 搜索相关)
+ * - WidgetPlannerAgent / WidgetArchitectAgent (Unique Interactive Card Archetype Architecture & Forging - 小组件相关)
  */
 
 import { Agent, tool, handoff } from "@openai/agents";
 import { z } from "zod";
 import { searchSearxng } from "./searxng.js";
-import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis } from "./openrouter.js";
 import { forgeUniqueCard, detectBestArchetype } from "./cardForge.js";
-import { planActionForQuery } from "./actionPlanner.js";
 import { planWidgetStrategy } from "./widgetPlanner.js";
-import { TOOL_REGISTRY, synthesizeToolActions } from "./toolRegistry.js";
-import { determineAdaptiveLayout } from "./agent.js";
+import { TOOL_REGISTRY } from "./toolRegistry.js";
 import {
   SearchResult,
   CustomCardData,
   CustomCardArchetype,
-  AdaptiveLayoutStrategy,
-  ActionPlan,
   WidgetPlan
 } from "../src/types.js";
 
 // ==========================================
-// 1. Specialized Agent Tool Definitions
+// 1. Search & Retrieval Agent Tools (搜索相关工具箱)
 // ==========================================
 
-/**
- * Action Planner Agent Tools (行动规划与任务解决智能体工具箱)
- */
-export const tool_plan_user_actions = tool({
-  name: "plan_user_actions",
-  description: "Evaluate user query and next-step actions, determine if an executable Action Widget is required, and build a structured Action Plan.",
-  parameters: z.object({
-    query: z.string().describe("User search query"),
-    targetLanguage: z.string().optional().describe("Target language code")
-  }),
-  execute: async (args: { query: string; targetLanguage?: string }, context?: any) => {
-    const results: SearchResult[] = context?.results || [];
-    const plan: ActionPlan = await planActionForQuery({
-      query: args.query,
-      results,
-      targetLanguage: args.targetLanguage
-    });
-    return JSON.stringify(plan);
-  }
-});
-
-export const tool_lookup_tool_registry = tool({
-  name: "lookup_tool_registry",
-  description: "Look up executable capabilities in the standardized Tool Registry (official_url, install_command, download, copy_text, open_docs, open_demo, navigate, api_endpoint).",
-  parameters: z.object({
-    capability: z.string().optional().describe("Tool capability name")
-  }),
-  execute: async (args: { capability?: string }) => {
-    if (args.capability && (TOOL_REGISTRY as any)[args.capability]) {
-      return JSON.stringify((TOOL_REGISTRY as any)[args.capability]);
-    }
-    return JSON.stringify(TOOL_REGISTRY);
-  }
-});
-
-export const tool_audit_action_guardrails = tool({
-  name: "audit_action_guardrails",
-  description: "Enforce output guardrail: verify that if user query involves software, installation, portal, CLI, or tools, an Action Widget with real tool bindings is generated.",
-  parameters: z.object({
-    query: z.string().describe("User query"),
-    actionCount: z.number().describe("Number of generated executable actions")
-  }),
-  execute: async (args: { query: string; actionCount: number }) => {
-    const isActionOriented = /(安装|下载|配置|部署|官网|入口|命令|教程|报错|docker|npm|pip|brew|curl|install|setup|cli)/i.test(args.query);
-    const passed = !isActionOriented || args.actionCount > 0;
-    return JSON.stringify({
-      passed,
-      enforced: isActionOriented,
-      actionCount: args.actionCount,
-      reason: passed 
-        ? "Action guardrail passed: All action requirements are satisfied with genuine Tool Registry bindings." 
-        : "Action guardrail warning: Query requires actionable widget but none found."
-    });
-  }
-});
-
-/**
- * Retrieval Agent Tools
- */
 export const tool_searxng_retrieval = tool({
   name: "searxng_multi_engine_retrieval",
   description: "Execute real-time multi-engine web retrieval via SearXNG for the specified query and keywords.",
@@ -127,9 +60,24 @@ export const tool_verify_official_portal = tool({
   }
 });
 
-/**
- * Widget Planner & Architect Agent Tools (专职小组件规划与构建智能体工具箱)
- */
+// ==========================================
+// 2. Widget Planner & Forge Agent Tools (小组件相关工具箱)
+// ==========================================
+
+export const tool_lookup_tool_registry = tool({
+  name: "lookup_tool_registry",
+  description: "Look up executable capabilities in the standardized Tool Registry (official_url, install_command, download, copy_text, open_docs, open_demo, navigate, api_endpoint).",
+  parameters: z.object({
+    capability: z.string().optional().describe("Tool capability name")
+  }),
+  execute: async (args: { capability?: string }) => {
+    if (args.capability && (TOOL_REGISTRY as any)[args.capability]) {
+      return JSON.stringify((TOOL_REGISTRY as any)[args.capability]);
+    }
+    return JSON.stringify(TOOL_REGISTRY);
+  }
+});
+
 export const tool_plan_widget_strategy = tool({
   name: "plan_widget_strategy",
   description: "Plan widget intent, required capabilities, suggested archetype, and widget priority arrangement based on user task.",
@@ -240,106 +188,9 @@ export const tool_enforce_widget_uniqueness = tool({
   }
 });
 
-/**
- * Knowledge Synthesis Agent Tools
- */
-export const tool_synthesize_report = tool({
-  name: "synthesize_deep_report",
-  description: "Extract AI Overview executive summary, fact-grounded takeaways, topological mindmap, and comparison dimensions.",
-  parameters: z.object({
-    query: z.string().describe("User query"),
-    model: z.string().optional().describe("Target LLM model")
-  }),
-  execute: async (args: { query: string; model?: string }, context?: any) => {
-    const results: SearchResult[] = context?.results || [];
-    const plan = context?.plan;
-    const apiKey = context?.openRouterApiKey;
-    const targetLanguage = context?.targetLanguage;
-    const detectedLanguage = context?.detectedLanguage;
-
-    try {
-      const synthesis = await synthesizeWithOpenRouter({
-        query: args.query,
-        plan,
-        results,
-        apiKey,
-        model: args.model,
-        targetLanguage,
-        detectedLanguage
-      });
-      return JSON.stringify(synthesis);
-    } catch (err: any) {
-      const fallback = generateAlgorithmicSynthesis(
-        args.query,
-        plan,
-        results,
-        args.model || "AgentTeam Algorithmic Engine",
-        targetLanguage?.code || "zh-CN"
-      );
-      return JSON.stringify(fallback);
-    }
-  }
-});
-
-/**
- * Layout Agent Tools
- */
-export const tool_compute_bento_packing = tool({
-  name: "compute_bento_packing",
-  description: "Execute 4-column adaptive bin packing for active widgets based on content density.",
-  parameters: z.object({
-    query: z.string().describe("Search query")
-  }),
-  execute: async (args: { query: string }, context?: any) => {
-    const results: SearchResult[] = context?.results || [];
-    const strategy: AdaptiveLayoutStrategy = determineAdaptiveLayout({
-      query: args.query,
-      plan: context?.plan || { originalQuery: args.query, intent: "general", subQueries: [], comparisonDimensions: [] },
-      filteredResults: results,
-      comparisonCount: 3,
-      mindMapBranches: 4,
-      followUpCount: 3,
-      hasOfficial: results.some(r => r.isOfficial),
-      targetLanguage: context?.targetLanguage?.code || "zh-CN"
-    });
-    return JSON.stringify(strategy);
-  }
-});
-
-/**
- * Guardrail Agent Tools
- */
-export const tool_audit_guardrails = tool({
-  name: "audit_guardrails",
-  description: "Execute OpenAI Agents JS input/output guardrails: verify URL health, graph integrity, and widget uniqueness.",
-  parameters: z.object({
-    query: z.string().describe("Search query"),
-    sourcesCount: z.number().optional().describe("Number of grounded sources")
-  }),
-  execute: async (args: { query: string; sourcesCount?: number }) => {
-    return JSON.stringify({
-      inputGuardrail: "PASS (safe, well-formed query)",
-      urlReachabilityAudit: "PASS (100% grounded URLs verified)",
-      graphIntegrityAudit: "PASS (mindmap tree topologically connected without orphaned nodes)",
-      widgetAntiDuplicationAudit: "PASS (unique archetype & dedicated data model verified)"
-    });
-  }
-});
-
 // ==========================================
-// 2. Official Agent Class Instantiations
+// 3. Official Agent Class Instantiations
 // ==========================================
-
-export const actionPlannerAgent = new Agent({
-  name: "行动规划 Agent (ActionPlannerAgent)",
-  instructions: `你是一位专职负责用户任务目标研判、下一步行动拆解与能力调度的行动规划智能体。
-严格遵循 OpenAI Agents 架构规范与 Tool Registry 标准：
-1. 坚决禁止做被动的信息罗列器！核心目标是帮助用户完成具体任务；
-2. 研判用户已知什么、下一步需要什么（安装软件、访问正版官网、复制代码/命令、配置参数、多方案裁决）；
-3. 从 Tool Registry 能力注册表中挑选真实工具（official_url, install_command, download, copy_text, open_docs, open_demo），严禁生成假按钮；
-4. 如果用户存在操作需求，必须规划 Action Widget，并标记最高执行优先级。`,
-  tools: [tool_plan_user_actions, tool_lookup_tool_registry, tool_audit_action_guardrails]
-});
 
 export const retrievalAgent = new Agent({
   name: "全网检索 Agent (RetrievalAgent)",
@@ -347,19 +198,8 @@ export const retrievalAgent = new Agent({
 你的专属独立职责是：
 1. 使用多引擎检索工具进行全网多源抓取；
 2. 甄别权威官方网站，过滤垃圾、泛目录与爬虫杂音；
-3. 严格禁止参与小组件锻造、排版计算或研报起草，专注提供最高纯度的信源。`,
+3. 严格禁止参与小组件锻造或排版计算，专注提供最高纯度的信源。`,
   tools: [tool_searxng_retrieval, tool_verify_official_portal]
-});
-
-export const knowledgeSynthesisAgent = new Agent({
-  name: "深度研报 Agent (KnowledgeSynthesisAgent)",
-  instructions: `你是一位专职的深度研报与结构化知识萃取智能体。
-你的专属独立职责是：
-1. 提取客观中立的 AI Overview 决策摘要；
-2. 提炼带信源引用的高价值要点 (Key Takeaways)；
-3. 构建严谨闭环的拓扑树形思维导图 (Mind Map) 与横向多维对比表格；
-4. 专职知识萃取，不干预小组件独立锻造或视觉排版。`,
-  tools: [tool_synthesize_report]
 });
 
 export const widgetPlannerAgent = new Agent({
@@ -383,48 +223,17 @@ export const widgetPlannerAgent = new Agent({
 // Alias for backward compatibility
 export const widgetArchitectAgent = widgetPlannerAgent;
 
-export const layoutAgent = new Agent({
-  name: "排版编排 Agent (LayoutAgent)",
-  instructions: `你是一位专职的自适应 4 列瀑布流装箱、信息优先级排布与组件生命周期编排智能体。
-你的专属独立职责是：
-1. 依据 Widget Plan 与意图模型，精确规划小组件信息展示优先级与排列顺序（如安装场景置顶下载中心与命令行）；
-2. 评估内容密度与任务紧急度，动态激活高价值组件并休眠与当前任务无关的冗余卡片；
-3. 执行自适应装箱算法，计算各卡片的 4 列跨度 (colSpan: 3 / 6 / 9 / 12)；
-4. 专职视觉与空间工程，确保界面布局平衡、首屏有效信息密度与响应式舒适度。`,
-  tools: [tool_compute_bento_packing]
-});
-
-export const guardrailAgent = new Agent({
-  name: "护栏质检 Agent (GuardrailAgent)",
-  instructions: `你是一位专职安全与合规审计的护栏质检智能体。
-遵循 OpenAI Agents JS Guardrails 规范：
-1. 执行输入护栏审计；
-2. 核验外部信源 URL 可达性与防幻觉佐证；
-3. 检查思维导图拓扑连通闭环；
-4. 执行行动组件护栏审计：确保行动需求已被真实 Tool Registry 绑定；
-5. 执行小组件防重复风控审计，确保卡片绝不千篇一律。`,
-  tools: [tool_audit_guardrails, tool_audit_action_guardrails]
-});
-
 export const masterOrchestratorAgent = new Agent({
   name: "主 Agent (调度总控 · MasterOrchestrator)",
   instructions: `你是整个 Agent 协作中枢的领航员与调度总控 (Triage & Orchestrator Agent)。
 你的职责是：
 1. 接收用户需求，进行全局意图感知与协作任务拆解；
-2. 通过 formal handoff 将各专项职责分派给专门的领域智能体：
-   - handoff 至 全网检索 Agent 抓取权威信源；
-   - handoff 至 行动规划 Agent 研判任务目标并调度 Tool Registry；
-   - handoff 至 深度研报 Agent 提炼速览与导图；
-   - handoff 至 专属小组件规划与构建 Agent 规划能力模型并锻造独一无二的交互卡片；
-   - handoff 至 排版编排 Agent 规划自适应瀑布流、优先级排序与 Action 焦点；
-   - handoff 至 护栏质检 Agent 执行安全、行动与防重审计；
-3. 协调并发作业，汇聚所有专职交付物，进行最终质量验收后交付用户。`,
+2. 通过 formal handoff 将专项职责精准分派给专门领域智能体：
+   - handoff 至 全网检索 Agent (RetrievalAgent) 进行多路精准抓取与权威信源甄别；
+   - handoff 至 专属小组件规划与构建 Agent (WidgetPlannerAgent) 规划组件能力模型并锻造独一无二的交互卡片；
+3. 协调并发作业，汇聚专职交付物，进行最终质量验收后交付用户。`,
   handoffs: [
     handoff(retrievalAgent),
-    handoff(actionPlannerAgent),
-    handoff(knowledgeSynthesisAgent),
-    handoff(widgetPlannerAgent),
-    handoff(layoutAgent),
-    handoff(guardrailAgent)
+    handoff(widgetPlannerAgent)
   ]
 });
