@@ -1,6 +1,6 @@
 import { searchSearxng } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, AVAILABLE_FREE_MODELS, normalizeModelId } from "./openrouter.js";
-import { AgentPlan, AgentStep, SearchResult, SearchSynthesisResult, DetectedLanguage, AdaptiveLayoutStrategy, ResultWidgetKey, LayoutIntentType } from "../src/types.js";
+import { AgentPlan, AgentStep, SearchResult, SearchSynthesisResult, DetectedLanguage, AdaptiveLayoutStrategy, ResultWidgetKey, LayoutIntentType, ActionPlan, WidgetPlan } from "../src/types.js";
 import { detectQueryLanguage, resolveTargetLanguage, getStepLocalization } from "./language.js";
 
 interface AgentRunOptions {
@@ -487,14 +487,14 @@ function calculateServerAdaptiveBinPacking(
 
   const getSemanticSpan = (key: ResultWidgetKey): number => {
     if (key === emphasized) {
-      if (key === "mindmap" || key === "comparison" || key === "ai_overview" || key === "quick_answer") {
-        return 12; // Emphasized analytical views take full row
+      if (key === "mindmap" || key === "comparison" || key === "ai_overview" || key === "quick_answer" || key === "custom_cards") {
+        return 12; // Emphasized analytical or task views take full row
       }
-      if (key === "official_portal") {
+      if (key === "official_portal" || key === "actions_toolbox") {
         return 12;
       }
-      if (key === "takeaways") {
-        return 8;
+      if (key === "takeaways" || key === "verification_checklist") {
+        return 12;
       }
     }
 
@@ -503,6 +503,7 @@ function calculateServerAdaptiveBinPacking(
       case "comparison":
       case "quick_answer":
       case "sources":
+      case "custom_cards":
       case "ai_overview":
         return 12;
       case "takeaways":
@@ -510,8 +511,9 @@ function calculateServerAdaptiveBinPacking(
       case "official_portal":
         return 12;
       case "verification_checklist":
-        return intent === "fact_check" ? 12 : 8;
+        return intent === "fact_check" || intent === "troubleshooting" ? 12 : 6;
       case "actions_toolbox":
+        return intent === "install" || intent === "troubleshooting" || intent === "code_tutorial" ? 12 : 6;
       case "analytics_trend":
       case "topic_digest":
       case "fast_chat":
@@ -792,9 +794,24 @@ export function determineAdaptiveLayout(params: {
   followUpCount?: number;
   hasOfficial: boolean;
   targetLanguage?: string;
+  hasCustomCards?: boolean;
+  actionPlan?: ActionPlan;
+  widgetPlan?: WidgetPlan;
 }): AdaptiveLayoutStrategy {
-  const { query, plan, filteredResults, comparisonCount, mindMapBranches, followUpCount = 3, hasOfficial, targetLanguage } = params;
+  const { query, plan, filteredResults, comparisonCount, mindMapBranches, followUpCount = 3, hasOfficial, targetLanguage, hasCustomCards = true, actionPlan, widgetPlan } = params;
   const isEn = targetLanguage === "en";
+
+  const isInstallQuery =
+    /(安装|下载|配置环境|部署|国内镜像|镜像源|包管理|客户端下载|\b(install|download|setup|docker run|brew install|pip install|npm i|yum install|apt-get|installer|pkg|tar\.gz)\b)/i.test(query);
+
+  const isToolDiscoveryQuery =
+    /(工具|网站|平台|在线|免安装|免费|转换|压缩|生成器|编辑器|推荐|好用|替代品|\b(tool|tools|online|generator|converter|editor|utility|website|app|free online)\b)/i.test(query);
+
+  const isTravelQuery =
+    /(旅游|攻略|游玩|景点|行程|自驾|住宿|美食|必去|门票|几日游|路线|\b(travel|itinerary|trip|tour|guide|vacation|spot|attractions)\b)/i.test(query);
+
+  const isTroubleshootingQuery =
+    /(报错|解决|修复|异常|解决办法|排查|崩溃|权限问题|踩坑|避坑|\b(error|fix|debug|troubleshoot|exception|failed|bug|issue|eacces|cors|denied)\b)/i.test(query);
 
   const isComparisonQuery =
     /(对比|区别|优缺点|哪个好|选哪个|怎么选|还是|好还是|优劣|差别|pk|\b(vs|versus|difference|compare|comparison|pros and cons|better)\b)/i.test(query) ||
@@ -811,7 +828,7 @@ export function determineAdaptiveLayout(params: {
     /(真假|谣言|辟谣|核实|是真的吗|属实|假消息|骗局|真实性|是不是真的|被抓|去世了吗|真的假的|\b(fact check|true or false|hoax|rumor|is it true|fake news|debunk|myth)\b)/i.test(query);
 
   const isCodeTutorialQuery =
-    /(代码|怎么写|如何实现|教程|命令|参数|配置|报错|异常|函数|语法|类库|环境搭建|安装|部署|怎么做|做法|步骤|\b(code|tutorial|how to|example|command|cli|syntax|script|function|install|setup|debug|error|exception|npm|pip|docker|git|python|golang|rust|java|react|vue|typescript|sql)\b)/i.test(query);
+    /(代码|怎么写|如何实现|教程|命令|参数|配置|函数|语法|类库|环境搭建|怎么做|做法|步骤|\b(code|tutorial|how to|example|command|cli|syntax|script|function|npm|pip|docker|git|python|golang|rust|java|react|vue|typescript|sql)\b)/i.test(query);
 
   const isNewsTrendQuery =
     /(今日|今天|最新|突发|新闻|动态|进展|发布会|走势|热点|大盘|刚刚|行情|股价|指数|\b(news|latest|breaking|today|trend|update|announced|stock|market)\b)/i.test(query);
@@ -845,15 +862,16 @@ export function determineAdaptiveLayout(params: {
   let intentType: LayoutIntentType = "balanced";
   let intentLabel = isEn ? "Balanced Adaptive Layout" : "多维全景平衡流";
   let explanation = isEn
-    ? "Agent detected standard multi-faceted requirements. Standard 4-cell adaptive layout is used for harmonious presentation."
-    : "Agent 识别出多维全景信息获取需求，采用4格自适应装箱算法，均衡展示速答、要点、信源与探索。";
-  let preferredEmphasized: ResultWidgetKey = "quick_answer";
+    ? "Agent detected standard multi-faceted requirements. Balanced layout with custom card spotlight."
+    : "Agent 识别出多维全景信息获取需求，采用自适应装箱算法，均衡展示速答、专属卡片、要点与信源。";
+  let preferredEmphasized: ResultWidgetKey = "custom_cards";
   let baseOrder: ResultWidgetKey[] = [
+    "custom_cards",
     "quick_answer",
     "takeaways",
     "actions_toolbox",
-    "metrics_telemetry",
     "sources",
+    "metrics_telemetry",
     "topic_digest",
     "analytics_trend",
     "mindmap",
@@ -862,15 +880,88 @@ export function determineAdaptiveLayout(params: {
     "agent_workflow"
   ];
 
-  if (isComparisonQuery && comparisonCount > 0) {
+  if (isInstallQuery) {
+    intentType = "install";
+    intentLabel = isEn ? "Software Installation & Mirrors" : "安装部署与下载中心 (极速落地)";
+    explanation = isEn
+      ? "Agent detected an installation/deployment intent. Prioritizing download hub, mirror configs, and CLI toolboxes."
+      : "Agent 识别出软件安装与部署意图：跨平台下载中心与 CLI 执行指令置顶首行，官方门户与环境核验紧随其后。";
+    preferredEmphasized = "custom_cards";
+    baseOrder = [
+      "custom_cards",
+      "actions_toolbox",
+      "official_portal",
+      "verification_checklist",
+      "quick_answer",
+      "takeaways",
+      "sources",
+      "fast_chat",
+      "mobile_qr",
+      "followup"
+    ];
+  } else if (isToolDiscoveryQuery) {
+    intentType = "tool_discovery";
+    intentLabel = isEn ? "Online Tool Discovery & Trial" : "在线免安装工具推荐 (即开即用)";
+    explanation = isEn
+      ? "Agent detected a tool/utility discovery intent. Putting interactive tool cards, online trial sandbox, and comparisons at the top."
+      : "Agent 识别出免安装工具与实用软件发现意图：免安装在线体验卡与工具对比矩阵全宽置顶。";
+    preferredEmphasized = "custom_cards";
+    baseOrder = [
+      "custom_cards",
+      "comparison",
+      "official_portal",
+      "actions_toolbox",
+      "quick_answer",
+      "takeaways",
+      "sources",
+      "fast_chat",
+      "followup"
+    ];
+  } else if (isTravelQuery) {
+    intentType = "travel";
+    intentLabel = isEn ? "Travel Itinerary & Pitfall Guide" : "旅游攻略与精选路线 (行程规划)";
+    explanation = isEn
+      ? "Agent detected a travel guide intent. Highlighting multi-day itinerary timeline, spot checklist, and pitfall warnings."
+      : "Agent 识别出旅游行程攻略意图：分天路线规划与游玩避坑看板置顶呈现，门票与交通速查紧随。";
+    preferredEmphasized = "custom_cards";
+    baseOrder = [
+      "custom_cards",
+      "takeaways",
+      "official_portal",
+      "actions_toolbox",
+      "quick_answer",
+      "sources",
+      "mobile_qr",
+      "fast_chat",
+      "followup"
+    ];
+  } else if (isTroubleshootingQuery) {
+    intentType = "troubleshooting";
+    intentLabel = isEn ? "Error Diagnostics & Fix Commands" : "报错排障与快速修复 (故障诊断)";
+    explanation = isEn
+      ? "Agent detected an error/troubleshooting intent. Prioritizing one-click fix commands and diagnostic checklists."
+      : "Agent 识别出报错与排障意图：一键修复命令与排错自检清单置顶，直击根因并给出解决方案。";
+    preferredEmphasized = "actions_toolbox";
+    baseOrder = [
+      "actions_toolbox",
+      "verification_checklist",
+      "custom_cards",
+      "quick_answer",
+      "takeaways",
+      "sources",
+      "fast_chat",
+      "followup"
+    ];
+  } else if (isComparisonQuery && comparisonCount > 0) {
     intentType = "comparison";
     intentLabel = isEn ? "Comparison Matrix Priority" : "多维对比矩阵优先 (对比全景置顶)";
     explanation = isEn
       ? "Agent detected an explicit multi-entity comparison intent. The Comparison Matrix is given full-width spotlight."
-      : "Agent 识别出选型决策对比意图，已自动启动并将「多维交叉对比矩阵」全宽置顶，次行紧随选型要点速览。";
+      : "Agent 识别出选型决策对比意图，已自动启动并将「多维交叉对比矩阵」与「优劣分析卡片」全宽置顶。";
     preferredEmphasized = "comparison";
     baseOrder = [
       "comparison",
+      "custom_cards",
       "takeaways",
       "quick_answer",
       "topic_digest",
@@ -885,10 +976,11 @@ export function determineAdaptiveLayout(params: {
     intentLabel = isEn ? "Knowledge Architecture Priority" : "知识架构导图优先 (交互图谱全景置顶)";
     explanation = isEn
       ? "Agent detected a technical system architecture query. The Knowledge Mind Map takes the top spotlight with full interactive canvas width."
-      : "Agent 识别出系统原理与结构化认知意图，已自动启动并将「交互式知识架构导图」提权至首屏全宽画幅。";
+      : "Agent 识别出系统原理与结构化认知意图，已自动启动并将「交互式知识架构导图」与「架构看板」提权至首屏全宽画幅。";
     preferredEmphasized = "mindmap";
     baseOrder = [
       "mindmap",
+      "custom_cards",
       "quick_answer",
       "takeaways",
       "topic_digest",
@@ -903,10 +995,11 @@ export function determineAdaptiveLayout(params: {
     intentLabel = isEn ? "Official Portal Priority" : "官方门户与导航优先 (正版入口置顶)";
     explanation = isEn
       ? "Agent detected official portal requirements. Official Verified Portals and quick insights are packed across the top row."
-      : "Agent 识别出官方正版寻址与工具入口需求，已自动启动并将官方权威门户置顶首行。";
+      : "Agent 识别出官方正版寻址与工具入口需求，已自动启动并将官方权威门户与专属导航卡片置顶首行。";
     preferredEmphasized = "official_portal";
     baseOrder = [
       "official_portal",
+      "custom_cards",
       "mobile_qr",
       "actions_toolbox",
       "quick_answer",
@@ -921,15 +1014,17 @@ export function determineAdaptiveLayout(params: {
     intentLabel = isEn ? "Code & Tutorial Priority" : "代码与实操教程优先 (代码速答与工具箱置顶)";
     explanation = isEn
       ? "Agent detected programming implementation or tutorial inquiry. Code quick answer and developer toolbox are placed front and center."
-      : "Agent 识别出编程实操与开发指南需求：完整代码实现与一键复制工具箱置顶，次行提供避坑指南与分面解析。";
-    preferredEmphasized = "quick_answer";
+      : "Agent 识别出编程实操与开发指南需求：完整代码实现与一键复制工具箱置顶，专属代码卡片与分面解析次行提供。";
+    preferredEmphasized = "actions_toolbox";
     baseOrder = [
-      "quick_answer",
       "actions_toolbox",
+      "custom_cards",
+      "quick_answer",
       "topic_digest",
       "takeaways",
       "sources",
       "fast_chat",
+      "verification_checklist",
       "mindmap",
       "followup",
       "agent_workflow"
@@ -939,10 +1034,11 @@ export function determineAdaptiveLayout(params: {
     intentLabel = isEn ? "Fact Verification Priority" : "事实核查与辟谣优先 (求真存证清单置顶)";
     explanation = isEn
       ? "Agent detected a rumor or fact-verification inquiry. Multi-source fact verification checklist and telemetry are prioritized."
-      : "Agent 识别出求真辟谣与事实核验意图，已自动置顶求真核验清单与信源权威度遥测度量。";
+      : "Agent 识别出求真辟谣与事实核验意图，已自动置顶求真核验清单、证据卷宗与信源权威度遥测度量。";
     preferredEmphasized = "verification_checklist";
     baseOrder = [
       "verification_checklist",
+      "custom_cards",
       "metrics_telemetry",
       "quick_answer",
       "takeaways",
@@ -956,12 +1052,13 @@ export function determineAdaptiveLayout(params: {
     intentType = "news_trend";
     intentLabel = isEn ? "News & Trends Priority" : "时事资讯与热点走势优先 (突发脉络与趋势置顶)";
     explanation = isEn
-      ? "Agent detected breaking news or temporal dynamics. Event summary and trend sparkline are placed at the top."
-      : "Agent 识别出突发时事与最新动态需求：核心事件速递与时序趋势曲线首屏置顶，一手权威信源紧随呈现。";
-    preferredEmphasized = "quick_answer";
+      ? "Agent detected breaking news or temporal dynamics. Event summary, timeline and trend sparkline are placed at the top."
+      : "Agent 识别出突发时事与最新动态需求：核心事件速递、时间线与时序趋势曲线首屏置顶，一手权威信源紧随呈现。";
+    preferredEmphasized = "analytics_trend";
     baseOrder = [
-      "quick_answer",
       "analytics_trend",
+      "custom_cards",
+      "quick_answer",
       "sources",
       "takeaways",
       "verification_checklist",
@@ -981,6 +1078,7 @@ export function determineAdaptiveLayout(params: {
     baseOrder = [
       "quick_answer",
       "takeaways",
+      "custom_cards",
       "sources",
       "actions_toolbox",
       "fast_chat",
@@ -991,12 +1089,13 @@ export function determineAdaptiveLayout(params: {
     intentLabel = isEn ? "Deep Research Priority" : "深度综合研报优先 (核心结论与产业链协同)";
     explanation = isEn
       ? "Agent detected an in-depth research inquiry. Essential takeaways and comprehensive synthesis are presented."
-      : "Agent 识别出深度产业与战略研报课题：核心研报摘要与全产业链图谱深度协同。";
+      : "Agent 识别出深度产业与战略研报课题：核心研报摘要、思维导图与全景分析深度协同。";
     preferredEmphasized = "takeaways";
     baseOrder = [
       "takeaways",
-      "quick_answer",
       "mindmap",
+      "custom_cards",
+      "quick_answer",
       "topic_digest",
       "analytics_trend",
       "comparison",
@@ -1007,6 +1106,33 @@ export function determineAdaptiveLayout(params: {
       "followup",
       "agent_workflow"
     ];
+  }
+
+  // 2.5 若存在 WidgetPlan 专职规划结果，深度接管排版优先级与意图决策
+  if (widgetPlan) {
+    const wpIntent = widgetPlan.intent;
+    if (wpIntent === "install") intentType = "install";
+    else if (wpIntent === "tool_discovery") intentType = "tool_discovery";
+    else if (wpIntent === "travel") intentType = "travel";
+    else if (wpIntent === "troubleshooting") intentType = "troubleshooting";
+    else if (wpIntent === "compare") intentType = "comparison";
+    else if (wpIntent === "tutorial") intentType = "code_tutorial";
+    else if (wpIntent === "research") intentType = "deep_research";
+    else if (wpIntent === "explain") intentType = "quick_definition";
+
+    if (widgetPlan.widgets && widgetPlan.widgets.length > 0) {
+      baseOrder = widgetPlan.widgets;
+      preferredEmphasized = widgetPlan.widgets[0];
+      // 确保 WidgetPlan 中规划的组件全量激活
+      widgetPlan.widgets.forEach(w => {
+        if (activation.widgetStatusMap[w]) {
+          activation.widgetStatusMap[w].enabled = true;
+          if (!activation.enabledWidgets.includes(w)) {
+            activation.enabledWidgets.push(w);
+          }
+        }
+      });
+    }
   }
 
   // 3. 关键：过滤出当前真正启用的组件顺序（保留丰富有价值的组件生态，不强行截断）
@@ -1045,6 +1171,54 @@ export function determineAdaptiveLayout(params: {
     }
   };
 
+  // 6. 构造专职 UI Layout Planner Agent 规范格式对象（包含 Action Layer 任务解决属性）
+  const agentLayoutPlan = {
+    layout_type: (isComparisonQuery || intentType === "comparison" || isNewsTrendQuery) ? "two_column" : "single_column",
+    widgets: activeOrder.map((key, idx) => {
+      const semWidth = widthMap[key] || "full";
+      let size: "full" | "large" | "medium" | "small" | "compact" = "full";
+      if (semWidth === "full") size = "full";
+      else if (semWidth === "wide") size = "large";
+      else if (semWidth === "half") size = "medium";
+      else if (semWidth === "compact") size = "compact";
+
+      let category: "information" | "action" | "hybrid" | "comparison" | "visualization" = "information";
+      if (key === "official_portal" || key === "custom_cards" || isCodeTutorialQuery) {
+        category = "action";
+      } else if (key === "comparison") {
+        category = "comparison";
+      } else if (key === "mindmap") {
+        category = "visualization";
+      } else if (key === "quick_answer" || key === "takeaways") {
+        category = "hybrid";
+      }
+
+      return {
+        id: `w_${key}`,
+        type: key,
+        title: activation.widgetStatusMap[key]?.reason || key,
+        category,
+        priority: idx === 0 ? "highest" : (idx <= 3 ? "high" : "medium"),
+        size,
+        position: idx <= 3 ? "primary" : "secondary"
+      };
+    }),
+    custom_widgets: Boolean(hasCustomCards) ? [
+      {
+        id: "cw_unique_card",
+        title: "任务解决与独有业务行动看板",
+        category: "action" as const,
+        purpose: "根据搜索结果动态萃取高阶信息模型与任务执行入口 (Action Widget)，支持官网直达、命令复制与实操落地",
+        importance: "high" as const,
+        size: "full" as const,
+        actions: [
+          { type: "open_url" as const, label: "直达官方/主信源", variant: "primary" as const },
+          { type: "copy" as const, label: "快速复制命令/配置", variant: "secondary" as const }
+        ]
+      }
+    ] : []
+  };
+
   return {
     intentType,
     intentLabel,
@@ -1053,6 +1227,7 @@ export function determineAdaptiveLayout(params: {
     emphasizedWidget: finalEmphasized,
     gridConfig: packing.gridConfig,
     layoutPlan,
+    agentLayoutPlan: agentLayoutPlan as any,
     maxColumnsPerRow: 12,
     totalRows: packing.totalRows,
     packingMethod: "semantic-css-grid",

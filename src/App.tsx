@@ -16,6 +16,7 @@ import { SourcesListWidget } from "./components/SourcesListWidget.js";
 import { FollowUpWidget } from "./components/FollowUpWidget.js";
 import { MetricsTelemetryWidget } from "./components/widgets/MetricsTelemetryWidget.js";
 import { QuickActionsToolboxWidget } from "./components/widgets/QuickActionsToolboxWidget.js";
+import { ActionPlanWidget } from "./components/widgets/ActionPlanWidget.js";
 import { QuickAnswerWidget } from "./components/widgets/QuickAnswerWidget.js";
 import { TopicDigestWidget } from "./components/widgets/TopicDigestWidget.js";
 import { AgentAuditWidget } from "./components/widgets/AgentAuditWidget.js";
@@ -49,7 +50,7 @@ import {
   getStrategyForPreset,
   calculateAdaptiveBinPacking,
   getWidgetGridClass,
-  DEFAULT_FALLBACK_WIDGETS
+  resolveDynamicCapabilityWidgets
 } from "./lib/adaptiveLayout.js";
 import { motion } from "motion/react";
 import { 
@@ -285,6 +286,9 @@ export default function App() {
   // When a new search completes or activeResult changes, automatically adopt Agent's intent recommendation
   useEffect(() => {
     if (activeResult) {
+      if (activeResult.customCards && activeResult.customCards.length > 0) {
+        setCustomCards(prev => mergeCustomCards(prev, activeResult.customCards!));
+      }
       const rec = activeResult.layoutStrategy || computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
       setLayoutPreset(rec.intentType);
       setCustomWidgetOrder(rec.componentOrder);
@@ -303,7 +307,7 @@ export default function App() {
     const targetOrder: ResultWidgetKey[] = customWidgetOrder || baseRec.componentOrder;
     // Filter down to enabled widgets only for the visual layout
     const visibleOrder: ResultWidgetKey[] = targetOrder.filter((k) => activeEnabled.includes(k));
-    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? visibleOrder : DEFAULT_FALLBACK_WIDGETS;
+    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? visibleOrder : resolveDynamicCapabilityWidgets(baseRec.intentType);
 
     const emphasized: ResultWidgetKey = safeVisibleOrder.includes(baseRec.emphasizedWidget)
       ? baseRec.emphasizedWidget
@@ -370,7 +374,7 @@ export default function App() {
 
   const handleToggleWidgetActivation = (widgetKey: ResultWidgetKey) => {
     setCustomEnabledWidgets((prev) => {
-      const currentList = prev || currentStrategy.enabledWidgets || DEFAULT_FALLBACK_WIDGETS;
+      const currentList = prev || currentStrategy.enabledWidgets || resolveDynamicCapabilityWidgets(currentStrategy.intentType);
       let nextList: ResultWidgetKey[];
       if (currentList.includes(widgetKey)) {
         if (currentList.length <= 1) return currentList; // Keep at least 1 widget
@@ -694,11 +698,17 @@ export default function App() {
     switch (key) {
       case "custom_cards": {
         const activeNormQ = (activeResult?.query || "").trim().toLowerCase();
-        const relevantCards = customCards.filter(c => {
+        let relevantCards = customCards.filter(c => {
           if (c.isPinned) return true;
           const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
           return cardQ === activeNormQ;
         });
+
+        // Fallback to activeResult.customCards if local state is empty or pending
+        if (relevantCards.length === 0 && activeResult.customCards && activeResult.customCards.length > 0) {
+          relevantCards = activeResult.customCards;
+        }
+
         const seenArch = new Set<string>();
         const displayCards = relevantCards.filter(c => {
           if (seenArch.has(c.archetype)) return false;
@@ -736,6 +746,15 @@ export default function App() {
           />
         );
       case "actions_toolbox":
+        if (activeResult.actionPlan && activeResult.actionPlan.tasks && activeResult.actionPlan.tasks.length > 0) {
+          return (
+            <ActionPlanWidget
+              actionPlan={activeResult.actionPlan}
+              query={activeResult.query}
+              isCompact={isCompact}
+            />
+          );
+        }
         return (
           <QuickActionsToolboxWidget
             result={activeResult}

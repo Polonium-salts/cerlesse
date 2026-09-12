@@ -34,7 +34,10 @@ import {
   Code,
   TrendingUp,
   QrCode,
-  MessageSquare
+  MessageSquare,
+  Download,
+  Wrench,
+  AlertTriangle
 } from "lucide-react";
 import {
   AdaptiveLayoutStrategy,
@@ -149,6 +152,14 @@ export const AdaptiveLayoutControl: React.FC<AdaptiveLayoutControlProps> = ({
 
   const getPresetIcon = (id: LayoutIntentType) => {
     switch (id) {
+      case "install":
+        return <Download className="w-3.5 h-3.5" />;
+      case "tool_discovery":
+        return <Wrench className="w-3.5 h-3.5" />;
+      case "travel":
+        return <Compass className="w-3.5 h-3.5" />;
+      case "troubleshooting":
+        return <AlertTriangle className="w-3.5 h-3.5" />;
       case "comparison":
         return <Scale className="w-3.5 h-3.5" />;
       case "architecture":

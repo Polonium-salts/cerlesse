@@ -56,6 +56,7 @@ export interface AgentPlan {
 export type AgentRole = 
   | "coordinator"           // 主 Agent / 调度总控: 负责全局意图解析、任务拆解与派发、进度监控与最终验收交付
   | "retrieval"             // 全网检索 Agent: 负责主 Agent 派发的专职任务——全网多引擎嗅探、跨语言关键词扩展、权威官网甄别与垃圾清洗
+  | "action_planner"        // 行动规划 Agent: 负责分析用户最终任务目标、规划下一步动作 (Next-Step Action) 与调度 Tool Registry
   | "knowledge_synthesis"   // 深度研报 Agent: 负责主 Agent 派发的专职任务——核心速览提炼、多维对比矩阵、拓扑思维导图与延伸追问构建
   | "widget_forge"          // 专属小组件构建 Agent: 负责主 Agent 派发的专职任务——独有交互小组件 (Unique Card) 架构与锻造，多原型智能匹配与防重工程
   | "orchestrator"          // 排版编排 Agent: 负责主 Agent 派发的专职任务——自适应 4 列装箱算法、组件视觉跨度与启停休眠决策
@@ -137,6 +138,10 @@ export type LayoutIntentType =
   | "news_trend"        // 时事资讯/热点趋势优先 (即时动态与时序趋势置顶)
   | "quick_definition"  // 简明速答/概念速查 (单卡核心直接回答，极致极简)
   | "deep_research"     // 深度研报/核心结论优先 (全局综合研报拓扑)
+  | "install"           // 安装部署与下载中心优先
+  | "tool_discovery"    // 实用工具与在线体验优先
+  | "travel"            // 旅游攻略与行程路线优先
+  | "troubleshooting"   // 报错排查与故障修复优先
   | "balanced";         // 均衡综合布局
 
 export type ResultWidgetKey = 
@@ -185,7 +190,238 @@ export interface WidgetStatusDetail {
   autoDecidedByAgent?: boolean;
 }
 
-export type WidgetSemanticWidth = "full" | "wide" | "half" | "compact";
+export type WidgetSemanticWidth = "full" | "large" | "medium" | "small" | "compact" | "wide" | "half";
+
+export type LayoutStructureType = "single_column" | "two_column" | "dashboard";
+
+export type ToolCapabilityType = 
+  | "official_url"       // 打开已认证的官方门户主站/主入口
+  | "download"           // 下载软件包/二进制安装包/Release
+  | "install_command"    // 复制并执行包管理器安装命令 (npm/pip/brew/docker/curl)
+  | "copy_text"          // 复制配置代码/Prompt/环境参数
+  | "open_docs"          // 查阅官方深度文档或 API Reference
+  | "open_demo"          // 打开在线体验 Demo/Playground/WebUI
+  | "navigate"           // 页面内导航或跳转关联组件
+  | "api_endpoint";      // 测试或调用真实 API 端点
+
+export interface ToolDefinition {
+  id: ToolCapabilityType;
+  name: string;
+  description: string;
+  iconName: string;
+  requiredParams: string[];
+}
+
+export interface WidgetAction {
+  id?: string;
+  tool?: ToolCapabilityType;
+  type: "open_url" | "download" | "copy" | "execute" | "navigate" | "open_tool" | "api_endpoint";
+  label: string;
+  description?: string;
+  url?: string;
+  command?: string;
+  params?: Record<string, any>;
+  payload?: any;
+  variant?: "primary" | "secondary" | "outline" | "ghost";
+  iconName?: string;
+  badge?: string;
+  isVerified?: boolean;
+}
+
+export type QueryIntent = 
+  | "install"          // 软件安装/环境配置/下载CLI (如 Docker 怎么安装, 怎么下载 Python)
+  | "compare"          // 多方案选型/对比优劣 (如 Docker 和 Podman 区别, React vs Vue)
+  | "tool_discovery"   // 工具发现/在线工具推荐/免安装体验 (如 有没有免费的图片压缩工具)
+  | "tutorial"         // 实操步骤/代码教程/进阶实战 (如 怎么写 Promise, Nginx 反向代理配置)
+  | "troubleshooting"  // 报错排查/异常修复/避坑 (如 npm 报错, 跨域 CORS 排查)
+  | "travel"           // 旅游攻略/行程路线/景点住宿 (如 日本旅游攻略, 成都3日游)
+  | "explain"          // 概念解释/原理科普 (如 什么是 Docker, 量子计算原理)
+  | "research";        // 深度研报/全产业链/学术探讨
+
+export interface WidgetPlan {
+  intent: QueryIntent;
+  userGoal: string;
+  suggestedArchetype: CustomCardArchetype;
+  capabilities: string[]; // ["official_url", "download", "install_command", "install_step", "try_online", "compare_table", "pros_cons", "timeline", "itinerary_timeline"]
+  widgets: ResultWidgetKey[]; // Decided widget order based on capabilities & information priority
+  primaryActions: WidgetAction[]; // Standardized executable actions
+  widgetCustomizations?: {
+    cardTitle?: string;
+    cardSubtitle?: string;
+    cardCategory?: WidgetCategoryType;
+    suggestedArchetype?: CustomCardArchetype;
+    themeColor?: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
+    iconName?: string;
+  };
+}
+
+export interface TaskCapabilityRequirements {
+  task_type: QueryIntent;
+  user_goal: string;
+  required_capabilities: string[]; // e.g. ["download", "install_command", "official_portal", "compare_table", "demo_sandbox", "itinerary_timeline"]
+  recommended_widgets?: ResultWidgetKey[];
+  forbidden_widget_patterns?: string[];
+}
+
+export interface WidgetCapabilityDefinition {
+  id: ResultWidgetKey;
+  capabilities: string[];
+  widgetType: "interactive_action" | "analytical_tool" | "content_summary" | "portal_utility";
+  minInteractiveLevel: number;
+}
+
+export interface WidgetQualityGuardReport {
+  passed: boolean;
+  intent: QueryIntent;
+  evaluatedWidgets: ResultWidgetKey[];
+  violations: string[];
+  autoRemediated: boolean;
+  remediatedWidgets?: ResultWidgetKey[];
+  reason: string;
+}
+
+export type CustomCardArchetype = 
+  | "parameter_matrix" 
+  | "timeline" 
+  | "action_checklist" 
+  | "verdict_summary" 
+  | "pros_cons" 
+  | "quote_dossier"
+  | "tool_discovery"
+  | "download_hub"
+  | "travel_itinerary";
+
+export interface ToolDiscoveryItem {
+  id: string;
+  name: string;
+  tagline: string;
+  pricing: "free" | "freemium" | "paid" | "open_source";
+  rating: number; // 0-5
+  url: string;
+  hasOnlineDemo: boolean;
+  demoUrl?: string;
+  tags: string[];
+  highlight: string;
+}
+
+export interface ToolDiscoveryData {
+  categoryName: string;
+  tools: ToolDiscoveryItem[];
+  filterTags: string[];
+  recommendationVerdict: string;
+}
+
+export interface DownloadReleaseItem {
+  id: string;
+  platform: "linux" | "macos" | "windows" | "docker" | "generic";
+  platformLabel: string;
+  version: string;
+  downloadUrl?: string;
+  installCommand?: string;
+  checksum?: string;
+  isRecommended?: boolean;
+}
+
+export interface DownloadHubData {
+  softwareName: string;
+  latestVersion: string;
+  officialSiteUrl: string;
+  releases: DownloadReleaseItem[];
+  quickCopyCommand: string;
+  systemRequirements?: string;
+}
+
+export interface TravelDayPlan {
+  day: number;
+  title: string;
+  spots: Array<{
+    name: string;
+    description: string;
+    suggestedDuration: string;
+    tips?: string;
+    ticketUrl?: string;
+  }>;
+  transportation: string;
+}
+
+export interface TravelItineraryData {
+  destination: string;
+  suggestedDuration: string;
+  estimatedBudget: string;
+  days: TravelDayPlan[];
+  essentialTips: string[];
+  bookingLinks: Array<{ label: string; url: string }>;
+}
+
+export type UserGoalType = 
+  | "install_setup"          // 软件安装/部署环境/CLI操作
+  | "official_portal"        // 查找官方主站/权威入口/正版服务
+  | "code_implementation"    // 编写实现代码/配置框架/排查语法
+  | "selection_verdict"      // 选型决策/对比选购/方案推荐
+  | "troubleshooting"        // 报错排查/避坑指南/异常修复
+  | "fact_lookup"            // 事实核查/真假求证/数据速查
+  | "deep_learning";         // 原理探究/架构剖析/综合研报
+
+export interface PlannedTask {
+  id: string;
+  title: string;
+  goal: string;
+  toolCapability: ToolCapabilityType;
+  action: WidgetAction;
+  priority: "highest" | "high" | "medium";
+  executionHint?: string;
+  isCompleted?: boolean;
+}
+
+export interface ActionPlan {
+  userGoal: UserGoalType;
+  goalStatement: string;
+  nextStepVerdict: string;
+  hasExecutableAction: boolean;
+  requiresActionWidget: boolean;
+  suggestedArchetype: CustomCardArchetype;
+  primaryAction?: WidgetAction;
+  tasks: PlannedTask[];
+  recommendedWidgetOrder?: ResultWidgetKey[];
+  guardrailAudit: {
+    passed: boolean;
+    actionRequirementEnforced: boolean;
+    reason: string;
+  };
+}
+
+export type WidgetCategoryType = "information" | "action" | "hybrid" | "comparison" | "visualization";
+
+export interface PlannerWidgetSpec {
+  id: string;
+  type: ResultWidgetKey | string;
+  title: string;
+  category?: WidgetCategoryType;
+  priority: "highest" | "high" | "medium" | "low" | string;
+  size: "full" | "large" | "medium" | "small" | "compact";
+  position: "primary" | "secondary";
+  purpose?: string;
+  actions?: WidgetAction[];
+}
+
+export interface PlannerCustomWidgetSpec {
+  id: string;
+  title: string;
+  type?: string;
+  category?: WidgetCategoryType;
+  purpose?: string;
+  schema?: any;
+  content_schema?: any;
+  importance?: "high" | "medium" | "low";
+  size: "full" | "large" | "medium" | "small" | "compact";
+  actions?: WidgetAction[];
+}
+
+export interface AgentUILayoutPlan {
+  layout_type: LayoutStructureType;
+  widgets: PlannerWidgetSpec[];
+  custom_widgets?: PlannerCustomWidgetSpec[];
+}
 
 export interface LayoutBudget {
   maxPrimarySections: number;
@@ -242,6 +478,7 @@ export interface AdaptiveLayoutStrategy {
   disabledWidgets?: ResultWidgetKey[];
   widgetStatusMap?: Record<ResultWidgetKey, WidgetStatusDetail>;
   customWidgetSpans?: Partial<Record<ResultWidgetKey, number>>;
+  agentLayoutPlan?: AgentUILayoutPlan;
   alignmentMode?: LayoutAlignmentMode;
   autoFillGaps?: boolean;
   autoFillMode?: AutoFillGapsMode;
@@ -268,6 +505,8 @@ export interface SearchSynthesisResult {
   layoutStrategy?: AdaptiveLayoutStrategy;
   agentTeam?: AgentTeamReport;
   customCards?: CustomCardData[];
+  actionPlan?: ActionPlan;
+  widgetPlan?: WidgetPlan;
 }
 
 export interface OpenRouterModel {
@@ -287,15 +526,6 @@ export interface UserSettings {
   maxResults: number;
   enableDeepSearch: boolean;
 }
-
-export type CustomCardArchetype = 
-  | "pros_cons"         // 优缺点与避坑对比
-  | "action_checklist"  // 实操步骤与执行清单
-  | "parameter_matrix"  // 核心参数与规格全览
-  | "quote_dossier"     // 关键言论与信源档案
-  | "timeline"          // 发展演进与时间线
-  | "verdict_summary"   // 结论裁决与评级决策
-  | "freeform";         // 自定义/自由结构
 
 export interface CustomCardMetric {
   label: string;
@@ -439,6 +669,7 @@ export interface CustomCardData {
   id: string;
   title: string;
   subtitle: string;
+  category?: WidgetCategoryType;
   archetype: CustomCardArchetype;
   themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
   iconName: string;
@@ -452,6 +683,8 @@ export interface CustomCardData {
   takeawayFootnote?: string;
   userPrompt?: string;
   isPinned?: boolean;
+  actions?: WidgetAction[];
+  purpose?: string;
   // 各原型专属的高阶功能数据模型
   prosConsData?: ProsConsData;
   checklistData?: ActionChecklistData;
@@ -459,4 +692,7 @@ export interface CustomCardData {
   timelineData?: TimelineData;
   verdictData?: VerdictSummaryData;
   quoteData?: QuoteDossierData;
+  toolDiscoveryData?: ToolDiscoveryData;
+  downloadHubData?: DownloadHubData;
+  travelData?: TravelItineraryData;
 }

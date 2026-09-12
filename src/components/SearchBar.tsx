@@ -155,6 +155,34 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Instant Task Scenarios Discovery Chips */}
+      <div className="mt-6 w-full flex flex-col items-center">
+        <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 mb-2.5 tracking-wide">
+          快速体验智能自适应任务布局
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2 max-w-xl">
+          {[
+            { label: "🛠️ 在线 PDF 转换免安装工具", query: "pdf 转 word 在线免安装工具" },
+            { label: "💻 Docker 安装教程与国内镜像", query: "docker 安装教程与国内镜像源配置" },
+            { label: "✈️ 成都三日游精选路线与避坑", query: "成都三日游路线攻略与避坑指南" },
+            { label: "⚠️ npm install 报错 EACCES 解决", query: "npm install 报错 EACCES 权限问题解决办法" },
+            { label: "⚖️ DeepSeek R1 对比 Claude 3.5", query: "DeepSeek R1 vs Claude 3.5 Sonnet 模型对比" }
+          ].map((item) => (
+            <button
+              key={item.query}
+              type="button"
+              onClick={() => {
+                setQuery(item.query);
+                onSearch(item.query, deepSearch);
+              }}
+              className="px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800/80 hover:bg-zinc-50 dark:hover:bg-zinc-700/80 border border-zinc-200/90 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 shadow-2xs transition-all hover:scale-[1.02] active:scale-98 cursor-pointer"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };

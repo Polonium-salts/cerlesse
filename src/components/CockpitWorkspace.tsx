@@ -26,7 +26,8 @@ import {
   RefreshCw,
   Search,
   Zap,
-  LayoutGrid
+  LayoutGrid,
+  Compass
 } from "lucide-react";
 import { AIOverviewWidget } from "./AIOverviewWidget.js";
 import { MindMapWidget } from "./MindMapWidget.js";
@@ -35,6 +36,7 @@ import { SourcesListWidget } from "./SourcesListWidget.js";
 import { FollowUpWidget } from "./FollowUpWidget.js";
 import { AgentProgressStream } from "./AgentProgressStream.js";
 import { UniqueCardWidget } from "./widgets/UniqueCardWidget.js";
+import { ActionPlanWidget } from "./widgets/ActionPlanWidget.js";
 import { CustomCardData } from "../types.js";
 
 interface CockpitWorkspaceProps {
@@ -452,6 +454,16 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-white dark:bg-[#1c1c1e]">
           {activeTab === "overview" && (
             <div className="max-w-5xl mx-auto space-y-6">
+              {/* 行动规划与能力调度组件：当存在明确操作目标时优先置顶 */}
+              {activeResult.actionPlan && activeResult.actionPlan.tasks && activeResult.actionPlan.tasks.length > 0 && (
+                <div className="w-full">
+                  <ActionPlanWidget
+                    actionPlan={activeResult.actionPlan}
+                    query={activeResult.query}
+                  />
+                </div>
+              )}
+
               {/* 搜索定制独有小组件：与固定组件拥有完全相同的排列效果与UI风格 */}
               {displayCustomCards.length > 0 && (
                 <div className="space-y-4 w-full">

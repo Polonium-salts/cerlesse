@@ -16,17 +16,78 @@ import { z } from "zod";
 import { searchSearxng } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis } from "./openrouter.js";
 import { forgeUniqueCard, detectBestArchetype } from "./cardForge.js";
+import { planActionForQuery } from "./actionPlanner.js";
+import { planWidgetStrategy } from "./widgetPlanner.js";
+import { TOOL_REGISTRY, synthesizeToolActions } from "./toolRegistry.js";
 import { determineAdaptiveLayout } from "./agent.js";
 import {
   SearchResult,
   CustomCardData,
   CustomCardArchetype,
-  AdaptiveLayoutStrategy
+  AdaptiveLayoutStrategy,
+  ActionPlan,
+  WidgetPlan
 } from "../src/types.js";
 
 // ==========================================
 // 1. Specialized Agent Tool Definitions
 // ==========================================
+
+/**
+ * Action Planner Agent Tools (行动规划与任务解决智能体工具箱)
+ */
+export const tool_plan_user_actions = tool({
+  name: "plan_user_actions",
+  description: "Evaluate user query and next-step actions, determine if an executable Action Widget is required, and build a structured Action Plan.",
+  parameters: z.object({
+    query: z.string().describe("User search query"),
+    targetLanguage: z.string().optional().describe("Target language code")
+  }),
+  execute: async (args: { query: string; targetLanguage?: string }, context?: any) => {
+    const results: SearchResult[] = context?.results || [];
+    const plan: ActionPlan = await planActionForQuery({
+      query: args.query,
+      results,
+      targetLanguage: args.targetLanguage
+    });
+    return JSON.stringify(plan);
+  }
+});
+
+export const tool_lookup_tool_registry = tool({
+  name: "lookup_tool_registry",
+  description: "Look up executable capabilities in the standardized Tool Registry (official_url, install_command, download, copy_text, open_docs, open_demo, navigate, api_endpoint).",
+  parameters: z.object({
+    capability: z.string().optional().describe("Tool capability name")
+  }),
+  execute: async (args: { capability?: string }) => {
+    if (args.capability && (TOOL_REGISTRY as any)[args.capability]) {
+      return JSON.stringify((TOOL_REGISTRY as any)[args.capability]);
+    }
+    return JSON.stringify(TOOL_REGISTRY);
+  }
+});
+
+export const tool_audit_action_guardrails = tool({
+  name: "audit_action_guardrails",
+  description: "Enforce output guardrail: verify that if user query involves software, installation, portal, CLI, or tools, an Action Widget with real tool bindings is generated.",
+  parameters: z.object({
+    query: z.string().describe("User query"),
+    actionCount: z.number().describe("Number of generated executable actions")
+  }),
+  execute: async (args: { query: string; actionCount: number }) => {
+    const isActionOriented = /(安装|下载|配置|部署|官网|入口|命令|教程|报错|docker|npm|pip|brew|curl|install|setup|cli)/i.test(args.query);
+    const passed = !isActionOriented || args.actionCount > 0;
+    return JSON.stringify({
+      passed,
+      enforced: isActionOriented,
+      actionCount: args.actionCount,
+      reason: passed 
+        ? "Action guardrail passed: All action requirements are satisfied with genuine Tool Registry bindings." 
+        : "Action guardrail warning: Query requires actionable widget but none found."
+    });
+  }
+});
 
 /**
  * Retrieval Agent Tools
@@ -67,8 +128,26 @@ export const tool_verify_official_portal = tool({
 });
 
 /**
- * Widget Architect Agent Tools (专职小组件构建智能体工具箱)
+ * Widget Planner & Architect Agent Tools (专职小组件规划与构建智能体工具箱)
  */
+export const tool_plan_widget_strategy = tool({
+  name: "plan_widget_strategy",
+  description: "Plan widget intent, required capabilities, suggested archetype, and widget priority arrangement based on user task.",
+  parameters: z.object({
+    query: z.string().describe("User search query"),
+    targetLanguage: z.string().optional().describe("Target language code")
+  }),
+  execute: async (args: { query: string; targetLanguage?: string }, context?: any) => {
+    const results: SearchResult[] = context?.results || [];
+    const plan: WidgetPlan = await planWidgetStrategy({
+      query: args.query,
+      results,
+      targetLanguage: args.targetLanguage
+    });
+    return JSON.stringify(plan);
+  }
+});
+
 export const tool_detect_card_archetype = tool({
   name: "detect_card_archetype",
   description: "Analyze query semantics, entity type, and search snippets to choose the optimal, distinct interactive card archetype.",
@@ -251,6 +330,17 @@ export const tool_audit_guardrails = tool({
 // 2. Official Agent Class Instantiations
 // ==========================================
 
+export const actionPlannerAgent = new Agent({
+  name: "行动规划 Agent (ActionPlannerAgent)",
+  instructions: `你是一位专职负责用户任务目标研判、下一步行动拆解与能力调度的行动规划智能体。
+严格遵循 OpenAI Agents 架构规范与 Tool Registry 标准：
+1. 坚决禁止做被动的信息罗列器！核心目标是帮助用户完成具体任务；
+2. 研判用户已知什么、下一步需要什么（安装软件、访问正版官网、复制代码/命令、配置参数、多方案裁决）；
+3. 从 Tool Registry 能力注册表中挑选真实工具（official_url, install_command, download, copy_text, open_docs, open_demo），严禁生成假按钮；
+4. 如果用户存在操作需求，必须规划 Action Widget，并标记最高执行优先级。`,
+  tools: [tool_plan_user_actions, tool_lookup_tool_registry, tool_audit_action_guardrails]
+});
+
 export const retrievalAgent = new Agent({
   name: "全网检索 Agent (RetrievalAgent)",
   instructions: `你是一位专职的全网精准多源检索与权威官网甄别智能体。
@@ -272,29 +362,35 @@ export const knowledgeSynthesisAgent = new Agent({
   tools: [tool_synthesize_report]
 });
 
-export const widgetArchitectAgent = new Agent({
-  name: "专属小组件构建 Agent (WidgetArchitectAgent)",
-  instructions: `你是一位专职负责独有交互业务小组件 (Unique Card Component) 架构与智能锻造的专属智能体。
+export const widgetPlannerAgent = new Agent({
+  name: "专属小组件规划与构建 Agent (WidgetPlannerAgent)",
+  instructions: `你是一位专职负责独有交互业务小组件规划、能力架构与智能锻造的专属智能体。
 严格遵循 OpenAI Agents JS 指南与智能防重护栏要求：
-1. 绝对严禁千篇一律生成同质化或套路模板！
-2. 依据实体与查询语义智能决策最适原型：
-   - 科技产品/平台/硬件/企业 -> 参数规格矩阵 (parameter_matrix) 或演进历程 (timeline)
-   - 实操/教程/排查/安装 -> 交互执行清单 (action_checklist)
-   - 方案选型/推荐/购买 -> 场景量化裁决看板 (verdict_summary)
-   - 争议/言论/深度评测 -> 权威信源论据档案 (quote_dossier)
-   - 双向利弊/避坑 -> 优劣势平衡矩阵 (pros_cons)
-3. 必须输出真实接地气、可交互的完整业务数据模型（状态勾选、打分过滤、规格比对）；
-4. 实施防重复输出护栏，确保每个小组件的独特性与信息密度。`,
-  tools: [tool_detect_card_archetype, tool_forge_unique_widget, tool_enforce_widget_uniqueness]
+1. 深入研判用户真实任务意图与关键能力需求 (Capabilities)；
+2. 绝对严禁千篇一律生成同质化或套路模板！
+3. 依据任务特征精准裁决最适业务原型：
+   - 软件安装/环境配置 -> 跨平台下载与环境配置中心 (download_hub)
+   - 在线工具/实用平台 -> 免安装工具与在线体验沙盒 (tool_discovery)
+   - 旅游路线/出行攻略 -> 多日行程规划与景点动线 (travel_itinerary)
+   - 报错排查/修复指南 -> 交互式避坑与修复清单 (action_checklist / troubleshooting)
+   - 科技产品/硬件/企业 -> 参数规格矩阵 (parameter_matrix) 或演进历程 (timeline)
+   - 方案选型/对比推荐 -> 场景量化裁决看板 (verdict_summary) / 优劣势平衡矩阵 (pros_cons)
+4. 规划各小组件信息优先级，必须输出真实接地气、可交互的完整业务数据模型与 Tool Registry 真实行动入口；
+5. 实施防重复输出护栏，确保每个小组件的独特性、信息密度与可操作性。`,
+  tools: [tool_plan_widget_strategy, tool_detect_card_archetype, tool_forge_unique_widget, tool_lookup_tool_registry, tool_enforce_widget_uniqueness]
 });
+
+// Alias for backward compatibility
+export const widgetArchitectAgent = widgetPlannerAgent;
 
 export const layoutAgent = new Agent({
   name: "排版编排 Agent (LayoutAgent)",
-  instructions: `你是一位专职的自适应 4 列瀑布流装箱与组件生命周期编排智能体。
+  instructions: `你是一位专职的自适应 4 列瀑布流装箱、信息优先级排布与组件生命周期编排智能体。
 你的专属独立职责是：
-1. 执行自适应装箱算法，计算各卡片的 4 列跨度 (colSpan: 3 / 6 / 9 / 12)；
-2. 评估内容密度，动态激活高价值组件并休眠冗余卡片；
-3. 专职视觉与空间工程，确保界面布局平衡与响应式舒适度。`,
+1. 依据 Widget Plan 与意图模型，精确规划小组件信息展示优先级与排列顺序（如安装场景置顶下载中心与命令行）；
+2. 评估内容密度与任务紧急度，动态激活高价值组件并休眠与当前任务无关的冗余卡片；
+3. 执行自适应装箱算法，计算各卡片的 4 列跨度 (colSpan: 3 / 6 / 9 / 12)；
+4. 专职视觉与空间工程，确保界面布局平衡、首屏有效信息密度与响应式舒适度。`,
   tools: [tool_compute_bento_packing]
 });
 
@@ -305,8 +401,9 @@ export const guardrailAgent = new Agent({
 1. 执行输入护栏审计；
 2. 核验外部信源 URL 可达性与防幻觉佐证；
 3. 检查思维导图拓扑连通闭环；
-4. 执行小组件防重复风控审计，确保卡片绝不千篇一律。`,
-  tools: [tool_audit_guardrails]
+4. 执行行动组件护栏审计：确保行动需求已被真实 Tool Registry 绑定；
+5. 执行小组件防重复风控审计，确保卡片绝不千篇一律。`,
+  tools: [tool_audit_guardrails, tool_audit_action_guardrails]
 });
 
 export const masterOrchestratorAgent = new Agent({
@@ -316,15 +413,17 @@ export const masterOrchestratorAgent = new Agent({
 1. 接收用户需求，进行全局意图感知与协作任务拆解；
 2. 通过 formal handoff 将各专项职责分派给专门的领域智能体：
    - handoff 至 全网检索 Agent 抓取权威信源；
+   - handoff 至 行动规划 Agent 研判任务目标并调度 Tool Registry；
    - handoff 至 深度研报 Agent 提炼速览与导图；
-   - handoff 至 专属小组件构建 Agent 锻造独一无二的交互卡片；
-   - handoff 至 排版编排 Agent 规划自适应瀑布流；
-   - handoff 至 护栏质检 Agent 执行安全与防重审计；
+   - handoff 至 专属小组件规划与构建 Agent 规划能力模型并锻造独一无二的交互卡片；
+   - handoff 至 排版编排 Agent 规划自适应瀑布流、优先级排序与 Action 焦点；
+   - handoff 至 护栏质检 Agent 执行安全、行动与防重审计；
 3. 协调并发作业，汇聚所有专职交付物，进行最终质量验收后交付用户。`,
   handoffs: [
     handoff(retrievalAgent),
+    handoff(actionPlannerAgent),
     handoff(knowledgeSynthesisAgent),
-    handoff(widgetArchitectAgent),
+    handoff(widgetPlannerAgent),
     handoff(layoutAgent),
     handoff(guardrailAgent)
   ]

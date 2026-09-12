@@ -10,7 +10,7 @@ import {
 import {
   normalizeWidthToGridClass,
   normalizeWidgetSpan,
-  DEFAULT_FALLBACK_WIDGETS
+  resolveDynamicCapabilityWidgets
 } from "../lib/adaptiveLayout.js";
 
 interface AdaptiveMasonryGridProps {
@@ -32,7 +32,7 @@ export const AdaptiveMasonryGrid: React.FC<AdaptiveMasonryGridProps> = ({
   // Filter only widgets that are present in enabledWidgets with safe fallback
   const rawList = enabledWidgets && enabledWidgets.length > 0
     ? enabledWidgets
-    : (strategy.componentOrder && strategy.componentOrder.length > 0 ? strategy.componentOrder : DEFAULT_FALLBACK_WIDGETS);
+    : (strategy.componentOrder && strategy.componentOrder.length > 0 ? strategy.componentOrder : resolveDynamicCapabilityWidgets(strategy.intentType || "balanced"));
 
   const activeWidgets = rawList.filter(Boolean);
 

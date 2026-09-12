@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { IOSWidget } from "../ui/IOSWidget.js";
-import { CustomCardData, CustomCardSectionItem } from "../../types.js";
+import { CustomCardData, CustomCardSectionItem, WidgetAction } from "../../types.js";
 import {
   Sparkles,
   CheckCircle2,
@@ -24,7 +24,11 @@ import {
   ChevronDown,
   ChevronUp,
   Share2,
-  ListTree
+  ListTree,
+  Download,
+  PlayCircle,
+  Zap,
+  ArrowRight
 } from "lucide-react";
 import { ProsConsView } from "./archetypes/ProsConsView.js";
 import { ChecklistView } from "./archetypes/ChecklistView.js";
@@ -32,6 +36,9 @@ import { MatrixView } from "./archetypes/MatrixView.js";
 import { TimelineView } from "./archetypes/TimelineView.js";
 import { VerdictView } from "./archetypes/VerdictView.js";
 import { QuoteDossierView } from "./archetypes/QuoteDossierView.js";
+import { ToolDiscoveryView } from "./archetypes/ToolDiscoveryView.js";
+import { DownloadHubView } from "./archetypes/DownloadHubView.js";
+import { TravelItineraryView } from "./archetypes/TravelItineraryView.js";
 
 interface UniqueCardWidgetProps {
   card: CustomCardData;
@@ -106,6 +113,9 @@ const ARCHETYPE_LABELS: Record<string, string> = {
   quote_dossier: "信源论据",
   timeline: "演进里程碑",
   verdict_summary: "结论裁决",
+  tool_discovery: "工具与体验",
+  download_hub: "安装与下载",
+  travel_itinerary: "行程与打卡",
   freeform: "专属定制"
 };
 
@@ -142,8 +152,20 @@ export const UniqueCardWidget: React.FC<UniqueCardWidgetProps> = ({
   isCompact = false
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedActionId, setCopiedActionId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"functional" | "structured">("functional");
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
+
+  const handleActionClick = (action: WidgetAction, idx: number) => {
+    const actId = action.id || `act-${idx}`;
+    if (action.type === "copy" && action.command) {
+      navigator.clipboard.writeText(action.command);
+      setCopiedActionId(actId);
+      setTimeout(() => setCopiedActionId(null), 2000);
+    } else if (action.url) {
+      window.open(action.url, "_blank", "noopener,noreferrer");
+    }
+  };
 
   const hasArchetypeView = Boolean(
     (card.archetype === "pros_cons" && card.prosConsData) ||
@@ -151,7 +173,10 @@ export const UniqueCardWidget: React.FC<UniqueCardWidgetProps> = ({
     (card.archetype === "parameter_matrix" && card.matrixData) ||
     (card.archetype === "timeline" && card.timelineData) ||
     (card.archetype === "verdict_summary" && card.verdictData) ||
-    (card.archetype === "quote_dossier" && card.quoteData)
+    (card.archetype === "quote_dossier" && card.quoteData) ||
+    (card.archetype === "tool_discovery" && card.toolDiscoveryData) ||
+    (card.archetype === "download_hub" && card.downloadHubData) ||
+    (card.archetype === "travel_itinerary" && card.travelData)
   );
 
   const [itemsState, setItemsState] = useState<Record<string, boolean>>(() => {
@@ -310,7 +335,58 @@ export const UniqueCardWidget: React.FC<UniqueCardWidgetProps> = ({
       className={`w-full ${theme.borderHover} transition-all`}
     >
       <div className="flex flex-col space-y-4">
-        {/* Key Metrics Banner (if present) */}
+        {/* Action Launcher Bar (Task Execution Layer) */}
+        {card.actions && card.actions.length > 0 && (
+          <div className="p-3 rounded-2xl bg-linear-to-r from-blue-50/70 via-indigo-50/40 to-emerald-50/50 dark:from-blue-950/40 dark:via-zinc-900/40 dark:to-emerald-950/30 border border-blue-200/60 dark:border-blue-800/40 shadow-2xs">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <span>任务执行入口 · 立即解决</span>
+              </div>
+              <span className="text-[10px] font-mono text-zinc-400">
+                {card.actions.length} 个快捷操作
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {card.actions.map((act, idx) => {
+                const actId = act.id || `act-${idx}`;
+                const isCopied = copiedActionId === actId;
+                const isPrimary = act.variant === "primary" || idx === 0;
+
+                return (
+                  <button
+                    key={actId}
+                    onClick={() => handleActionClick(act, idx)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                      isPrimary
+                        ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-100 active:scale-98"
+                        : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 active:scale-98"
+                    }`}
+                  >
+                    {act.type === "copy" ? (
+                      isCopied ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                      )
+                    ) : act.type === "download" ? (
+                      <Download className="w-3.5 h-3.5 text-blue-500" />
+                    ) : act.type === "open_tool" ? (
+                      <PlayCircle className="w-3.5 h-3.5 text-emerald-500" />
+                    ) : (
+                      <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+                    )}
+
+                    <span>{isCopied ? "已复制到剪贴板" : act.label}</span>
+
+                    {isPrimary && <ArrowRight className="w-3 h-3 opacity-60 ml-0.5" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {card.metrics && card.metrics.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-850/70 border border-zinc-200/60 dark:border-zinc-800/80">
             {card.metrics.map((m, idx) => (
@@ -418,6 +494,27 @@ export const UniqueCardWidget: React.FC<UniqueCardWidgetProps> = ({
                 data={card.quoteData}
                 themeColor={card.themeColor}
                 onUpdateData={(updated) => onUpdateCard?.({ ...card, quoteData: updated })}
+              />
+            )}
+
+            {card.archetype === "tool_discovery" && card.toolDiscoveryData && (
+              <ToolDiscoveryView
+                data={card.toolDiscoveryData}
+                themeColor={card.themeColor}
+              />
+            )}
+
+            {card.archetype === "download_hub" && card.downloadHubData && (
+              <DownloadHubView
+                data={card.downloadHubData}
+                themeColor={card.themeColor}
+              />
+            )}
+
+            {card.archetype === "travel_itinerary" && card.travelData && (
+              <TravelItineraryView
+                data={card.travelData}
+                themeColor={card.themeColor}
               />
             )}
           </div>

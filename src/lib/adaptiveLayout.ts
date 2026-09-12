@@ -21,6 +21,30 @@ export interface PresetLayoutOption {
 
 export const PRESET_LAYOUT_OPTIONS: PresetLayoutOption[] = [
   {
+    id: "install",
+    label: "安装部署与下载优先",
+    iconName: "Download",
+    description: "一键执行命令、跨平台安装包镜像与环境配置清单置顶，直达官方部署通道"
+  },
+  {
+    id: "tool_discovery",
+    label: "实用工具与在线体验优先",
+    iconName: "Wrench",
+    description: "免安装在线工具卡片矩阵、在线体验入口与功能横评置顶，快速上手体验"
+  },
+  {
+    id: "travel",
+    label: "旅游攻略与行程路线优先",
+    iconName: "Compass",
+    description: "分天行程规划、必去景点打卡地图与官方门票预约入口置顶，高效规划行程"
+  },
+  {
+    id: "troubleshooting",
+    label: "报错排查与故障修复优先",
+    iconName: "AlertTriangle",
+    description: "故障诊断、排查清单、修复命令与官方排错文档置顶，快速解决异常"
+  },
+  {
     id: "comparison",
     label: "多维对比矩阵优先",
     iconName: "Scale",
@@ -75,6 +99,103 @@ export const PRESET_LAYOUT_OPTIONS: PresetLayoutOption[] = [
     description: "自然流式排列，保持从速答、要点、信源到分析工具箱的和谐阅读节奏"
   }
 ];
+
+// ==========================================
+// 1. Widget Capability Registry (OpenAI Agents Tools & Capabilities Architecture)
+// ==========================================
+export interface WidgetCapabilityInfo {
+  capabilities: string[];
+  intentFit: LayoutIntentType[];
+  isActionOriented: boolean;
+}
+
+export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilityInfo> = {
+  custom_cards: {
+    capabilities: ["download_hub", "tool_discovery", "travel_itinerary", "parameter_matrix", "action_checklist", "verdict_summary", "pros_cons", "timeline"],
+    intentFit: ["install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "deep_research", "architecture", "balanced"],
+    isActionOriented: true
+  },
+  actions_toolbox: {
+    capabilities: ["copy_command", "download_package", "quick_action", "cli_execution", "quick_links"],
+    intentFit: ["install", "troubleshooting", "code_tutorial", "tool_discovery", "official_portal", "quick_definition", "balanced"],
+    isActionOriented: true
+  },
+  official_portal: {
+    capabilities: ["official_site", "verified_docs", "authoritative_entry"],
+    intentFit: ["official_portal", "install", "tool_discovery", "travel"],
+    isActionOriented: true
+  },
+  verification_checklist: {
+    capabilities: ["troubleshooting_audit", "fact_check", "prerequisites_check", "security_audit"],
+    intentFit: ["troubleshooting", "fact_check", "install", "news_trend"],
+    isActionOriented: true
+  },
+  comparison: {
+    capabilities: ["cross_compare", "dimension_pk", "feature_matrix"],
+    intentFit: ["comparison", "tool_discovery"],
+    isActionOriented: false
+  },
+  mindmap: {
+    capabilities: ["knowledge_topology", "architecture_tree", "subsystem_mapping"],
+    intentFit: ["architecture", "deep_research"],
+    isActionOriented: false
+  },
+  analytics_trend: {
+    capabilities: ["trend_signals", "sentiment_distribution", "temporal_evolution"],
+    intentFit: ["news_trend", "fact_check", "deep_research"],
+    isActionOriented: false
+  },
+  topic_digest: {
+    capabilities: ["faceted_deep_dive", "multi_aspect_summary"],
+    intentFit: ["deep_research", "code_tutorial", "balanced"],
+    isActionOriented: false
+  },
+  takeaways: {
+    capabilities: ["bullet_conclusions", "high_density_takeaways"],
+    intentFit: ["deep_research", "quick_definition", "travel", "comparison", "balanced"],
+    isActionOriented: false
+  },
+  quick_answer: {
+    capabilities: ["instant_verdict", "definition_snippet"],
+    intentFit: ["quick_definition", "balanced", "explain" as any],
+    isActionOriented: false
+  },
+  sources: {
+    capabilities: ["evidence_chain", "citation_retrieval", "literature_archive"],
+    intentFit: ["fact_check", "deep_research", "balanced", "official_portal", "install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "news_trend", "quick_definition", "architecture"],
+    isActionOriented: false
+  },
+  fast_chat: {
+    capabilities: ["interactive_followup_chat", "question_answering"],
+    intentFit: ["balanced", "deep_research", "code_tutorial"],
+    isActionOriented: true
+  },
+  mobile_qr: {
+    capabilities: ["mobile_handoff", "qr_scan_action"],
+    intentFit: ["official_portal", "travel", "install"],
+    isActionOriented: true
+  },
+  followup: {
+    capabilities: ["smart_followup_prompts"],
+    intentFit: ["balanced", "deep_research"],
+    isActionOriented: false
+  },
+  metrics_telemetry: {
+    capabilities: ["source_telemetry", "confidence_meter"],
+    intentFit: ["fact_check", "deep_research", "balanced"],
+    isActionOriented: false
+  },
+  agent_workflow: {
+    capabilities: ["agent_telemetry", "dag_trace"],
+    intentFit: ["deep_research", "balanced"],
+    isActionOriented: false
+  },
+  ai_overview: {
+    capabilities: ["overview_synthesis"],
+    intentFit: ["balanced"],
+    isActionOriented: false
+  }
+};
 
 // ==========================================
 // 1. Widget Registry: Single Source of Truth
@@ -253,15 +374,84 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   }
 };
 
-export const DEFAULT_FALLBACK_WIDGETS: ResultWidgetKey[] = [
-  "quick_answer",
-  "takeaways",
-  "sources",
-  "actions_toolbox",
-  "fast_chat",
-  "followup",
-  "metrics_telemetry"
-];
+/**
+ * Dynamic Capability Resolver based on Task Intent (Intent -> Capability -> Widgets)
+ * Eliminates static hardcoded fallback templates.
+ */
+export function resolveDynamicCapabilityWidgets(intent: LayoutIntentType): ResultWidgetKey[] {
+  switch (intent) {
+    case "install":
+      return ["custom_cards", "actions_toolbox", "official_portal", "verification_checklist", "sources"];
+    case "tool_discovery":
+      return ["custom_cards", "comparison", "official_portal", "actions_toolbox", "sources"];
+    case "travel":
+      return ["custom_cards", "takeaways", "official_portal", "actions_toolbox", "sources"];
+    case "troubleshooting":
+      return ["actions_toolbox", "verification_checklist", "custom_cards", "sources"];
+    case "comparison":
+      return ["comparison", "custom_cards", "takeaways", "sources"];
+    case "architecture":
+      return ["mindmap", "custom_cards", "takeaways", "sources"];
+    case "official_portal":
+      return ["official_portal", "actions_toolbox", "custom_cards", "sources"];
+    case "code_tutorial":
+      return ["actions_toolbox", "custom_cards", "topic_digest", "sources"];
+    case "fact_check":
+      return ["verification_checklist", "custom_cards", "sources", "analytics_trend"];
+    case "news_trend":
+      return ["analytics_trend", "sources", "takeaways", "verification_checklist"];
+    case "quick_definition":
+      return ["quick_answer", "takeaways", "custom_cards", "sources"];
+    case "deep_research":
+      return ["takeaways", "mindmap", "custom_cards", "topic_digest", "sources"];
+    case "balanced":
+    default:
+      return ["quick_answer", "custom_cards", "takeaways", "sources", "actions_toolbox"];
+  }
+}
+
+/**
+ * Layout & Widget Selection Guardrail
+ * Ensures non-informational tasks (install, tool, travel, fix, etc.) NEVER regress to purely passive text cards.
+ */
+export function auditLayoutGuardrail(intent: LayoutIntentType, enabledWidgets: ResultWidgetKey[]): {
+  passed: boolean;
+  remediatedWidgets: ResultWidgetKey[];
+  violations: string[];
+} {
+  const violations: string[] = [];
+  const currentSet = new Set(enabledWidgets);
+
+  const isActionIntent = ["install", "tool_discovery", "travel", "troubleshooting", "code_tutorial"].includes(intent);
+  const hasActionWidget = enabledWidgets.some((k) => WIDGET_CAPABILITY_REGISTRY[k]?.isActionOriented);
+
+  if (isActionIntent && !hasActionWidget) {
+    violations.push(`Intent [${intent}] requires interactive/action capabilities but none were found.`);
+    currentSet.add("custom_cards");
+    currentSet.add("actions_toolbox");
+  }
+
+  if (intent === "install" && !currentSet.has("actions_toolbox") && !currentSet.has("custom_cards")) {
+    violations.push("Install intent missing action_toolbox or custom_cards capability.");
+    currentSet.add("actions_toolbox");
+  }
+
+  if (intent === "tool_discovery" && !currentSet.has("custom_cards") && !currentSet.has("comparison")) {
+    violations.push("Tool discovery intent missing custom_cards or comparison capability.");
+    currentSet.add("custom_cards");
+  }
+
+  if (intent === "travel" && !currentSet.has("custom_cards") && !currentSet.has("takeaways")) {
+    violations.push("Travel intent missing custom_cards or takeaways capability.");
+    currentSet.add("custom_cards");
+  }
+
+  return {
+    passed: violations.length === 0,
+    remediatedWidgets: Array.from(currentSet),
+    violations
+  };
+}
 
 export function getWidgetLabel(key: ResultWidgetKey): string {
   return WIDGET_REGISTRY[key]?.label || key;
@@ -309,17 +499,17 @@ export function normalizeWidgetSpan(
 ): number {
   if (typeof span === "string") {
     if (span === "full") return 12;
-    if (span === "wide") return 8;
-    if (span === "half") return 6;
-    if (span === "compact") return 4;
+    if (span === "large" || span === "wide") return 8;
+    if (span === "medium" || span === "half") return 6;
+    if (span === "small" || span === "compact") return 4;
     const parsed = parseInt(span, 10);
     if (!isNaN(parsed)) span = parsed;
   }
 
   if (semanticWidth === "full") return 12;
-  if (semanticWidth === "wide") return 8;
-  if (semanticWidth === "half") return 6;
-  if (semanticWidth === "compact") return 4;
+  if (semanticWidth === "large" || semanticWidth === "wide") return 8;
+  if (semanticWidth === "medium" || semanticWidth === "half") return 6;
+  if (semanticWidth === "small" || semanticWidth === "compact") return 4;
 
   if (span === undefined || span === null) {
     return 12;
@@ -378,6 +568,34 @@ export function detectQueryIntent(query: string = ""): LayoutIntentType {
   const q = query.toLowerCase().trim();
   if (!q) return "balanced";
 
+  // 1. Tool discovery & online web utility
+  if (
+    /(工具|在线工具|转换器|压缩工具|生成器|编辑器|免费网站|好用工具|测试工具|网站推荐|\b(tool|tools|converter|generator|utility|online tool|compressor|editor)\b)/i.test(q)
+  ) {
+    return "tool_discovery";
+  }
+
+  // 2. Installation & deployment hub
+  if (
+    /(安装|下载|配置环境|部署|客户端|镜像源|包管理|\b(install|installation|download|setup|docker run|brew install|pip install|npm i|yum install|apt-get|deploy)\b)/i.test(q)
+  ) {
+    return "install";
+  }
+
+  // 3. Travel & tour itinerary
+  if (
+    /(旅游|攻略|游记|景点|行程|门票|自驾|住宿|路线|几日游|带娃|酒店预订|\b(travel|itinerary|trip|tour|guide|vacation|spots|hotel|route)\b)/i.test(q)
+  ) {
+    return "travel";
+  }
+
+  // 4. Troubleshooting & error debugging
+  if (
+    /(报错|异常|失败|无法启动|解决办法|排查|崩溃|bug|修不好|\b(error|exception|crash|failed|warning|troubleshoot|fix|debug|resolve)\b)/i.test(q)
+  ) {
+    return "troubleshooting";
+  }
+
   if (
     /(对比|区别|优缺点|哪个好|选哪个|怎么选|还是|好还是|优劣|差别|pk|\b(vs|versus|difference|compare|comparison|pros and cons|better)\b)/i.test(q)
   ) {
@@ -403,7 +621,7 @@ export function detectQueryIntent(query: string = ""): LayoutIntentType {
   }
 
   if (
-    /(代码|怎么写|如何实现|教程|命令|参数|配置|报错|异常|函数|语法|类库|环境搭建|安装|部署|怎么做|做法|步骤|\b(code|tutorial|how to|example|command|cli|syntax|script|function|install|setup|debug|error|exception|npm|pip|docker|git|python|golang|rust|java|react|vue|typescript|sql)\b)/i.test(q)
+    /(代码|怎么写|如何实现|教程|命令|参数|配置|函数|语法|类库|环境搭建|怎么做|做法|步骤|\b(code|tutorial|how to|example|command|cli|syntax|script|function|npm|pip|docker|git|python|golang|rust|java|react|vue|typescript|sql)\b)/i.test(q)
   ) {
     return "code_tutorial";
   }
@@ -440,6 +658,7 @@ export interface ContentSignals {
   hasOfficial: boolean;
   codeBlockCount?: number;
   tableRowCount?: number;
+  customCardCount?: number;
 }
 
 // ==========================================
@@ -496,6 +715,10 @@ export function createLayoutPlan(params: {
   const isEn = targetLanguage === "en";
 
   const intentLabels: Record<LayoutIntentType, { zh: string; en: string }> = {
+    install: { zh: "安装部署与下载优先", en: "Installation & Download Hub" },
+    tool_discovery: { zh: "实用工具与在线体验优先", en: "Tool Discovery & Utility" },
+    travel: { zh: "旅游攻略与行程路线优先", en: "Travel Guide & Itinerary" },
+    troubleshooting: { zh: "报错排查与故障修复优先", en: "Troubleshooting & Fix" },
     comparison: { zh: "多维对比矩阵优先", en: "Comparison Matrix Priority" },
     architecture: { zh: "知识架构导图优先", en: "Knowledge Architecture Priority" },
     official_portal: { zh: "官方认证门户优先", en: "Official Portal Priority" },
@@ -507,7 +730,7 @@ export function createLayoutPlan(params: {
     balanced: { zh: "标准清晰阅读流", en: "Clean Reading Flow" }
   };
 
-  const intentLabel = isEn ? intentLabels[intent].en : intentLabels[intent].zh;
+  const intentLabel = isEn ? (intentLabels[intent]?.en || "Adaptive Search Layout") : (intentLabels[intent]?.zh || "智能自适应布局");
 
   // Determine standard candidate reading order per intent
   let rawOrder: ResultWidgetKey[] = [];
@@ -515,11 +738,108 @@ export function createLayoutPlan(params: {
   const widths: Partial<Record<ResultWidgetKey, WidgetSemanticWidth>> = {};
 
   switch (intent) {
+    case "install":
+      featuredWidget = "actions_toolbox";
+      rawOrder = [
+        "custom_cards",
+        "actions_toolbox",
+        "official_portal",
+        "verification_checklist",
+        "quick_answer",
+        "takeaways",
+        "sources",
+        "fast_chat",
+        "mobile_qr",
+        "followup"
+      ];
+      widths.custom_cards = "full";
+      widths.actions_toolbox = "full";
+      widths.official_portal = "half";
+      widths.verification_checklist = "half";
+      widths.quick_answer = "full";
+      widths.takeaways = "half";
+      widths.sources = "full";
+      widths.fast_chat = "half";
+      widths.mobile_qr = "compact";
+      widths.followup = "half";
+      break;
+
+    case "tool_discovery":
+      featuredWidget = "custom_cards";
+      rawOrder = [
+        "custom_cards",
+        "comparison",
+        "official_portal",
+        "actions_toolbox",
+        "quick_answer",
+        "takeaways",
+        "sources",
+        "fast_chat",
+        "followup"
+      ];
+      widths.custom_cards = "full";
+      widths.comparison = "full";
+      widths.official_portal = "half";
+      widths.actions_toolbox = "half";
+      widths.quick_answer = "full";
+      widths.takeaways = "wide";
+      widths.sources = "full";
+      widths.fast_chat = "half";
+      widths.followup = "half";
+      break;
+
+    case "travel":
+      featuredWidget = "custom_cards";
+      rawOrder = [
+        "custom_cards",
+        "takeaways",
+        "official_portal",
+        "actions_toolbox",
+        "quick_answer",
+        "sources",
+        "mobile_qr",
+        "fast_chat",
+        "followup"
+      ];
+      widths.custom_cards = "full";
+      widths.takeaways = "wide";
+      widths.official_portal = "half";
+      widths.actions_toolbox = "half";
+      widths.quick_answer = "full";
+      widths.sources = "full";
+      widths.mobile_qr = "compact";
+      widths.fast_chat = "half";
+      widths.followup = "half";
+      break;
+
+    case "troubleshooting":
+      featuredWidget = "actions_toolbox";
+      rawOrder = [
+        "actions_toolbox",
+        "verification_checklist",
+        "custom_cards",
+        "quick_answer",
+        "takeaways",
+        "sources",
+        "fast_chat",
+        "followup"
+      ];
+      widths.actions_toolbox = "full";
+      widths.verification_checklist = "wide";
+      widths.custom_cards = "full";
+      widths.quick_answer = "full";
+      widths.takeaways = "half";
+      widths.sources = "full";
+      widths.fast_chat = "half";
+      widths.followup = "half";
+      break;
+
     case "comparison":
       featuredWidget = "comparison";
       rawOrder = [
-        "quick_answer",
         "comparison",
+        "custom_cards",
+        "quick_answer",
         "takeaways",
         "sources",
         "actions_toolbox",
@@ -531,8 +851,9 @@ export function createLayoutPlan(params: {
         "metrics_telemetry",
         "agent_workflow"
       ];
-      widths.quick_answer = "full";
       widths.comparison = "full";
+      widths.custom_cards = "full";
+      widths.quick_answer = "full";
       widths.takeaways = "wide";
       widths.sources = "full";
       widths.actions_toolbox = "half";
@@ -548,8 +869,9 @@ export function createLayoutPlan(params: {
     case "architecture":
       featuredWidget = "mindmap";
       rawOrder = [
-        "quick_answer",
         "mindmap",
+        "custom_cards",
+        "quick_answer",
         "takeaways",
         "sources",
         "actions_toolbox",
@@ -560,8 +882,9 @@ export function createLayoutPlan(params: {
         "metrics_telemetry",
         "agent_workflow"
       ];
-      widths.quick_answer = "full";
       widths.mindmap = "full";
+      widths.custom_cards = "full";
+      widths.quick_answer = "full";
       widths.takeaways = "wide";
       widths.sources = "full";
       widths.actions_toolbox = "half";
@@ -577,22 +900,24 @@ export function createLayoutPlan(params: {
       featuredWidget = "official_portal";
       rawOrder = [
         "official_portal",
+        "actions_toolbox",
+        "custom_cards",
         "quick_answer",
         "takeaways",
         "sources",
         "mobile_qr",
-        "actions_toolbox",
         "fast_chat",
         "followup",
         "metrics_telemetry",
         "agent_workflow"
       ];
       widths.official_portal = "full";
+      widths.actions_toolbox = "half";
+      widths.custom_cards = "full";
       widths.quick_answer = "full";
       widths.takeaways = "wide";
       widths.sources = "full";
       widths.mobile_qr = "compact";
-      widths.actions_toolbox = "half";
       widths.fast_chat = "half";
       widths.followup = "half";
       widths.metrics_telemetry = "compact";
@@ -602,8 +927,9 @@ export function createLayoutPlan(params: {
     case "fact_check":
       featuredWidget = "verification_checklist";
       rawOrder = [
-        "quick_answer",
         "verification_checklist",
+        "quick_answer",
+        "custom_cards",
         "takeaways",
         "sources",
         "analytics_trend",
@@ -613,8 +939,9 @@ export function createLayoutPlan(params: {
         "followup",
         "agent_workflow"
       ];
-      widths.quick_answer = "full";
       widths.verification_checklist = "wide";
+      widths.quick_answer = "full";
+      widths.custom_cards = "full";
       widths.takeaways = "half";
       widths.sources = "full";
       widths.analytics_trend = "half";
@@ -626,10 +953,11 @@ export function createLayoutPlan(params: {
       break;
 
     case "code_tutorial":
-      featuredWidget = "quick_answer";
+      featuredWidget = "actions_toolbox";
       rawOrder = [
-        "quick_answer",
         "actions_toolbox",
+        "custom_cards",
+        "quick_answer",
         "takeaways",
         "topic_digest",
         "sources",
@@ -639,8 +967,9 @@ export function createLayoutPlan(params: {
         "metrics_telemetry",
         "agent_workflow"
       ];
+      widths.actions_toolbox = "full";
+      widths.custom_cards = "full";
       widths.quick_answer = "full";
-      widths.actions_toolbox = "half";
       widths.takeaways = "half";
       widths.topic_digest = "half";
       widths.sources = "full";
@@ -654,8 +983,9 @@ export function createLayoutPlan(params: {
     case "news_trend":
       featuredWidget = "analytics_trend";
       rawOrder = [
-        "quick_answer",
         "analytics_trend",
+        "quick_answer",
+        "custom_cards",
         "takeaways",
         "sources",
         "verification_checklist",
@@ -666,8 +996,9 @@ export function createLayoutPlan(params: {
         "metrics_telemetry",
         "agent_workflow"
       ];
-      widths.quick_answer = "full";
       widths.analytics_trend = "half";
+      widths.quick_answer = "full";
+      widths.custom_cards = "full";
       widths.takeaways = "half";
       widths.sources = "full";
       widths.verification_checklist = "half";
@@ -684,6 +1015,7 @@ export function createLayoutPlan(params: {
       rawOrder = [
         "quick_answer",
         "takeaways",
+        "custom_cards",
         "sources",
         "actions_toolbox",
         "fast_chat",
@@ -691,6 +1023,7 @@ export function createLayoutPlan(params: {
       ];
       widths.quick_answer = "full";
       widths.takeaways = "wide";
+      widths.custom_cards = "full";
       widths.sources = "full";
       widths.actions_toolbox = "half";
       widths.fast_chat = "half";
@@ -698,11 +1031,12 @@ export function createLayoutPlan(params: {
       break;
 
     case "deep_research":
-      featuredWidget = "quick_answer";
+      featuredWidget = "takeaways";
       rawOrder = [
-        "quick_answer",
         "takeaways",
         "mindmap",
+        "custom_cards",
+        "quick_answer",
         "topic_digest",
         "sources",
         "actions_toolbox",
@@ -713,9 +1047,10 @@ export function createLayoutPlan(params: {
         "metrics_telemetry",
         "agent_workflow"
       ];
-      widths.quick_answer = "full";
       widths.takeaways = "full";
       widths.mindmap = "full";
+      widths.custom_cards = "full";
+      widths.quick_answer = "full";
       widths.topic_digest = "half";
       widths.sources = "full";
       widths.actions_toolbox = "half";
@@ -732,6 +1067,7 @@ export function createLayoutPlan(params: {
       featuredWidget = "quick_answer";
       rawOrder = [
         "quick_answer",
+        "custom_cards",
         "takeaways",
         "sources",
         "actions_toolbox",
@@ -744,6 +1080,7 @@ export function createLayoutPlan(params: {
         "agent_workflow"
       ];
       widths.quick_answer = "full";
+      widths.custom_cards = "full";
       widths.takeaways = "wide";
       widths.sources = "full";
       widths.actions_toolbox = "half";
@@ -768,12 +1105,12 @@ export function createLayoutPlan(params: {
   });
 
   // Safe Fallback: Ensure critical base widgets are always present
-  if (!enabledKeys.includes("quick_answer")) enabledKeys.unshift("quick_answer");
+  if (!enabledKeys.includes("quick_answer")) enabledKeys.push("quick_answer");
   if (!enabledKeys.includes("sources") && signals.sourceCount > 0) enabledKeys.push("sources");
   if (!enabledKeys.includes("takeaways") && signals.takeawayCount > 0) enabledKeys.splice(1, 0, "takeaways");
 
-  // Fallback to default list if completely empty
-  const finalEnabled = enabledKeys.length > 0 ? enabledKeys : DEFAULT_FALLBACK_WIDGETS;
+  // Capability-driven fallback resolution based on intent
+  const finalEnabled = enabledKeys.length > 0 ? enabledKeys : resolveDynamicCapabilityWidgets(intent);
 
   const budget = getDynamicBudget(intent);
 
@@ -813,10 +1150,23 @@ export function determineClientWidgetActivation(params: {
     comparisonRows: (result?.comparisonTable || []).length,
     mindMapBranches: result?.mindMap?.children?.length || 0,
     followUpCount: (result?.followUpQuestions || []).length,
-    hasOfficial: (result?.filteredResults || []).some((r) => r.isOfficial)
+    hasOfficial: (result?.filteredResults || []).some((r) => r.isOfficial),
+    customCardCount: (result?.customCards || []).length
   };
 
   const plan = createLayoutPlan({ intent, signals, targetLanguage });
+
+  // Apply layout quality guardrail
+  const guardReport = auditLayoutGuardrail(intent, plan.enabled);
+  if (!guardReport.passed) {
+    plan.enabled = guardReport.remediatedWidgets;
+    // ensure order includes remediated items
+    guardReport.remediatedWidgets.forEach((w) => {
+      if (!plan.order.includes(w)) {
+        plan.order.push(w);
+      }
+    });
+  }
 
   // Construct 12-column grid configuration based on semantic width
   const gridConfig: Record<string, WidgetGridPlacement> = {};
@@ -889,7 +1239,7 @@ export function calculateAdaptiveBinPacking(
   const gridConfig: Record<string, WidgetGridPlacement> = {};
   const activeKeys = (options.enabledWidgets && options.enabledWidgets.length > 0)
     ? options.enabledWidgets
-    : (order && order.length > 0 ? order : DEFAULT_FALLBACK_WIDGETS);
+    : (order && order.length > 0 ? order : resolveDynamicCapabilityWidgets(options.intentType || "balanced"));
 
   activeKeys.forEach((key, index) => {
     const custom = options.customSpans?.[key];

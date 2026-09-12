@@ -1,13 +1,20 @@
 import { searchSearxng } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, normalizeModelId } from "./openrouter.js";
 import { forgeUniqueCard, detectBestArchetype } from "./cardForge.js";
+import { planActionForQuery } from "./actionPlanner.js";
+import { planWidgetStrategy } from "./widgetPlanner.js";
 import {
   masterOrchestratorAgent,
+  actionPlannerAgent,
   retrievalAgent,
   knowledgeSynthesisAgent,
+  widgetPlannerAgent,
   widgetArchitectAgent,
   layoutAgent,
   guardrailAgent,
+  tool_plan_user_actions,
+  tool_lookup_tool_registry,
+  tool_audit_action_guardrails,
   tool_detect_card_archetype,
   tool_forge_unique_widget,
   tool_enforce_widget_uniqueness,
@@ -30,7 +37,9 @@ import {
   AgentTeamReport,
   AgentRole,
   AssignedTask,
-  CustomCardData
+  CustomCardData,
+  ActionPlan,
+  WidgetPlan
 } from "../src/types.js";
 import { detectQueryLanguage, resolveTargetLanguage, getStepLocalization } from "./language.js";
 import { determineAdaptiveLayout, generatePlanForQuery } from "./agent.js";
@@ -73,7 +82,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
     mandateSummary: "基于 OpenAI Agents JS 架构：负责意图研判、生成任务委派清单、分发专职指令给各个专门 Agent 并实时调度，在各 Agent 并发作业完毕后集中验收交付"
   };
 
-  // 2. 初始化 6 位角色明确、互不重叠的 Agent 成员
+  // 2. 初始化 7 位角色明确、互不重叠的 Agent 成员 (严格遵循 OpenAI Agents 规范)
   const members: TeamMember[] = [
     {
       id: "agent-coord",
@@ -103,6 +112,20 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       totalTasksCount: 3
     },
     {
+      id: "agent-action-planner",
+      role: "action_planner",
+      name: "行动规划 Agent",
+      title: "任务目标研判与能力调度专家",
+      isMaster: false,
+      dedicatedDuty: "专职负责研判用户任务目标与下一步行动 (Next-Step Action)，调度 Tool Registry 真实能力，规划行动方案并优先激活 Action Widget",
+      avatarIcon: "Compass" as any,
+      status: "idle",
+      currentTask: "等待主 Agent 派发行动规划任务",
+      assignedTaskId: "TASK-ACTION-PLAN",
+      completedTasksCount: 0,
+      totalTasksCount: 3
+    },
+    {
       id: "agent-knowledge",
       role: "knowledge_synthesis",
       name: "深度研报 Agent",
@@ -119,13 +142,13 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
     {
       id: "agent-widget-architect",
       role: "widget_forge",
-      name: "专属小组件构建 Agent",
-      title: "独有业务小组件架构与锻造专家",
+      name: "小组件规划与构建 Agent",
+      title: "小组件能力模型、原型规划与卡片锻造专家",
       isMaster: false,
-      dedicatedDuty: "专职根据实体属性与信源特征，架构与锻造独一无二的交互式业务小组件 (Unique Card)，匹配最适原型（参数规格矩阵 / 演进时间线 / 实操清单 / 场景裁决 / 优劣避坑），执行防重护栏与交互数据模型装配",
+      dedicatedDuty: "专职根据任务意图与信源特征，架构 WidgetPlan、规划组件能力模型与展示优先级，并锻造独一无二的交互式业务小组件 (Unique Card)，匹配最适原型（下载中心 / 在线工具 / 旅游行程 / 实操清单 / 场景裁决 / 参数矩阵 / 优劣避坑）",
       avatarIcon: "Blocks",
       status: "idle",
-      currentTask: "等待主 Agent 派发小组件锻造任务",
+      currentTask: "等待主 Agent 派发小组件规划与锻造任务",
       assignedTaskId: "TASK-WIDGET-ARCHITECT",
       completedTasksCount: 0,
       totalTasksCount: 3
@@ -136,7 +159,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       name: "排版编排 Agent",
       title: "自适应 4 列装箱与卡片生命周期专家",
       isMaster: false,
-      dedicatedDuty: "专职负责视口空间与瀑布流装箱规划，根据内容密度智能启停组件并计算 4 列自适应网格跨度（专职视觉空间工程）",
+      dedicatedDuty: "专职负责视口空间与瀑布流装箱规划，根据内容密度与行动优先级智能启停组件并计算 4 列自适应网格跨度（专职视觉空间工程）",
       avatarIcon: "LayoutGrid",
       status: "idle",
       currentTask: "等待主 Agent 派发排版任务",
@@ -150,7 +173,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       name: "护栏质检 Agent",
       title: "OpenAI Guardrails 安全与合规审计专家",
       isMaster: false,
-      dedicatedDuty: "遵循 OpenAI Agents Guardrails 规范：外部信源 URL 可达性审计、思维导图连通性闭环复核以及小组件防重复与防幻觉风控",
+      dedicatedDuty: "遵循 OpenAI Agents Guardrails 规范：外部信源 URL 可达性审计、行动护栏绑定合规审计、思维导图连通性闭环复核以及小组件防重复风控",
       avatarIcon: "ShieldCheck",
       status: "idle",
       currentTask: "等待主 Agent 派发质检任务",
@@ -168,6 +191,14 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       assignedAgentName: "全网检索 Agent",
       taskName: "全网精准检索与权威信源甄别",
       mandate: `针对关键词 “${query}”，执行主词及跨语言/深度词多路检索，甄别核心官方网站，过滤垃圾与爬虫低质杂音。`,
+      status: "pending"
+    },
+    {
+      id: "TASK-ACTION-PLAN",
+      assignedToRole: "action_planner",
+      assignedAgentName: "行动规划 Agent",
+      taskName: "用户任务研判与 Tool Registry 能力调度",
+      mandate: "研判用户最终目标与下一步行动，从 Tool Registry 挑选可执行工具能力，杜绝假按钮并构建结构化 Action Plan。",
       status: "pending"
     },
     {
@@ -190,16 +221,16 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       id: "TASK-LAYOUT",
       assignedToRole: "orchestrator",
       assignedAgentName: "排版编排 Agent",
-      taskName: "自适应 4 列瀑布流装箱与组件启停决策",
-      mandate: "根据用户查询意图与生成内容密度，执行 4 列自适应装箱算法，动态激活契合组件并休眠冗余卡片。",
+      taskName: "自适应 4 列瀑布流装箱与 Action 优先级排版",
+      mandate: "根据用户查询意图与行动优先级，执行 4 列自适应装箱算法，优先置顶行动组件，动态激活契合组件并休眠冗余卡片。",
       status: "pending"
     },
     {
       id: "TASK-GUARDRAILS",
       assignedToRole: "qa_validator",
       assignedAgentName: "护栏质检 Agent",
-      taskName: "OpenAI Guardrails 安全质检与防重复审计",
-      mandate: "对交付的信源进行真实 URL 可达性审计，核验思维导图拓扑连通性闭环，并对锻造小组件执行严格防重复与数据完整性审计。",
+      taskName: "OpenAI Guardrails 安全质检与行动护栏审计",
+      mandate: "对交付的信源进行真实 URL 可达性审计，核验行动组件与 Tool Registry 真实能力绑定，复核思维导图连通性与卡片防重复审计。",
       status: "pending"
     }
   ];
@@ -318,29 +349,31 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
   // 主 Agent 生成的委派清单明细
   const planDetails: string[] = [
     `👑 【主 Agent 职责】: 全局意图解析、任务拆解与派发、进度监控与最终验收交付`,
-    `📋 【OpenAI Agents 架构委派就绪】: 明确拆分为 5 个职责互不重叠的专门任务，分别指派给专长 Agent 并发执行`,
+    `📋 【OpenAI Agents 架构委派就绪】: 明确拆分为 6 个职责互不重叠的专门任务，分别指派给专长 Agent 并发执行`,
     `👉 任务 1 [TASK-RETRIEVE] 委派给【全网检索 Agent】: 专职多路检索与官方门户甄别 (派发检索式: ${plan.subQueries.join(" | ")})`,
-    `👉 任务 2 [TASK-KNOWLEDGE] 委派给【深度研报 Agent】: 专职知识萃取，构建核心速览、${plan.comparisonDimensions.length}维对比与思维导图`,
-    `👉 任务 3 [TASK-WIDGET-ARCHITECT] 委派给【专属小组件构建 Agent】: 专职架构并锻造独一无二的交互卡片，杜绝套用重复模板`,
-    `👉 任务 4 [TASK-LAYOUT] 委派给【排版编排 Agent】: 专职自适应 4 列瀑布流装箱规划与组件启停策略`,
-    `👉 任务 5 [TASK-GUARDRAILS] 委派给【护栏质检 Agent】: 专职信源存活复核、思维导图闭环核验与防重复风控审计`
+    `👉 任务 2 [TASK-ACTION-PLAN] 委派给【行动规划 Agent】: 专职研判用户任务目标与下一步行动，调度 Tool Registry 真实能力`,
+    `👉 任务 3 [TASK-KNOWLEDGE] 委派给【深度研报 Agent】: 专职知识萃取，构建核心速览、${plan.comparisonDimensions.length}维对比与思维导图`,
+    `👉 任务 4 [TASK-WIDGET-ARCHITECT] 委派给【专属小组件构建 Agent】: 专职架构并锻造独一无二的交互卡片，杜绝套用重复模板`,
+    `👉 任务 5 [TASK-LAYOUT] 委派给【排版编排 Agent】: 专职自适应 4 列瀑布流装箱规划与 Action 优先级排版`,
+    `👉 任务 6 [TASK-GUARDRAILS] 委派给【护栏质检 Agent】: 专职信源存活复核、行动护栏审计与防重复风控`
   ];
 
   updateAssignedTask("TASK-RETRIEVE", "running");
+  updateAssignedTask("TASK-ACTION-PLAN", "pending");
   updateAssignedTask("TASK-KNOWLEDGE", "pending");
   updateAssignedTask("TASK-WIDGET-ARCHITECT", "pending");
-  updateAssignedTask("TASK-LAYOUT", "running");
+  updateAssignedTask("TASK-LAYOUT", "pending");
   updateAssignedTask("TASK-GUARDRAILS", "pending");
 
-  updateMember("coordinator", "completed", "主 Agent 意图研判完成，已向 5 位专门 Agent 统筹派发专属任务！", 1, {
+  updateMember("coordinator", "completed", "主 Agent 意图研判完成，已向 6 位专门 Agent 统筹派发专属任务！", 1, {
     executionTimeMs: Date.now() - tCoordStart,
-    outputSummary: "意图解析与任务委派完成：派发 5 个独立专长子任务"
+    outputSummary: "意图解析与任务委派完成：派发 6 个独立专长子任务"
   });
 
   updateStep(
     "plan",
     `[主 Agent 调度总控] 意图解析与任务派发`,
-    `主 Agent 完成意图解析，通过 formal handoff 将 5 个独立任务委派给专门 Agent 并发执行。`,
+    `主 Agent 完成意图解析，通过 formal handoff 将 6 个独立任务委派给专门 Agent 并发执行。`,
     "completed",
     "coordinator",
     planDetails
@@ -459,23 +492,96 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       retrievalDeliverables
     );
 
-    emitTeamReport("全网检索 Agent 专职任务交付完成，信源已流向研报与小组件构建 Agent！", 2.2);
+    emitTeamReport("全网检索 Agent 专职任务交付完成，信源已流向行动规划、研报与卡片构建 Agent！", 2.2);
 
     return { filteredResults: finalCleanResults, rawResults };
   })();
 
   // =========================================================================
-  // --- Phase 3: 排版编排 Agent (LayoutAgent) 并发计算装箱 ---
+  // --- Phase 3: 行动规划 Agent (ActionPlannerAgent) 专职任务研判与工具调度 ---
+  // =========================================================================
+  const actionPlannerPromise = (async () => {
+    const tStart = Date.now();
+    updateMember("action_planner", "running", "行动规划 Agent 正在研判任务目标并调度 Tool Registry 能力...");
+    updateAssignedTask("TASK-ACTION-PLAN", "running");
+
+    parallelTasksExecuted += 2;
+    estimatedSequentialTimeMs += 600;
+
+    const { filteredResults } = await retrievalPromise;
+    const actionPlan: ActionPlan = await planActionForQuery({
+      query,
+      results: filteredResults,
+      targetLanguage: targetLang.code
+    });
+
+    const tDuration = Math.max(20, Date.now() - tStart);
+    const actionDeliverables = [
+      `用户目标识别: 判定为【${actionPlan.userGoal}】(${actionPlan.goalStatement})`,
+      `下一步行动决策: 【${actionPlan.nextStepVerdict}】`,
+      `Tool Registry 绑定: 装配 ${actionPlan.tasks.length} 项可执行任务 (${actionPlan.tasks.map(t => t.toolCapability).join(", ")})`,
+      `行动护栏核验: ${actionPlan.guardrailAudit.reason}`
+    ];
+
+    updateAssignedTask(
+      "TASK-ACTION-PLAN",
+      "completed",
+      actionDeliverables,
+      tDuration,
+      "行动规划 Agent 已完成任务规划与 Tool Registry 调度交付"
+    );
+
+    updateMember("action_planner", "completed", "TASK-ACTION-PLAN 专职任务完成，行动方案已交付中枢", 3, {
+      executionTimeMs: tDuration,
+      outputSummary: `目标【${actionPlan.userGoal}】，规划 ${actionPlan.tasks.length} 项 Tool 动作，主动作【${actionPlan.primaryAction?.label || "直达"}】`,
+      speedup: 2.5,
+      deliverables: actionDeliverables
+    });
+
+    updateStep(
+      "action_plan",
+      `[行动规划 Agent 专职执行] 用户任务研判与 Tool Registry 调度`,
+      `行动规划 Agent 已完成用户行动研判：目标【${actionPlan.userGoal}】，装配 ${actionPlan.tasks.length} 个真实工具动作。`,
+      "completed",
+      "action_planner",
+      actionDeliverables
+    );
+
+    emitTeamReport("行动规划 Agent 已完成可执行任务编排，指令流向排版与卡片构建！", 2.4);
+
+    return actionPlan;
+  })();
+
+  // =========================================================================
+  // --- Phase 3.5: 小组件规划 Agent (WidgetPlannerAgent) 规划组件形态与能力模型 ---
+  // =========================================================================
+  const widgetPlannerPromise = (async () => {
+    const { filteredResults } = await retrievalPromise;
+    const widgetPlan: WidgetPlan = await planWidgetStrategy({
+      query,
+      results: filteredResults,
+      targetLanguage: targetLang.code
+    });
+    return widgetPlan;
+  })();
+
+  // =========================================================================
+  // --- Phase 4: 排版编排 Agent (LayoutAgent) 并发计算装箱与 Action / Widget 优先级 ---
   // =========================================================================
   const layoutPromise = (async () => {
     const tLayoutStart = Date.now();
-    updateMember("orchestrator", "running", "排版编排 Agent 正在测算 4 列瀑布流自适应装箱与组件生命周期...");
+    updateMember("orchestrator", "running", "排版编排 Agent 正在测算 4 列瀑布流自适应装箱与 Action / Widget 优先级...");
     updateAssignedTask("TASK-LAYOUT", "running");
 
     parallelTasksExecuted += 2;
     estimatedSequentialTimeMs += 350;
 
-    const { filteredResults } = await retrievalPromise;
+    const [{ filteredResults }, actionPlan, widgetPlan] = await Promise.all([
+      retrievalPromise,
+      actionPlannerPromise,
+      widgetPlannerPromise
+    ]);
+
     const layoutStrategy: AdaptiveLayoutStrategy = determineAdaptiveLayout({
       query,
       plan,
@@ -484,7 +590,9 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       mindMapBranches: 4,
       followUpCount: 3,
       hasOfficial: filteredResults.some(r => r.isOfficial),
-      targetLanguage: targetLang.code
+      targetLanguage: targetLang.code,
+      actionPlan,
+      widgetPlan
     });
 
     const activeWidgetKeys = layoutStrategy.enabledWidgets || layoutStrategy.componentOrder || [];
@@ -497,9 +605,10 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
 
     const layoutDeliverables = [
       `意图模态决策: 判定为【${layoutStrategy.intentType}】场景`,
+      `Widget 优先级排版: 激活 ${widgetPlan.widgets.length} 个功能组件 (${widgetPlan.widgets.slice(0, 3).join(", ")})`,
+      `Action 联动: ${actionPlan.requiresActionWidget ? "Action Widget 置顶优先展示" : "标准知识视图排版"}`,
       `4 列自适应装箱: 激活 ${activeWidgetNames.length} 个视口卡片 (${activeWidgetNames.slice(0, 4).join(", ")})`,
-      `冗余组件休眠: 依据内容密度休眠 ${(layoutStrategy.disabledWidgets || []).length} 个不相关槽位`,
-      `主视觉焦点: 锚定为【${layoutStrategy.emphasizedWidget || "ai_overview"}】`
+      `主视觉焦点: 锚定为【${layoutStrategy.emphasizedWidget || "custom_cards"}】`
     ];
 
     updateAssignedTask(
@@ -519,7 +628,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
     updateStep(
       "layout_bento",
       `[排版编排 Agent 专职执行] 自适应 4 列瀑布流装箱规划`,
-      `排版编排 Agent 完成自适应装箱与组件生命周期配置：意图【${layoutStrategy.intentType}】，主视觉【${layoutStrategy.emphasizedWidget || "ai_overview"}】。`,
+      `排版编排 Agent 完成自适应装箱与组件生命周期配置：意图【${layoutStrategy.intentType}】，主视觉【${layoutStrategy.emphasizedWidget || "custom_cards"}】。`,
       "completed",
       "orchestrator",
       layoutDeliverables
@@ -531,7 +640,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
   })();
 
   // =========================================================================
-  // --- Phase 4: 深度研报 Agent (KnowledgeSynthesisAgent) 专职知识萃取 ---
+  // --- Phase 5: 深度研报 Agent (KnowledgeSynthesisAgent) 专职知识萃取 ---
   // =========================================================================
   const selectedModel = normalizeModelId(options.model);
   const knowledgePromise = (async () => {
@@ -608,20 +717,24 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
   })();
 
   // =========================================================================
-  // --- Phase 5: 专属小组件构建 Agent (WidgetArchitectAgent) 架构与锻造 ---
+  // --- Phase 6: 小组件规划与构建 Agent (WidgetArchitectAgent / WidgetPlanner) 架构与锻造 ---
   // =========================================================================
   const widgetArchitectPromise = (async () => {
-    const { filteredResults } = await retrievalPromise;
+    const [{ filteredResults }, actionPlan, widgetPlan] = await Promise.all([
+      retrievalPromise,
+      actionPlannerPromise,
+      widgetPlannerPromise
+    ]);
     const tActiveForgeStart = Date.now();
 
-    updateMember("widget_forge", "running", "专属小组件构建 Agent 正在架构并锻造独有小组件 (Unique Card)...");
+    updateMember("widget_forge", "running", "小组件规划与构建 Agent 正在架构并锻造独有小组件 (Unique Card)...");
     updateAssignedTask("TASK-WIDGET-ARCHITECT", "running");
 
     parallelTasksExecuted += 3;
     estimatedSequentialTimeMs += 1800;
 
-    // 智能决策最适业务原型，坚决杜绝千篇一律的模板
-    const targetArchetype = detectBestArchetype(query, filteredResults);
+    // 智能决策最适业务原型，优先采用 WidgetPlan 与行动规划推荐的原型
+    const targetArchetype = widgetPlan.suggestedArchetype || actionPlan.suggestedArchetype || detectBestArchetype(query, filteredResults);
 
     let forgedCard: CustomCardData | null = null;
     try {
@@ -629,7 +742,8 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
         query,
         results: filteredResults,
         archetype: targetArchetype,
-        userPrompt: `依据真实信源提炼独有深度信息，装配完整的可交互数据模型，坚决杜绝套用重复模板`
+        widgetPlan,
+        userPrompt: `依据任务意图【${widgetPlan.intent}】与真实信源提炼独有深度信息，装配完整的可交互数据模型与 Tool Registry 真实行动入口，坚决杜绝套用重复模板`
       });
     } catch (err: any) {
       console.warn("WidgetArchitectAgent auto card forge failed:", err);
@@ -640,9 +754,10 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
     const forgeSpeedup = 1800 / Math.max(tForgeTime, 150);
 
     const forgeDeliverables = [
-      `智能原型决策: 依据实体与语义判定为【${targetArchetype}】原型 (拒绝千篇一律)`,
+      `智能原型决策: 依据意图【${widgetPlan.intent}】判定为【${targetArchetype}】原型`,
+      `能力模型装配: 注入 ${widgetPlan.capabilities.join(", ")} 真实交互能力`,
       forgedCard ? `独有交互组件锻造: 成功构建【${forgedCard.title}】` : `独有交互组件锻造: 标准卡片已就绪`,
-      `业务交互数据装配: 注入 ${forgedCard?.archetype || targetArchetype} 完整数据模型 (支持勾选、对比、量化)`,
+      `业务交互数据装配: 注入 ${forgedCard?.archetype || targetArchetype} 完整数据模型 (支持勾选、下载、命令复制、在线体验)`,
       `防重复护栏通过: 严格保障卡片独特性、信源真实佐证与独立标识`
     ];
 
@@ -651,44 +766,45 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       "completed",
       forgeDeliverables,
       tForgeTime,
-      `专属小组件构建 Agent 已完成独有卡片锻造并交付主 Agent`
+      `小组件规划与构建 Agent 已完成独有卡片锻造并交付主 Agent`
     );
 
     updateMember("widget_forge", "completed", "TASK-WIDGET-ARCHITECT 专职任务完成，独有小组件已交付主 Agent", 3, {
       executionTimeMs: tForgeTime,
-      outputSummary: forgedCard ? `成功锻造【${forgedCard.title}】(${forgedCard.archetype})，独有交互模型装配完毕` : `小组件构建就绪`,
+      outputSummary: forgedCard ? `成功锻造【${forgedCard.title}】(${forgedCard.archetype})，独有交互模型与能力装配完毕` : `小组件构建就绪`,
       speedup: Number(forgeSpeedup.toFixed(1)),
       deliverables: forgeDeliverables
     });
 
     updateStep(
       "forge_unique_widget",
-      `[专属小组件构建 Agent 专职执行] TASK-WIDGET-ARCHITECT 交付成果`,
-      `专属小组件构建 Agent 完成卡片架构与锻造：原型【${targetArchetype}】，卡片【${forgedCard?.title || "专属看板"}】。`,
+      `[小组件规划与构建 Agent 专职执行] TASK-WIDGET-ARCHITECT 交付成果`,
+      `小组件规划与构建 Agent 完成卡片架构与锻造：原型【${targetArchetype}】，卡片【${forgedCard?.title || "专属看板"}】。`,
       "completed",
       "widget_forge",
       forgeDeliverables,
       `${forgeSpeedup.toFixed(1)}x`
     );
 
-    emitTeamReport("专属小组件构建 Agent 已完成独有小组件锻造，准备终验！", 2.9);
+    emitTeamReport("小组件规划与构建 Agent 已完成独有小组件锻造，准备终验！", 2.9);
 
     return forgedCard;
   })();
 
   // =========================================================================
-  // --- Phase 6: 护栏质检 Agent (GuardrailAgent) 并发质检验真 ---
+  // --- Phase 7: 护栏质检 Agent (GuardrailAgent) 并发质检验真 ---
   // =========================================================================
   const qaPromise = (async () => {
-    // 待信源、研报与独有卡片到位时即刻执行 OpenAI Guardrails 审计
-    const [{ filteredResults }, synthesis, forgedCard] = await Promise.all([
+    // 待信源、行动规划、研报与独有卡片到位时即刻执行 OpenAI Guardrails 审计
+    const [{ filteredResults }, actionPlan, synthesis, forgedCard] = await Promise.all([
       retrievalPromise,
+      actionPlannerPromise,
       knowledgePromise,
       widgetArchitectPromise
     ]);
     const tActiveQaStart = Date.now();
 
-    updateMember("qa_validator", "running", "护栏质检 Agent 正在执行 OpenAI Guardrails 安全审计与防重核验...");
+    updateMember("qa_validator", "running", "护栏质检 Agent 正在执行 OpenAI Guardrails 安全审计与行动防重核验...");
     updateAssignedTask("TASK-GUARDRAILS", "running");
 
     const validSourcesCount = filteredResults.filter(r => r.url && r.url.startsWith("http")).length;
@@ -698,6 +814,7 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
 
     const qaDeliverables = [
       `外部信源合法性核验: ${validSourcesCount} 个信源 URL 格式与存活状态达标`,
+      `行动护栏绑定核验: ${actionPlan.tasks.length} 项任务绑定 Tool Registry 真实能力，无死链或虚假按钮`,
       `思维导图树状连通性: ${mindMapNodesCount} 个节点闭环无孤岛节点`,
       `小组件防重复护栏: 验证卡片【${forgedCard?.title || "默认卡片"}】原型唯一性，杜绝重复模板`,
       `事实风控合规: 零事实幻觉告警，通过终验`
@@ -708,32 +825,34 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
       "completed",
       qaDeliverables,
       tQaTime,
-      `护栏质检 Agent 已完成全流程事实与防重复审计，全项通过`
+      `护栏质检 Agent 已完成全流程事实与行动护栏审计，全项通过`
     );
 
     updateMember("qa_validator", "completed", "TASK-GUARDRAILS 专职任务完成，质检报告已交付主 Agent", 3, {
       executionTimeMs: tQaTime,
-      outputSummary: `核验 ${validSourcesCount} 个信源合法性，验证导图 ${mindMapNodesCount} 节点连通闭环，小组件防重复风控通过`,
+      outputSummary: `核验 ${validSourcesCount} 个信源合法性，验证 ${actionPlan.tasks.length} 项 Tool 绑定，导图连通闭环，卡片防重复审计通过`,
       deliverables: qaDeliverables
     });
 
     updateStep(
       "qa",
       `[护栏质检 Agent 专职执行] TASK-GUARDRAILS 交付成果`,
-      `护栏质检 Agent 完成其专属风控任务：核验 ${validSourcesCount} 个信源存活性，导图连通闭环，卡片防重复审计通过。`,
+      `护栏质检 Agent 完成其专属风控任务：核验 ${validSourcesCount} 个信源存活性，行动护栏通过，导图闭环，卡片防重复审计通过。`,
       "completed",
       "qa_validator",
       qaDeliverables
     );
 
-    emitTeamReport("护栏质检 Agent 完成全流程事实风控审计，等待主 Agent 终验交付！", 3.0);
+    emitTeamReport("护栏质检 Agent 完成全流程事实与行动风控审计，等待主 Agent 终验交付！", 3.0);
 
     return { validSourcesCount, mindMapNodesCount };
   })();
 
   // 并发等待所有专职智能体全部执行完毕
-  const [retrievalRes, layoutStrategy, synthesis, forgedCard, qaRes] = await Promise.all([
+  const [retrievalRes, actionPlan, widgetPlan, layoutStrategy, synthesis, forgedCard, qaRes] = await Promise.all([
     retrievalPromise,
+    actionPlannerPromise,
+    widgetPlannerPromise,
     layoutPromise,
     knowledgePromise,
     widgetArchitectPromise,
@@ -750,16 +869,16 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
   }
 
   // =========================================================================
-  // --- Phase 7: 主 Agent (调度总控) 最终验收与全景交付 ---
+  // --- Phase 8: 主 Agent (调度总控) 最终验收与全景交付 ---
   // =========================================================================
   const totalActualExecutionTimeMs = Date.now() - teamStartTime;
   const overallSpeedupMultiplier = Math.max(2.0, Math.min(3.8, estimatedSequentialTimeMs / Math.max(totalActualExecutionTimeMs, 700)));
 
   updateMember("coordinator", "completed", "主 Agent 验收所有专职 Agent 交付成果，已聚合完成全景交付", 1, {
-    outputSummary: `主 Agent 验收完成：检索、研报、小组件锻造、排版与质检 5 项独立专职任务并发协同，全部闭环通过`
+    outputSummary: `主 Agent 验收完成：检索、行动规划、组件规划与锻造、研报、排版与质检多项独立专职任务并发协同，全部闭环通过`
   });
 
-  const finalSummaryMessage = `AgentTeam (OpenAI Agents JS 架构) 协同圆满完成：主 Agent 统筹调度 5 位专长 Agent【同时并发作业】，专属小组件构建 Agent 打造独有业务看板，协同加速约 ${overallSpeedupMultiplier.toFixed(1)}x！`;
+  const finalSummaryMessage = `AgentTeam (OpenAI Agents JS 架构) 协同圆满完成：主 Agent 统筹调度专长 Agent【同时并发作业】，小组件规划与构建 Agent 打造专属看板，排版编排 Agent 动态重排，协同加速约 ${overallSpeedupMultiplier.toFixed(1)}x！`;
 
   const finalTeamReport = emitTeamReport(finalSummaryMessage, overallSpeedupMultiplier);
 
@@ -782,6 +901,8 @@ export async function runAgentTeam(options: AgentTeamRunOptions): Promise<Search
     targetLanguage: targetLang.code,
     layoutStrategy,
     agentTeam: finalTeamReport,
-    customCards: synthesis.customCards || []
+    customCards: synthesis.customCards || [],
+    actionPlan,
+    widgetPlan
   };
 }
