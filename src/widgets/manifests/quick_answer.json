@@ -1,0 +1,18 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "quick_answer",
+  "name": "直接速答",
+  "version": "1.0.0",
+  "description": "全网高权重研报核心结论直接速答",
+  "category": "synthesis",
+  "icon": "Zap",
+  "grid": {
+    "defaultSize": "large",
+    "supportedSizes": ["medium", "large", "wide", "full"],
+    "ratio": "2:1"
+  },
+  "theme": {
+    "accentColor": "#3b82f6",
+    "liveBadge": "直出"
+  }
+}

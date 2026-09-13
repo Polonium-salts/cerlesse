@@ -309,7 +309,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   },
   analytics_trend: {
     id: "analytics_trend",
-    label: "分析与趋势",
+    label: "信源相关度分布",
     iconName: "TrendingUp",
     defaultWidth: "half",
     minColSpan: 4,
@@ -328,7 +328,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   },
   metrics_telemetry: {
     id: "metrics_telemetry",
-    label: "信源度量分析",
+    label: "检索度量",
     iconName: "Activity",
     defaultWidth: "compact",
     minColSpan: 4,
@@ -337,8 +337,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   },
   mobile_qr: {
     id: "mobile_qr",
-    label: "移动端扫描互联",
-    iconName: "QrCode",
+    label: "复制本页链接",
+    iconName: "Link2",
     defaultWidth: "compact",
     minColSpan: 4,
     basePriority: 4,
@@ -347,7 +347,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   },
   agent_workflow: {
     id: "agent_workflow",
-    label: "Agent 推理审计",
+    label: "Agent 任务分派",
     iconName: "Cpu",
     defaultWidth: "half",
     minColSpan: 4,

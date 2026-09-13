@@ -1,7 +1,10 @@
 import React from "react";
 import { SearchSynthesisResult, ResultWidgetKey, WidgetPlannedSize } from "../../types.js";
+import type { TileSize } from "../../lib/tileLayoutEngine.js";
 
-export type { WidgetPlannedSize };
+// ResultWidgetKey 是注册中心对外契约的一部分（registry.get / has / unregister 的入参类型），
+// 必须一并转发导出，否则 registry.tsx 的具名导入无法解析（TS2459）。
+export type { WidgetPlannedSize, ResultWidgetKey };
 
 export type WidgetCategoryType = "synthesis" | "analysis" | "action" | "portal" | "custom";
 
@@ -116,7 +119,7 @@ export interface WidgetContext<TData = any> {
   actions: Record<string, (payload?: any) => void>;
   
   // 宿主程序桥接能力
-  onResize?: (nextSize: WidgetPlannedSize) => void;
+  onResize?: (nextSize: WidgetPlannedSize | "wide") => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
@@ -232,9 +235,12 @@ export interface WidgetModule<TData = any> {
   category?: WidgetCategoryType;
   icon?: React.ComponentType<{ className?: string }> | string;
   
-  // 尺寸规划规范 (支持 "small" | "medium" | "wide" | "large" | "full")
-  defaultSize: WidgetPlannedSize | "wide";
-  supportedSizes?: (WidgetPlannedSize | "wide")[];
+  // 尺寸契约：一律使用「磁贴宽度档位 TileSize」口径 ——
+  // small=2格 / medium=4格 / large=6格 / wide=8格 / tall=4格 / full=12格。
+  // ⚠️ 切勿混入 WidgetPlannedSize 口径（其 small=4格 / medium=6格 / large=8格），
+  //    两套词汇表同名不同义，混用会让组件整体缩水一档、内容被挤压裁切。
+  defaultSize: TileSize;
+  supportedSizes?: TileSize[];
   
   // 磁贴主题与动效规范
   tileTheme?: TileThemeConfig;

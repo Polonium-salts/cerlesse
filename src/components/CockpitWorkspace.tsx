@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
   SearchSynthesisResult,
-  ResultWidgetKey,
-  DetectedLanguage,
-  UserSettings
+  UserSettings,
+  CustomCardData
 } from "../types.js";
 import {
   FileText,
@@ -12,32 +11,22 @@ import {
   Library,
   HelpCircle,
   BrainCircuit,
-  ShieldCheck,
-  ListChecks,
   ExternalLink,
-  Sparkles,
-  ArrowRight,
-  Globe,
-  Maximize2,
+  ChevronRight,
   Copy,
   Check,
-  CheckCircle2,
-  ChevronRight,
-  RefreshCw,
-  Search,
-  Zap,
-  LayoutGrid,
-  Compass
+  LayoutGrid
 } from "lucide-react";
-import { AIOverviewWidget } from "./AIOverviewWidget.js";
-import { MindMapWidget } from "./MindMapWidget.js";
-import { ComparisonMatrixWidget } from "./ComparisonMatrixWidget.js";
-import { SourcesListWidget } from "./SourcesListWidget.js";
-import { FollowUpWidget } from "./FollowUpWidget.js";
+import { AIOverviewWidget } from "../widgets/components/AIOverviewWidget.js";
+import { MindMapWidget } from "../widgets/components/MindMapWidget.js";
+import { ComparisonMatrixWidget } from "../widgets/components/ComparisonMatrixWidget.js";
+import { SourcesListWidget } from "../widgets/components/SourcesListWidget.js";
+import { FollowUpWidget } from "../widgets/components/FollowUpWidget.js";
 import { AgentProgressStream } from "./AgentProgressStream.js";
-import { UniqueCardWidget } from "./widgets/UniqueCardWidget.js";
-import { ActionPlanWidget } from "./widgets/ActionPlanWidget.js";
-import { CustomCardData } from "../types.js";
+import { UniqueCardWidget } from "../widgets/components/UniqueCardWidget.js";
+import { ActionPlanWidget } from "../widgets/components/ActionPlanWidget.js";
+import { Button } from "./ui/button.js";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.js";
 
 interface CockpitWorkspaceProps {
   activeResult: SearchSynthesisResult;
@@ -68,7 +57,6 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<CockpitTab>(initialTab);
   const [copiedSummary, setCopiedSummary] = useState(false);
-  const [selectedSourcePreview, setSelectedSourcePreview] = useState<number | null>(null);
 
   const officialSite = activeResult.filteredResults.find((r) => r.isOfficial);
   const sources = activeResult.filteredResults;
@@ -90,10 +78,9 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
     return true;
   });
 
-  // Enable keyboard shortcuts (1-6) for rapid zero-scroll navigation
+  // 数字键 1-6 快速切换模块。快捷键本身保留，但不再在界面上常驻 kbd 提示。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input or textarea
       if (
         document.activeElement?.tagName === "INPUT" ||
         document.activeElement?.tagName === "TEXTAREA"
@@ -101,28 +88,9 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
         return;
       }
 
-      switch (e.key) {
-        case "1":
-          setActiveTab("overview");
-          break;
-        case "2":
-          setActiveTab("mindmap");
-          break;
-        case "3":
-          setActiveTab("comparison");
-          break;
-        case "4":
-          setActiveTab("sources");
-          break;
-        case "5":
-          setActiveTab("followup");
-          break;
-        case "6":
-          setActiveTab("reasoning");
-          break;
-        default:
-          break;
-      }
+      const order: CockpitTab[] = ["overview", "mindmap", "comparison", "sources", "followup", "reasoning"];
+      const index = Number(e.key) - 1;
+      if (index >= 0 && index < order.length) setActiveTab(order[index]);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -141,95 +109,37 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
     id: CockpitTab;
     label: string;
     icon: React.ElementType;
-    shortcut: string;
-    countBadge?: number | string;
     hasContent: boolean;
   }> = [
-    {
-      id: "overview",
-      label: "AI 深度研报",
-      icon: FileText,
-      shortcut: "1",
-      hasContent: Boolean(activeResult.summary)
-    },
-    {
-      id: "mindmap",
-      label: "知识架构导图",
-      icon: GitFork,
-      shortcut: "2",
-      countBadge: activeResult.mindMap?.children?.length || undefined,
-      hasContent: Boolean(activeResult.mindMap)
-    },
-    {
-      id: "comparison",
-      label: "多维对比矩阵",
-      icon: Scale,
-      shortcut: "3",
-      countBadge: activeResult.comparisonTable?.length || undefined,
-      hasContent: Boolean(activeResult.comparisonTable?.length)
-    },
-    {
-      id: "sources",
-      label: "权威文献与信源库",
-      icon: Library,
-      shortcut: "4",
-      countBadge: sources.length,
-      hasContent: sources.length > 0
-    },
-    {
-      id: "followup",
-      label: "延伸探索问答",
-      icon: HelpCircle,
-      shortcut: "5",
-      countBadge: followUps.length,
-      hasContent: followUps.length > 0
-    },
-    {
-      id: "reasoning",
-      label: "推理决策诊断",
-      icon: BrainCircuit,
-      shortcut: "6",
-      countBadge: `${((activeResult.executionTimeMs || 0) / 1000).toFixed(1)}s`,
-      hasContent: true
-    }
+    { id: "overview", label: "AI 深度研报", icon: FileText, hasContent: Boolean(activeResult.summary) },
+    { id: "mindmap", label: "知识架构导图", icon: GitFork, hasContent: Boolean(activeResult.mindMap) },
+    { id: "comparison", label: "多维对比矩阵", icon: Scale, hasContent: Boolean(activeResult.comparisonTable?.length) },
+    { id: "sources", label: "权威文献与信源库", icon: Library, hasContent: sources.length > 0 },
+    { id: "followup", label: "延伸探索问答", icon: HelpCircle, hasContent: followUps.length > 0 },
+    { id: "reasoning", label: "推理决策诊断", icon: BrainCircuit, hasContent: true }
   ];
 
   return (
     <div className="w-full flex flex-col gap-4 transition-all">
-      {/* 1. TOP ROW: 4 HORIZONTAL CELLS FIXED OVERVIEW BAR */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 w-full">
-        {/* Cell 1 & 2 (Left 50% width - 2 Grid Cells): High-Authority Sources Preview & Quick Jump */}
-        <div className="md:col-span-2 rounded-2xl bg-white dark:bg-[#1c1c1e] border border-zinc-200/90 dark:border-zinc-800/90 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between group">
-          <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                <Library className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                    高权重文献与信源库
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-semibold">
-                    已核验 {sources.length} 条
-                  </span>
-                </div>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  占据前两格 · 点击信源即时预览或深挖
-                </p>
-              </div>
-            </div>
-
-            <button
+      {/* 一览区：三个信息块，只陈述内容，不带位置说明与计数徽标 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+        {/* 高权重信源 */}
+        <div className="md:col-span-2 rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Library className="size-4 text-muted-foreground" />
+              高权重文献与信源库
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setActiveTab("sources")}
-              className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors cursor-pointer"
             >
-              <span>查看全部</span>
-              <ChevronRight className="w-3 h-3" />
-            </button>
+              查看全部
+              <ChevronRight />
+            </Button>
           </div>
 
-          {/* Quick Click Source Chips */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {sources.slice(0, 4).map((source, idx) => {
               let host = "";
@@ -242,26 +152,23 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
               return (
                 <div
                   key={idx}
-                  onClick={() => {
-                    setSelectedSourcePreview(idx);
-                    setActiveTab("sources");
-                  }}
-                  className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60 dark:border-zinc-700/60 hover:border-blue-300 dark:hover:border-blue-600/70 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-all cursor-pointer flex items-center gap-2 group/item"
+                  onClick={() => setActiveTab("sources")}
+                  className="p-2.5 rounded-lg border border-border hover:bg-accent transition-colors cursor-pointer flex items-center gap-2.5 group/item"
                 >
-                  <span className="w-4 h-4 rounded-md bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-mono text-[9px] font-bold flex items-center justify-center shrink-0">
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                     {idx + 1}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-medium text-zinc-800 dark:text-zinc-200 truncate group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400">
+                    <p className="text-xs font-medium text-foreground truncate">
                       {source.title}
                     </p>
-                    <span className="text-[9px] font-mono text-zinc-400 dark:text-zinc-500 truncate block">
+                    <span className="text-xs text-muted-foreground truncate block">
                       {host}
                     </span>
                   </div>
                   {source.isOfficial && (
-                    <span className="shrink-0 text-[9px] px-1 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold">
-                      官
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      官方
                     </span>
                   )}
                 </div>
@@ -270,194 +177,128 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Cell 3 (Right 25% width - 1 Grid Cell): Official Portal / High Authority Verification */}
-        <div className="rounded-2xl bg-white dark:bg-[#1c1c1e] border border-zinc-200/90 dark:border-zinc-800/90 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between gap-1.5 mb-2 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                </div>
-                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                  官方认证门户
-                </span>
-              </div>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold">
-                占 1 格
-              </span>
-            </div>
+        {/* 官方认证门户 */}
+        <div className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <ExternalLink className="size-4 text-muted-foreground" />
+            官方认证门户
+          </span>
 
-            {officialSite ? (
-              <div className="space-y-1.5">
-                <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 line-clamp-2 leading-tight">
+          {officialSite ? (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
                   {officialSite.title}
                 </h4>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
                   {officialSite.snippet || "经多源交叉检验确认为直属入口"}
                 </p>
               </div>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
-                  多方综合信源已加权验证
-                </p>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  已聚合全网权威公开发布平台
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-2">
-            {officialSite ? (
-              <a
-                href={officialSite.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-medium transition-all active:scale-98 shadow-2xs"
-              >
-                <span>直达官方站点</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            ) : (
-              <button
+              <Button asChild variant="outline" size="sm" className="w-full">
+                <a href={officialSite.url} target="_blank" rel="noopener noreferrer">
+                  直达官方站点
+                  <ExternalLink />
+                </a>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                多方综合信源已加权验证，暂无单一官方入口。
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
                 onClick={() => setActiveTab("sources")}
-                className="w-full flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px] font-medium transition-all"
               >
-                <span>浏览全部参考信源</span>
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            )}
-          </div>
+                浏览全部参考信源
+                <ChevronRight />
+              </Button>
+            </div>
+          )}
         </div>
 
-        {/* Cell 4 (Far Right 25% width - 1 Grid Cell): Key Takeaways Highlight */}
-        <div className="rounded-2xl bg-white dark:bg-[#1c1c1e] border border-zinc-200/90 dark:border-zinc-800/90 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between gap-1.5 mb-2 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                  <ListChecks className="w-3.5 h-3.5" />
-                </div>
-                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                  核心结论速览
-                </span>
-              </div>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">
-                {keyTakeaways.length} 条洞见
-              </span>
-            </div>
-
-            <div className="space-y-1.5">
-              {keyTakeaways.slice(0, 2).map((item, idx) => (
-                <div key={idx} className="flex items-start gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-full bg-amber-500 text-white font-bold text-[8px] flex items-center justify-center shrink-0 mt-0.5">
-                    {idx + 1}
-                  </span>
-                  <p className="text-[11px] text-zinc-700 dark:text-zinc-300 line-clamp-2 leading-relaxed">
-                    {item}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between gap-2 border-t border-zinc-100 dark:border-zinc-800">
-            <button
-              onClick={() => setActiveTab("overview")}
-              className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-0.5"
-            >
-              <span>在研报中定位全文</span>
-              <ArrowRight className="w-2.5 h-2.5" />
-            </button>
-            <button
+        {/* 核心结论 */}
+        <div className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Check className="size-4 text-muted-foreground" />
+              核心结论速览
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={handleCopySummary}
               title="复制结论与摘要"
-              className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
             >
-              {copiedSummary ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-            </button>
+              {copiedSummary ? <Check /> : <Copy />}
+            </Button>
           </div>
+
+          <div className="space-y-2">
+            {keyTakeaways.slice(0, 2).map((item, idx) => (
+              <p key={idx} className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                {item}
+              </p>
+            ))}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start -ml-2"
+            onClick={() => setActiveTab("overview")}
+          >
+            在研报中定位全文
+            <ChevronRight />
+          </Button>
         </div>
       </div>
 
-      {/* 2. CENTRAL COCKPIT STAGE: ZERO-SCROLL CLICK-ONLY INTERACTION HUB */}
-      <div className="rounded-3xl bg-white/95 dark:bg-[#1c1c1e]/95 border border-zinc-200/90 dark:border-zinc-800/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-md overflow-hidden flex flex-col flex-1 min-h-[580px]">
-        {/* Click Command Dock (Zero-Scroll Module Switcher) */}
-        <div className="px-4 py-2.5 bg-zinc-50/80 dark:bg-zinc-900/60 border-b border-zinc-200/80 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 custom-scrollbar">
-            {navTabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              if (!tab.hasContent) return null;
+      {/* 主舞台：模块切换 + 内容 */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col flex-1 min-h-[580px]">
+        {/* 模块切换 */}
+        <div className="px-4 py-2.5 border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as CockpitTab)}
+            className="min-w-0"
+          >
+            <TabsList className="overflow-x-auto no-scrollbar">
+              {navTabs
+                .filter((tab) => tab.hasContent)
+                .map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger key={tab.id} value={tab.id}>
+                      <Icon />
+                      {tab.label}
+                    </TabsTrigger>
+                  );
+                })}
+            </TabsList>
+          </Tabs>
 
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`group relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap active:scale-97 ${
-                    isActive
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-sm"
-                      : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? "text-blue-400 dark:text-blue-600" : "text-zinc-400 group-hover:text-zinc-600"}`} />
-                  <span>{tab.label}</span>
-
-                  {tab.countBadge !== undefined && (
-                    <span
-                      className={`text-[9px] px-1.5 py-0.2 rounded-md font-mono ${
-                        isActive
-                          ? "bg-white/20 text-white dark:bg-black/10 dark:text-black font-bold"
-                          : "bg-zinc-200 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
-                      }`}
-                    >
-                      {tab.countBadge}
-                    </span>
-                  )}
-
-                  <kbd
-                    className={`hidden lg:inline-block text-[9px] px-1 rounded font-mono ${
-                      isActive
-                        ? "text-white/60 dark:text-black/50"
-                        : "text-zinc-400 dark:text-zinc-500"
-                    }`}
-                  >
-                    {tab.shortcut}
-                  </kbd>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Switch to Bento Grid Mode & Quick Info */}
-          <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-1 text-[11px] text-zinc-400 dark:text-zinc-500 font-medium">
-              <Zap className="w-3 h-3 text-amber-500" />
-              <span>免滑动模式 · 按键盘 1-6 极速切换</span>
-            </div>
-
-            {onSwitchToBentoGrid && (
-              <button
-                onClick={onSwitchToBentoGrid}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-all cursor-pointer shadow-2xs"
-                title="切换至横排4格无限流自由网格布局"
-              >
-                <LayoutGrid className="w-3.5 h-3.5 text-zinc-500" />
-                <span>切为多格流</span>
-              </button>
-            )}
-          </div>
+          {onSwitchToBentoGrid && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onSwitchToBentoGrid}
+              title="切换至横排多格自由网格布局"
+            >
+              <LayoutGrid />
+              切为多格流
+            </Button>
+          )}
         </div>
 
-        {/* Dedicated Active Stage Content (Scrollable internally without window scroll) */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-white dark:bg-[#1c1c1e]">
+        {/* 内容 */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 no-scrollbar">
           {activeTab === "overview" && (
             <div className="max-w-6xl mx-auto space-y-6">
-              {/* 行动规划与 Agent 自主创建的定制独有小组件：采用 2D 模组并排排列 */}
               {(Boolean(activeResult.actionPlan?.tasks?.length) || displayCustomCards.length > 0) && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
-                  {/* 行动规划与能力调度组件：当存在明确操作目标时优先置顶 */}
                   {activeResult.actionPlan && activeResult.actionPlan.tasks && activeResult.actionPlan.tasks.length > 0 && (
                     <div className={displayCustomCards.length === 0 ? "lg:col-span-2" : "col-span-1"}>
                       <ActionPlanWidget
@@ -467,7 +308,6 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
                     </div>
                   )}
 
-                  {/* 搜索定制独有小组件：每张卡片作为独立的桌面模组并排并列呈现 */}
                   {displayCustomCards.map((card) => {
                     const isFull = displayCustomCards.length === 1 && !activeResult.actionPlan?.tasks?.length;
                     return (
@@ -489,9 +329,6 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
                   query={activeResult.query}
                   modelUsed={activeResult.modelUsed}
                   filteredResults={activeResult.filteredResults}
-                  detectedLanguage={activeResult.detectedLanguage}
-                  onOpenMindMap={() => setActiveTab("mindmap")}
-                  onOpenComparison={() => setActiveTab("comparison")}
                 />
               </div>
             </div>
@@ -521,7 +358,6 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
               <SourcesListWidget
                 results={activeResult.filteredResults}
                 rawResultCount={activeResult.rawResultCount}
-                onForgeCardFromSource={(srcId) => onOpenForgeModal?.([srcId])}
                 onOpenForgeModal={() => onOpenForgeModal?.()}
               />
             </div>
@@ -534,13 +370,9 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
                 onQuestionClick={(q) => onExecuteSearch(q, settings.enableDeepSearch)}
               />
 
-              {/* Quick Inquiry Assistant Prompt */}
-              <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-800/60 flex items-center justify-between gap-3 text-xs text-blue-900 dark:text-blue-200">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span>点击任意建议问题，Agent 将立即展开全新多源检索与交叉验证分析</span>
-                </div>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                点击任意建议问题，Agent 将立即展开全新多源检索与交叉验证分析。
+              </p>
             </div>
           )}
 
@@ -551,6 +383,7 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
                 query={activeResult.query}
                 isComplete={true}
                 executionTimeMs={activeResult.executionTimeMs}
+                agentTeam={activeResult.agentTeam}
               />
             </div>
           )}

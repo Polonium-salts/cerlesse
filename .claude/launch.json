@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cerlesse-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "3100", "--strictPort"],
+      "port": 3100,
+      "autoPort": false
+    }
+  ]
+}

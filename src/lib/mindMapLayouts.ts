@@ -62,18 +62,25 @@ export interface MindMapStyleConfig {
   linkStyle: MindMapLinkStyle;
   agentLabel: string;
   agentReasoning: string;
-  nodeRoundness: "pill" | "rounded-xl" | "rounded-2xl" | "square";
+  nodeRoundness: "pill" | "round" | "soft" | "square";
   showGlow: boolean;
 }
 
-// Color palettes for multi-spectral branches
+/**
+ * 多分支调色板 —— 单色版。
+ *
+ * 原设计用 6 种色相（蓝/绿/紫/琥珀/粉/青）区分同级分支。
+ * 单色约束下不再有可用色相，于是改用**明度分级**承担同样的"区分兄弟分支"职责：
+ * 6 档从最亮的 #fafafa 递进到 #6e6e6e，相邻档位亮度差 ≈ 12%，肉眼可辨，
+ * 且最暗档在浅色底、最亮档在深色底上都仍然可见。
+ */
 const BRANCH_PALETTES = [
-  { accent: "#3b82f6", border: "#60a5fa", bg: "rgba(59, 130, 246, 0.08)", text: "#93c5fd", glow: "rgba(59, 130, 246, 0.35)" }, // Blue
-  { accent: "#10b981", border: "#34d399", bg: "rgba(16, 185, 129, 0.08)", text: "#6ee7b7", glow: "rgba(16, 185, 129, 0.35)" }, // Emerald
-  { accent: "#8b5cf6", border: "#a78bfa", bg: "rgba(139, 92, 246, 0.08)", text: "#c4b5fd", glow: "rgba(139, 92, 246, 0.35)" }, // Violet
-  { accent: "#f59e0b", border: "#fbbf24", bg: "rgba(245, 158, 11, 0.08)", text: "#fcd34d", glow: "rgba(245, 158, 11, 0.35)" }, // Amber
-  { accent: "#ec4899", border: "#f472b6", bg: "rgba(236, 72, 153, 0.08)", text: "#fbcfe8", glow: "rgba(236, 72, 153, 0.35)" }, // Pink
-  { accent: "#06b6d4", border: "#22d3ee", bg: "rgba(6, 182, 212, 0.08)", text: "#67e8f9", glow: "rgba(6, 182, 212, 0.35)" }, // Cyan
+  { accent: "#fafafa", border: "#fafafa", bg: "rgba(250, 250, 250, 0.10)", text: "#fafafa", glow: "rgba(250, 250, 250, 0.35)" }, // 灰阶 1（最亮）
+  { accent: "#dedede", border: "#e5e5e5", bg: "rgba(222, 222, 222, 0.10)", text: "#ebebeb", glow: "rgba(222, 222, 222, 0.35)" }, // 灰阶 2
+  { accent: "#c2c2c2", border: "#d0d0d0", bg: "rgba(194, 194, 194, 0.10)", text: "#d6d6d6", glow: "rgba(194, 194, 194, 0.35)" }, // 灰阶 3
+  { accent: "#a6a6a6", border: "#b5b5b5", bg: "rgba(166, 166, 166, 0.10)", text: "#bfbfbf", glow: "rgba(166, 166, 166, 0.35)" }, // 灰阶 4
+  { accent: "#8a8a8a", border: "#9a9a9a", bg: "rgba(138, 138, 138, 0.10)", text: "#a8a8a8", glow: "rgba(138, 138, 138, 0.35)" }, // 灰阶 5
+  { accent: "#6e6e6e", border: "#7d7d7d", bg: "rgba(110, 110, 110, 0.10)", text: "#909090", glow: "rgba(110, 110, 110, 0.35)" }, // 灰阶 6（最暗）
 ];
 
 // Determine node colors based on theme & branch
@@ -86,20 +93,20 @@ export function resolveNodeColor(
   if (depth === 0) {
     if (theme === "cyber_neon") {
       return {
-        bg: isDark ? "rgba(6, 182, 212, 0.2)" : "#e0f2fe",
-        border: isDark ? "#06b6d4" : "#0284c7",
-        text: isDark ? "#ffffff" : "#0369a1",
-        accent: isDark ? "#06b6d4" : "#0284c7",
-        glow: isDark ? "0 0 24px rgba(6, 182, 212, 0.5)" : "0 2px 12px rgba(2, 132, 199, 0.15)"
+        bg: isDark ? "rgba(222, 222, 222, 0.2)" : "#f0f0f0",
+        border: isDark ? "#dedede" : "#8a8a8a",
+        text: isDark ? "#ffffff" : "#4d4d4d",
+        accent: isDark ? "#dedede" : "#8a8a8a",
+        glow: isDark ? "0 0 24px rgba(255, 255, 255, 0.5)" : "0 2px 12px rgba(0, 0, 0, 0.15)"
       };
     }
     if (theme === "cosmic_galaxy") {
       return {
-        bg: isDark ? "rgba(139, 92, 246, 0.25)" : "#f3e8ff",
-        border: isDark ? "#8b5cf6" : "#7c3aed",
-        text: isDark ? "#ffffff" : "#581c87",
-        accent: isDark ? "#8b5cf6" : "#7c3aed",
-        glow: isDark ? "0 0 28px rgba(139, 92, 246, 0.6)" : "0 2px 12px rgba(124, 58, 237, 0.15)"
+        bg: isDark ? "rgba(194, 194, 194, 0.25)" : "#f0f0f0",
+        border: isDark ? "#c2c2c2" : "#8a8a8a",
+        text: isDark ? "#ffffff" : "#3d3d3d",
+        accent: isDark ? "#c2c2c2" : "#8a8a8a",
+        glow: isDark ? "0 0 28px rgba(255, 255, 255, 0.6)" : "0 2px 12px rgba(0, 0, 0, 0.15)"
       };
     }
     if (theme === "obsidian_slate") {
@@ -107,16 +114,16 @@ export function resolveNodeColor(
         bg: isDark ? "#27272a" : "#ffffff",
         border: isDark ? "#e4e4e7" : "#27272a",
         text: isDark ? "#ffffff" : "#18181b",
-        accent: "#f59e0b",
+        accent: "#a3a3a3",
         glow: isDark ? "0 4px 16px rgba(0,0,0,0.3)" : "0 2px 8px rgba(0,0,0,0.06)"
       };
     }
     return {
       bg: "#ffffff",
-      border: isDark ? "#ffffff" : "#2563eb",
-      text: isDark ? "#09090b" : "#1e3a8a",
-      accent: "#3b82f6",
-      glow: isDark ? "0 4px 20px rgba(0, 0, 0, 0.15)" : "0 2px 12px rgba(37, 99, 235, 0.12)"
+      border: isDark ? "#ffffff" : "#8a8a8a",
+      text: isDark ? "#09090b" : "#3d3d3d",
+      accent: "#d4d4d4",
+      glow: isDark ? "0 4px 20px rgba(0, 0, 0, 0.15)" : "0 2px 12px rgba(0, 0, 0, 0.12)"
     };
   }
 
@@ -125,17 +132,17 @@ export function resolveNodeColor(
   switch (theme) {
     case "cyber_neon":
       return {
-        bg: isDark ? "rgba(10, 20, 30, 0.85)" : "rgba(240, 249, 255, 0.95)",
+        bg: isDark ? "rgba(18, 18, 18, 0.85)" : "rgba(245, 245, 245, 0.95)",
         border: palette.border,
-        text: isDark ? "#f0fdf4" : "#0f172a",
+        text: isDark ? "#f5f5f5" : "#1a1a1a",
         accent: palette.accent,
         glow: `0 0 14px ${palette.glow}`
       };
     case "cosmic_galaxy":
       return {
-        bg: isDark ? "rgba(18, 14, 38, 0.85)" : "rgba(250, 245, 255, 0.95)",
+        bg: isDark ? "rgba(18, 18, 18, 0.85)" : "rgba(245, 245, 245, 0.95)",
         border: palette.border,
-        text: isDark ? "#f8fafc" : "#1e1b4b",
+        text: isDark ? "#f5f5f5" : "#1f1f1f",
         accent: palette.accent,
         glow: `0 0 16px ${palette.glow}`
       };
@@ -149,18 +156,18 @@ export function resolveNodeColor(
       };
     case "obsidian_slate":
       return {
-        bg: isDark ? "rgba(24, 24, 27, 0.9)" : "rgba(250, 250, 250, 0.95)",
-        border: isDark ? "#3f3f46" : "#d4d4d8",
-        text: isDark ? "#e4e4e7" : "#27272a",
-        accent: "#71717a",
+        bg: isDark ? "rgba(24, 24, 24, 0.9)" : "rgba(250, 250, 250, 0.95)",
+        border: isDark ? "#404040" : "#d4d4d4",
+        text: isDark ? "#e5e5e5" : "#262626",
+        accent: "#737373",
         glow: "none"
       };
     case "nordic_clean":
       return {
-        bg: isDark ? "rgba(20, 20, 22, 0.9)" : "#ffffff",
-        border: isDark ? "#27272a" : "#e4e4e7",
-        text: isDark ? "#f4f4f5" : "#18181b",
-        accent: "#a1a1aa",
+        bg: isDark ? "rgba(20, 20, 20, 0.9)" : "#ffffff",
+        border: isDark ? "#262626" : "#e5e5e5",
+        text: isDark ? "#f5f5f5" : "#171717",
+        accent: "#a3a3a3",
         glow: "none"
       };
     case "spectral_vibrant":
@@ -239,7 +246,7 @@ export function inferAgentMindMapStyle(
       linkStyle: "bezier",
       agentLabel: "双翼对等分析树 (Bilateral Tree)",
       agentReasoning: "检测到对比型实体分析，采用左右对称平衡双翼展开，使两方维度的比对一目了然。",
-      nodeRoundness: "rounded-xl",
+      nodeRoundness: "round",
       showGlow: true
     };
   }
@@ -252,7 +259,7 @@ export function inferAgentMindMapStyle(
       linkStyle: "orthogonal",
       agentLabel: "时间演进波浪图 (Evolution Flow)",
       agentReasoning: "语义识别为阶段与演进脉络，以时序流线架构呈现里程碑式知识递进。",
-      nodeRoundness: "rounded-2xl",
+      nodeRoundness: "soft",
       showGlow: false
     };
   }
@@ -265,7 +272,7 @@ export function inferAgentMindMapStyle(
       linkStyle: "orthogonal",
       agentLabel: "层级金字塔架构 (Hierarchy Chart)",
       agentReasoning: "识别为顶层架构与系统分层，按严密父子继承关系自顶向下分级排布。",
-      nodeRoundness: "rounded-xl",
+      nodeRoundness: "round",
       showGlow: true
     };
   }
@@ -290,7 +297,7 @@ export function inferAgentMindMapStyle(
     linkStyle: "bezier",
     agentLabel: "逻辑渐进流线树 (Logic Tree)",
     agentReasoning: "采用经典高清晰度层次树展开，从左到右递进阐释知识脉络。",
-    nodeRoundness: "rounded-xl",
+    nodeRoundness: "round",
     showGlow: true
   };
 }
@@ -299,7 +306,7 @@ export function inferAgentMindMapStyle(
 const ALL_TOPOLOGIES: MindMapTopology[] = ["radial", "bilateral", "horizontal", "org_chart", "galaxy_force", "timeline_flow", "fishbone"];
 const ALL_THEMES: MindMapVisualTheme[] = ["cyber_neon", "aurora_glass", "cosmic_galaxy", "spectral_vibrant", "obsidian_slate", "nordic_clean"];
 const ALL_LINKS: MindMapLinkStyle[] = ["bezier", "orthogonal", "pulse_stream", "arc", "direct"];
-const ALL_SHAPES: ("pill" | "rounded-xl" | "rounded-2xl" | "square")[] = ["pill", "rounded-xl", "rounded-2xl", "square"];
+const ALL_SHAPES: ("pill" | "round" | "soft" | "square")[] = ["pill", "round", "soft", "square"];
 
 export function generateNextMindMapStyle(currentConfig?: MindMapStyleConfig): MindMapStyleConfig {
   const topIndex = Math.floor(Math.random() * ALL_TOPOLOGIES.length);

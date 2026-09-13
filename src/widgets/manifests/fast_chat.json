@@ -1,0 +1,14 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "fast_chat",
+  "name": "极速伴随问答",
+  "version": "1.0.0",
+  "description": "快速交互解答、关键疑难澄清与交互反馈",
+  "category": "action",
+  "icon": "MessageSquare",
+  "grid": {
+    "defaultSize": "medium",
+    "supportedSizes": ["small", "medium", "large"],
+    "ratio": "4:5"
+  }
+}

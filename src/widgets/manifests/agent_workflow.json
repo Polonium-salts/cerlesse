@@ -1,0 +1,14 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "agent_workflow",
+  "name": "Agent 协作审计",
+  "version": "1.0.0",
+  "description": "多智能体并行作业轨迹与加速比诊断审计",
+  "category": "analysis",
+  "icon": "Workflow",
+  "grid": {
+    "defaultSize": "large",
+    "supportedSizes": ["medium", "large", "wide", "full"],
+    "ratio": "3:2"
+  }
+}

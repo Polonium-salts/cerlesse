@@ -1,28 +1,47 @@
-import React from "react";
-import { cn } from "../../lib/utils.js";
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { cn } from "cn"
+import { Slot } from "radix-ui"
 
-export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "secondary" | "outline" | "success" | "warning" | "destructive";
-}
+const badgeVariants = cva(
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+        secondary:
+          "bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+        destructive:
+          "bg-destructive text-white focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive/90",
+        outline:
+          "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 [a&]:hover:underline",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
 
-export function Badge({ className, variant = "default", ...props }: BadgeProps) {
-  const variants = {
-    default: "border-transparent bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900",
-    secondary: "border-transparent bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-200",
-    outline: "text-zinc-950 dark:text-zinc-50 border-zinc-200 dark:border-zinc-800",
-    success: "border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
-    warning: "border-transparent bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20",
-    destructive: "border-transparent bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20"
-  };
+function Badge({
+  className,
+  variant = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : "span"
 
   return (
-    <div
-      className={cn(
-        "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-400",
-        variants[variant],
-        className
-      )}
+    <Comp
+      data-slot="badge"
+      data-variant={variant}
+      className={cn(badgeVariants({ variant }), className)}
       {...props}
     />
-  );
+  )
 }
+
+export { Badge, badgeVariants }

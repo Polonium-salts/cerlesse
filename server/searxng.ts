@@ -1,4 +1,6 @@
 import { SearchResult } from "../src/types.js";
+import { normalizeUrlKey } from "./retrievalRanker.js";
+import { acceptLanguageFor, toSearxngLanguage } from "./language.js";
 
 // Active, responsive SearXNG instances verified for JSON output
 const VERIFIED_SEARXNG_INSTANCES = [
@@ -39,49 +41,79 @@ function isInstanceDead(url: string): boolean {
 
 let cachedDynamicInstances: string[] = [];
 let lastDynamicFetch = 0;
+const INSTANCE_POOL_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * 正在进行的实例池探测。
+ * 这是本文件最关键的一处性能修正：多路检索会并发调用 searchSearxng，
+ * 旧实现没有任何在途去重，N 条路由就会各自去 fetch 一次 searx.space，
+ * 每条都要等满 3.5s 超时才继续——检索因此被这一个探测动作拖住数秒。
+ * 现在所有并发调用共享同一个在途 Promise。
+ */
+let inflightInstanceFetch: Promise<string[]> | null = null;
+
+/** 同步取用当前可用实例池：绝不阻塞检索主路径 */
+function currentInstancePool(): { pool: string[]; fresh: boolean } {
+  const fresh = cachedDynamicInstances.length > 0 && Date.now() - lastDynamicFetch < INSTANCE_POOL_TTL_MS;
+  const base = fresh ? cachedDynamicInstances : VERIFIED_SEARXNG_INSTANCES;
+  return { pool: base.filter((u) => !isInstanceDead(u)), fresh };
+}
+
+/** 后台预热实例池：不阻塞调用方，成功后在下次检索中自然受益 */
+function warmInstancePool(): void {
+  void getActiveSearxngInstances().catch(() => { /* 探测失败保持静态池 */ });
+}
 
 /**
  * Periodically fetch live public SearXNG instances from searx.space
  */
 async function getActiveSearxngInstances(): Promise<string[]> {
   const now = Date.now();
-  if (cachedDynamicInstances.length > 0 && now - lastDynamicFetch < 15 * 60 * 1000) {
+  if (cachedDynamicInstances.length > 0 && now - lastDynamicFetch < INSTANCE_POOL_TTL_MS) {
     return cachedDynamicInstances.filter(u => !isInstanceDead(u));
   }
 
-  try {
-    const res = await fetch("https://searx.space/data/instances.json", {
-      signal: AbortSignal.timeout(3500)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const instances = Object.entries(data.instances || {})
-        .filter(([url, info]: [string, any]) => {
-          return (
-            info.network_type === "normal" &&
-            (info.http?.grade === "A+" || info.http?.grade === "A") &&
-            !url.includes(".onion") &&
-            !url.includes(".i2p") &&
-            info.timing?.search?.all?.mean < 3 &&
-            !isInstanceDead(url)
-          );
-        })
-        .sort((a: any, b: any) => (a[1].timing?.search?.all?.mean || 999) - (b[1].timing?.search?.all?.mean || 999))
-        .map(([url]) => url.replace(/\/$/, ""));
+  if (inflightInstanceFetch) return inflightInstanceFetch;
 
-      if (instances.length > 0) {
-        cachedDynamicInstances = Array.from(new Set([...VERIFIED_SEARXNG_INSTANCES, ...instances]))
-          .filter(u => !isInstanceDead(u))
-          .slice(0, 15);
-        lastDynamicFetch = now;
-        return cachedDynamicInstances;
+  inflightInstanceFetch = (async () => {
+    try {
+      const res = await fetch("https://searx.space/data/instances.json", {
+        signal: AbortSignal.timeout(2500)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const instances = Object.entries(data.instances || {})
+          .filter(([url, info]: [string, any]) => {
+            return (
+              info.network_type === "normal" &&
+              (info.http?.grade === "A+" || info.http?.grade === "A") &&
+              !url.includes(".onion") &&
+              !url.includes(".i2p") &&
+              info.timing?.search?.all?.mean < 3 &&
+              !isInstanceDead(url)
+            );
+          })
+          .sort((a: any, b: any) => (a[1].timing?.search?.all?.mean || 999) - (b[1].timing?.search?.all?.mean || 999))
+          .map(([url]) => url.replace(/\/$/, ""));
+
+        if (instances.length > 0) {
+          cachedDynamicInstances = Array.from(new Set([...VERIFIED_SEARXNG_INSTANCES, ...instances]))
+            .filter(u => !isInstanceDead(u))
+            .slice(0, 15);
+          lastDynamicFetch = now;
+          return cachedDynamicInstances;
+        }
       }
+    } catch {
+      // Network or timeout, use fallback pool
     }
-  } catch {
-    // Network or timeout, use fallback pool
-  }
 
-  return VERIFIED_SEARXNG_INSTANCES.filter(u => !isInstanceDead(u));
+    return VERIFIED_SEARXNG_INSTANCES.filter(u => !isInstanceDead(u));
+  })().finally(() => {
+    inflightInstanceFetch = null;
+  });
+
+  return inflightInstanceFetch;
 }
 
 function sanitizeSnippet(text: string): string {
@@ -129,20 +161,14 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2200);
 
-  const acceptLang = langCode === "en" 
-    ? "en-US,en;q=0.9" 
-    : langCode === "ja" 
-    ? "ja-JP,ja;q=0.9,en;q=0.8" 
-    : langCode === "ko"
-    ? "ko-KR,ko;q=0.9,en;q=0.8"
-    : "zh-CN,zh;q=0.9,en;q=0.8";
+  const acceptLang = acceptLanguageFor(langCode);
 
   try {
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": acceptLang
+        ...(acceptLang ? { "Accept-Language": acceptLang } : {})
       },
       signal: controller.signal
     });
@@ -179,7 +205,12 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
             id: `web-${Math.random().toString(36).substring(2, 9)}`,
             title,
             url: directUrl,
-            snippet: snippet || `访问 ${title} 官方网页内容与实时在线资源。`,
+            // 抓不到摘要时**不要编造**。
+            // 旧实现在这里拼了一句「访问 X 官方网页内容与实时在线资源。」—— 这段假文本
+            // 会被下游重排当作真实摘要参与相关性打分（还自带"官方"这种高价值词），
+            // 让一条其实没有摘要的条目凭空获得相关性。留空反而正确：
+            // 重排内核会对「无摘要」如实施加惩罚，这才是它应得的分数。
+            snippet,
             engine: "Web Direct",
             category: "general",
             displayDomain: hostname
@@ -204,17 +235,23 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
   url.searchParams.set("categories", "general");
-  url.searchParams.set("language", langCode || "auto");
-  // EXCLUDE wikipedia to avoid drowning real websites in encyclopedia summaries
-  url.searchParams.set("engines", "google,bing,duckduckgo,brave,qwant");
+  // 语言过滤是「结果精准」的一道硬闸门：跨语言路由用 en 下发才能真的拿到英文权威源，
+  // 其余路由用查询语言过滤才能挡住不对语种的内容农场。统一走 toSearxngLanguage 映射，
+  // 不再把 `zh` 这种两字母码裸传给 SearXNG（见 language.ts 的说明）。
+  url.searchParams.set("language", toSearxngLanguage(langCode) || "auto");
+  // 刻意**不**指定 engines。
+  //
+  // 旧实现写死 `engines=google,bing,duckduckgo,brave,qwant`，本意是排除 wikipedia。
+  // 代价有三个，且都由候选池广度买单：
+  //   1. 每个 SearXNG 实例实际启用的引擎集合并不相同，写死清单会让部分实例
+  //      因"请求了它没有的引擎"而返回空，进而被误判为故障实例打入黑名单；
+  //   2. 多引擎共识（同一 URL 被多个引擎同时给出）是重排的核心信号之一，
+  //      把引擎池人为压到 5 个，等于主动放弃了共识信号；
+  //   3. 各实例的索引覆盖互补性被抹平，长尾权威源进不来。
+  // wikipedia 的排除现在由下游统一负责（重排内核按 isEncyclopedia 判定，
+  // 且仅在用户明确搜索百科时才放行），比在检索侧写死引擎清单更准确也更可维护。
 
-  const acceptLang = langCode === "en" 
-    ? "en-US,en;q=0.9" 
-    : langCode === "ja" 
-    ? "ja-JP,ja;q=0.9,en;q=0.8" 
-    : langCode === "ko"
-    ? "ko-KR,ko;q=0.9,en;q=0.8"
-    : "zh-CN,zh;q=0.9,en;q=0.8";
+  const acceptLang = acceptLanguageFor(langCode);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 1800);
@@ -224,7 +261,7 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "application/json",
-        "Accept-Language": acceptLang
+        ...(acceptLang ? { "Accept-Language": acceptLang } : {})
       },
       signal: controller.signal
     });
@@ -345,7 +382,7 @@ export async function searchSearxng(
     page?: number;
     env?: Record<string, string | undefined>;
   } = {}
-): Promise<{ results: SearchResult[]; instanceUsed: string }> {
+): Promise<{ results: SearchResult[]; instanceUsed: string; instancesUsed: string[] }> {
   const validCustomUrl = options.customUrl && 
     typeof options.customUrl === "string" && 
     options.customUrl.startsWith("http") && 
@@ -366,7 +403,12 @@ export async function searchSearxng(
     ...(validEnvUrl ? [validEnvUrl] : [])
   ];
 
-  const pool = await getActiveSearxngInstances();
+  // 实例池绝不挡在检索主路径前面：先用确定可用的静态池立即开跑，
+  // 动态探测放到后台预热，下次检索自然受益。旧实现 await 这个探测，
+  // 让每条路由都白等最多 3.5s——这正是检索耗时居高不下的元凶。
+  const { pool, fresh } = currentInstancePool();
+  if (!fresh) warmInstancePool();
+
   const allInstances = Array.from(new Set([...instances, ...pool]));
 
   // Concurrently execute Direct Web Search and top SearXNG instances for maximum speed
@@ -380,31 +422,48 @@ export async function searchSearxng(
 
   // Fast resolution: if Direct Web returns >= 6 results, don't wait for slow SearXNG instances
   const directWebResults = await directPromise;
-  let searxngResults: SearchResult[] = [];
+  const instancesUsed: string[] = [];
   let instanceUsed = "Direct Web Engine";
 
-  if (directWebResults.length >= 6) {
-    // Quick race check for already-completed or near-instant SearXNG responses (max 250ms)
-    const settled = await Promise.race([
-      Promise.all(searxngPromises),
-      new Promise<any[]>(resolve => setTimeout(() => resolve([]), 250))
-    ]);
+  // 关键修正：多个 SearXNG 实例各自的引擎池与索引覆盖并不相同，
+  // 旧实现「取第一个非空实例就 break」会白白丢掉另外两个实例的全部结果，
+  // 候选池因此常年偏小、偏窄，重排阶段也就无从择优。现在全量聚合。
+  const collectFromSettled = (settled: any[]) => {
+    const merged: SearchResult[] = [];
     for (const item of settled) {
       if (item && item.res && item.res.length > 0) {
-        searxngResults = item.res;
-        instanceUsed = item.inst;
-        break;
+        merged.push(...item.res);
+        instancesUsed.push(item.inst);
       }
     }
+    if (instancesUsed.length > 0) {
+      instanceUsed = instancesUsed[0];
+    }
+    return merged;
+  };
+
+  // 「候选池广度 vs 首屏延迟」的权衡点 —— 这是精准度的一个隐藏瓶颈。
+  //
+  // 旧实现在 Bing 返回 ≥6 条时只给 SearXNG 250ms。而 SearXNG 要聚合多个上游引擎，
+  // 正常响应通常需要 1~3s，250ms 几乎必然超时 —— 于是绝大多数查询的候选池实际
+  // 退化成「只有 Bing 的十来条」。后果不在检索本身，而在**下游信号全部失效**：
+  //   · 多引擎共识（同一 URL 被 Google/Bing/DDG 同时给出）无从统计；
+  //   · 多实例索引覆盖的互补性被抹平，长尾权威源进不来；
+  //   · 重排内核失去了"从大池子里择优"的前提，只能在十几条里排序。
+  // 现在只在 Bing 单独就填满一整页时才走快速通道，且把窗口放宽到能容纳一次正常响应。
+  const DIRECT_WEB_SUFFICES = 12;
+  const SEARXNG_RACE_WINDOW_MS = 900;
+
+  let searxngResults: SearchResult[] = [];
+  if (directWebResults.length >= DIRECT_WEB_SUFFICES) {
+    const settled = await Promise.race([
+      Promise.all(searxngPromises),
+      new Promise<any[]>(resolve => setTimeout(() => resolve([]), SEARXNG_RACE_WINDOW_MS))
+    ]);
+    searxngResults = collectFromSettled(settled);
   } else {
     const searxngResultsList = await Promise.all(searxngPromises);
-    for (const item of searxngResultsList) {
-      if (item && item.res && item.res.length > 0) {
-        searxngResults = item.res;
-        instanceUsed = item.inst;
-        break;
-      }
-    }
+    searxngResults = collectFromSettled(searxngResultsList);
   }
 
   // Combine and deduplicate
@@ -437,8 +496,11 @@ export async function searchSearxng(
   for (const item of combined) {
     if (!item.url) continue;
 
-    // Normalize URL for deduplication (strip hash and trailing slash)
-    const normalizedUrl = item.url.split("#")[0].replace(/\/$/, "").toLowerCase();
+    // 归一化去重：复用重排内核的 normalizeUrlKey。
+    // 旧实现只做 `split("#")[0].replace(/\/$/,"").toLowerCase()` —— 不去 www、不去追踪参数，
+    // 于是 https://www.x.com/a?utm_source=t 与 http://x.com/a 会被当成两条独立结果。
+    // 这里提前收紧口径，避免它们在进入重排前就白白占掉信源名额。
+    const normalizedUrl = normalizeUrlKey(item.url);
     if (seenUrls.has(normalizedUrl)) continue;
     seenUrls.add(normalizedUrl);
 
@@ -456,45 +518,24 @@ export async function searchSearxng(
     filtered.push(...combined);
   }
 
-  // Resilient fallback: if all external web engines were silent/blocked, generate structured high-authority references
-  if (filtered.length === 0) {
-    const cleanQ = query.trim();
-    const encoded = encodeURIComponent(cleanQ);
-    filtered.push(
-      {
-        id: `web-portal-${Math.random().toString(36).substring(2, 7)}`,
-        title: `${cleanQ} 官方权威入口与全景参考`,
-        url: `https://www.bing.com/search?q=${encoded}`,
-        snippet: `为您汇总关于 “${cleanQ}” 的官方主页、最新发布动态与权威技术指南。`,
-        engine: "Direct Web Engine",
-        category: "general",
-        displayDomain: "bing.com",
-        isOfficial: true
-      },
-      {
-        id: `web-portal-${Math.random().toString(36).substring(2, 7)}`,
-        title: `${cleanQ} 开发者生态与工程架构索引`,
-        url: `https://github.com/search?q=${encoded}`,
-        snippet: `探索 “${cleanQ}” 相关的开源实现、核心仓库与工程落地参考方案。`,
-        engine: "Direct Web Engine",
-        category: "general",
-        displayDomain: "github.com"
-      },
-      {
-        id: `web-portal-${Math.random().toString(36).substring(2, 7)}`,
-        title: `${cleanQ} 全球专业社区洞见与评测`,
-        url: `https://duckduckgo.com/?q=${encoded}`,
-        snippet: `获取来自全球技术社区对 “${cleanQ}” 的客观实测、多维对比与前沿动态。`,
-        engine: "Direct Web Engine",
-        category: "general",
-        displayDomain: "duckduckgo.com"
-      }
-    );
-    instanceUsed = "Direct Web Engine (Resilient)";
-  }
+  // ── 关于「全部引擎失败时的兜底」────────────────────────────────────
+  // 旧实现在这里捏造 3 条结果：标题伪装成「X 官方权威入口与全景参考」，摘要写
+  // 「为您汇总关于 X 的官方主页…」，URL 指向 bing.com/search?q=X 等搜索页，其中一条
+  // 还标了 isOfficial: true。
+  //
+  // 这是"结果不精准"中最伤的一种：它不是排序失误，而是**凭空造出信源**。
+  //   · 假摘要含有"官方""权威"等高价值词，会被重排当作真实内容加分；
+  //   · bing.com / github.com 落在权威域名表内，反而让伪造条目拿到最高权威分，
+  //     实测足以把真正的官方文档挤出 Top1；
+  //   · 用户完全无法分辨这是搜索结果还是系统编造的。
+  //
+  // 现在的处理：**如实返回空结果**。检索失败是一个需要被上层如实告知的事实，
+  // 而不是一个该被编造内容掩盖的空白。重排内核也会硬剔除搜索结果页类 URL
+  // （见 retrievalRanker.isSearchEndpoint），因此这类条目即便混进来也进不了信源集。
 
   return {
     results: filtered,
-    instanceUsed
+    instanceUsed,
+    instancesUsed
   };
 }

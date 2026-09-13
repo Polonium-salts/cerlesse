@@ -1,7 +1,8 @@
 import React from "react";
 import { GoogleLogo } from "./GoogleLogo.js";
 import { SearchBar } from "./SearchBar.js";
-import { Sun, Moon, History, RefreshCw, Cpu, Layers, Maximize2, Minimize2, Sparkles, ChevronDown } from "lucide-react";
+import { Button } from "./ui/button.js";
+import { Sun, Moon, History, Maximize2, Minimize2 } from "lucide-react";
 
 interface HeaderProps {
   darkMode: boolean;
@@ -18,10 +19,6 @@ interface HeaderProps {
   onSelectTab?: (tab: "summary" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
   isWideCanvas?: boolean;
   onToggleCanvasWidth?: () => void;
-  onToggleLayoutControl?: () => void;
-  isLayoutControlOpen?: boolean;
-  layoutStrategyName?: string;
-  isCustomizedLayout?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,18 +34,14 @@ export const Header: React.FC<HeaderProps> = ({
   onSearch,
   isLoading = false,
   isWideCanvas = true,
-  onToggleCanvasWidth,
-  onToggleLayoutControl,
-  isLayoutControlOpen = false,
-  layoutStrategyName,
-  isCustomizedLayout = false
+  onToggleCanvasWidth
 }) => {
   const modelShortName = selectedModel === "openrouter/free"
     ? "Auto Free"
     : (selectedModel.split("/").pop()?.replace(":free", "") || "Auto Free");
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/85 dark:bg-[#121214]/85 backdrop-blur-xl border-b border-zinc-200/80 dark:border-zinc-800/80 transition-colors">
+    <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-xl border-b border-border transition-colors">
       <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-4 transition-all duration-200`}>
         {/* Left: Brand Logo & Inline Search */}
         <div className="flex items-center gap-4 flex-1 max-w-3xl">
@@ -72,119 +65,48 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Right: iOS-like Quick Action Controls */}
+        {/* Right: 快速操作。图标靠 lucide 默认 currentColor 跟随按钮前景色，
+            不再有滑动 knob、双色日月与状态点。 */}
         <div className="flex items-center gap-2">
-          {/* Intelligent Adaptive Layout Toggle Button */}
-          {!isHomeView && onToggleLayoutControl && (
-            <button
-              type="button"
-              onClick={onToggleLayoutControl}
-              title={isLayoutControlOpen ? "收起智能排版微调面板" : "展开智能排版与卡片微调面板"}
-              className={`group flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-2xl border text-xs font-semibold transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xs ${
-                isLayoutControlOpen
-                  ? "bg-blue-500/15 dark:bg-blue-500/25 text-blue-600 dark:text-blue-400 border-blue-500/40 ring-1 ring-blue-500/30 shadow-xs"
-                  : "bg-zinc-100/90 hover:bg-zinc-200/90 dark:bg-zinc-800/90 dark:hover:bg-zinc-700/90 text-zinc-700 dark:text-zinc-200 border-zinc-200/80 dark:border-zinc-700/80"
-              }`}
-            >
-              <Sparkles className={`w-3.5 h-3.5 transition-transform ${isLayoutControlOpen ? "text-blue-500 animate-pulse scale-110" : "text-blue-500 group-hover:rotate-12"}`} />
-              <span className="hidden xs:inline sm:inline">智能排版</span>
-              <span className="inline xs:hidden sm:hidden">排版</span>
-              {layoutStrategyName && (
-                <span className="hidden xl:inline text-[11px] font-normal text-zinc-500 dark:text-zinc-400 max-w-[85px] truncate">
-                  · {isCustomizedLayout ? "自定义" : layoutStrategyName}
-                </span>
-              )}
-              <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform duration-200 ${isLayoutControlOpen ? "rotate-180 text-blue-500" : ""}`} />
-            </button>
-          )}
-
-          {/* Quick Model Chip (iOS Pill) */}
-          <div
-            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-100/80 dark:bg-zinc-800/80 text-xs text-zinc-800 dark:text-zinc-200 select-none"
-            title="当前推理模型"
+          <span
+            className="hidden md:inline text-xs text-muted-foreground truncate max-w-[160px] select-none"
+            title={`当前推理模型：${modelShortName}（免费额度）`}
           >
-            <span className="w-2 h-2 rounded-full bg-zinc-900 dark:bg-zinc-100" />
-            <span className="font-semibold text-xs truncate max-w-[130px]">{modelShortName}</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-white dark:bg-zinc-900 text-zinc-500 font-mono">
-              免费
-            </span>
-          </div>
+            {modelShortName}
+          </span>
 
-          {/* Fullscreen/Canvas Width Toggle */}
           {onToggleCanvasWidth && (
-            <button
+            <Button
+              variant="outline"
+              size="icon"
               onClick={onToggleCanvasWidth}
               title={isWideCanvas ? "切换为居中标准画幅 (1280px)" : "切换为全屏宽画幅 (卡片铺满两侧空白)"}
-              className={`w-9 h-9 rounded-2xl flex items-center justify-center border transition-all active:scale-95 cursor-pointer ${
-                isWideCanvas
-                  ? "bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
-                  : "bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200/80 dark:border-zinc-700/60 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80"
-              }`}
             >
-              {isWideCanvas ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
+              {isWideCanvas ? <Minimize2 /> : <Maximize2 />}
+            </Button>
           )}
 
-          {/* History Button (iOS Squircle) */}
-          <button
+          <Button
+            variant="outline"
+            size="icon"
             onClick={onOpenHistory}
             title="搜索与研报历史"
-            className="w-9 h-9 rounded-2xl flex items-center justify-center bg-zinc-100/80 dark:bg-zinc-800/80 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700/60 transition-all active:scale-95"
           >
-            <History className="w-4 h-4" />
-          </button>
+            <History />
+          </Button>
 
-          {/* Dark/Light Mode Toggle (iOS Capsule Dual-State Toggle) */}
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="icon"
             onClick={onToggleDarkMode}
             title={darkMode ? "当前：深色模式 (点击切换为浅色模式)" : "当前：浅色模式 (点击切换为深色模式)"}
             aria-label={darkMode ? "切换到浅色模式" : "切换到深色模式"}
-            className="group relative flex items-center h-9 px-1 rounded-2xl bg-zinc-200/70 hover:bg-zinc-200 dark:bg-zinc-800/90 dark:hover:bg-zinc-800 border border-zinc-300/80 dark:border-zinc-700/80 transition-all duration-300 cursor-pointer select-none active:scale-95 shadow-2xs overflow-hidden"
           >
-            {/* Sliding Pill Knob */}
-            <div
-              className={`absolute top-1 bottom-1 w-7 rounded-xl transition-all duration-300 ease-out shadow-xs ${
-                darkMode
-                  ? "left-[calc(100%-2rem)] bg-zinc-700/95 border border-zinc-600/70 shadow-sm"
-                  : "left-1 bg-white border border-zinc-200/90 shadow-sm"
-              }`}
-            />
-
-            {/* Sun Icon (Light Mode) */}
-            <div
-              className={`relative z-10 w-7 h-7 flex items-center justify-center transition-all duration-300 ${
-                !darkMode
-                  ? "text-amber-500 scale-105"
-                  : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 scale-90"
-              }`}
-            >
-              <Sun
-                className={`w-4 h-4 transition-transform duration-300 ${
-                  !darkMode ? "rotate-0 text-amber-500 stroke-[2.2]" : "-rotate-45 opacity-60"
-                }`}
-              />
-            </div>
-
-            {/* Moon Icon (Dark Mode) */}
-            <div
-              className={`relative z-10 w-7 h-7 flex items-center justify-center transition-all duration-300 ${
-                darkMode
-                  ? "text-indigo-400 scale-105"
-                  : "text-zinc-400 group-hover:text-zinc-600 dark:text-zinc-500 scale-90"
-              }`}
-            >
-              <Moon
-                className={`w-4 h-4 transition-transform duration-300 ${
-                  darkMode ? "rotate-0 text-indigo-400 fill-indigo-400/20 stroke-[2.2]" : "rotate-45 opacity-60"
-                }`}
-              />
-            </div>
-
+            {darkMode ? <Moon /> : <Sun />}
             <span className="sr-only">
               {darkMode ? "当前深色模式，点击切换浅色模式" : "当前浅色模式，点击切换深色模式"}
             </span>
-          </button>
+          </Button>
         </div>
       </div>
     </header>

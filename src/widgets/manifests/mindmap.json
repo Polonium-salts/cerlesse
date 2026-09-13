@@ -1,0 +1,14 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "mindmap",
+  "name": "知识架构导图",
+  "version": "1.0.0",
+  "description": "全景拓扑、核心原理解析与进阶路线交互图谱",
+  "category": "analysis",
+  "icon": "GitFork",
+  "grid": {
+    "defaultSize": "wide",
+    "supportedSizes": ["large", "wide", "full"],
+    "ratio": "4:3"
+  }
+}

@@ -225,7 +225,11 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   },
   analytics_trend: {
     type: "analytics_trend",
-    capabilities: ["trend_signals", "sentiment_distribution", "temporal_evolution", "temporal_analysis", "weather_forecast", "weather_indices"],
+    // 它渲染的是"信源相关度分布"，与气象无关。
+    // 原先额外声明 weather_forecast / weather_indices，只是为了凑够"天气意图至少命中
+    // 2 个组件"的护栏要求，代价是任何天气/出行查询都会带上一张与天气毫无关系的图表 ——
+    // 这正是"组件选择不准"最典型的来源。气象能力由 custom_cards 的气象套件真实承接。
+    capabilities: ["trend_signals", "sentiment_distribution", "temporal_evolution", "temporal_analysis"],
     basePriority: 60,
     defaultSize: "wide",
     flexible: true,
@@ -341,6 +345,15 @@ function scaleTileSize(base: WidgetPlannedSize, steps: number): WidgetPlannedSiz
 }
 
 /**
+ * 单次规划允许上桌的最大组件数。
+ *
+ * 规划器原先"命中即上桌"，且把 5 个锚点无条件塞进清单，于是桌面常年同时出现
+ * 11~13 个磁贴，其中大半只是弱相关或彼此重复（sources 与 analytics_trend 都在列信源，
+ * takeaways / topic_digest / quick_answer 都在复述同一段摘要）。这里按相关度截断。
+ */
+const MAX_PLANNED_WIDGETS = 9;
+
+/**
  * 纯能力匹配求解组件集与排版规格 (Dynamic Capability Widget Resolver)
  * 彻底消除 switch(intent)，输出含有优先级、尺寸和自适应属性的富结构
  */
@@ -353,17 +366,40 @@ function resolveWidgetsFromCapabilities(
   const capSet = new Set(capabilities.map(c => c.toLowerCase()));
   const scoredWidgets: Array<{ item: WidgetPlannedItem; score: number }> = [];
 
+  // 能力特异性（IDF）预计算：一项能力被越多组件声明，就越"通用"，越不足以证明语义对齐。
+  // 这条约束专治"声明一大串能力就能霸榜"：旧实现按命中条数等权加分 (matchCount * 12)，
+  // 而 custom_cards 声明了 45 项能力，仅凭数量就恒居榜首，把真正对口的组件压了下去。
+  const declaredBy = new Map<string, number>();
+  for (const def of Object.values(WIDGET_REGISTRY) as WidgetDefinition[]) {
+    for (const cap of new Set(def.capabilities.map(c => c.toLowerCase()))) {
+      declaredBy.set(cap, (declaredBy.get(cap) || 0) + 1);
+    }
+  }
+  const widgetTotal = Object.keys(WIDGET_REGISTRY).length;
+  /** 独家能力 ≈ 1.0；被多数组件共享的通用能力被压到 0.3 附近 */
+  const capabilityWeight = (cap: string): number => {
+    const owners = declaredBy.get(cap) || 1;
+    const idf = Math.log2(widgetTotal / owners + 1) / Math.log2(widgetTotal + 1);
+    return Math.max(0.3, Math.min(1, idf));
+  };
+  /** 一份"独家且对口"的能力折算多少分 */
+  const CAPABILITY_UNIT = 26;
+
   // 对全量注册表中的组件进行能力交集与适配度打分
   for (const [key, def] of Object.entries(WIDGET_REGISTRY) as [ResultWidgetKey, WidgetDefinition][]) {
     const matchedCaps = def.capabilities.filter(c => capSet.has(c.toLowerCase()));
     const matchCount = matchedCaps.length;
+    // 相关度 = 命中能力的特异性之和，而不是命中条数
+    const specificity = matchCount > 0
+      ? matchedCaps.reduce((sum, cap) => sum + capabilityWeight(cap.toLowerCase()), 0)
+      : 0;
 
     // 基础分来源于组件固有权重
     let dynamicScore = def.basePriority;
 
-    // 若命中规划能力，获得高额相关度加权 (每项能力 +12 分)
+    // 命中能力按特异性加权：通用能力几乎不加分，独家对口能力接近满分加权
     if (matchCount > 0) {
-      dynamicScore += matchCount * 12;
+      dynamicScore += Math.round(specificity * CAPABILITY_UNIT);
     }
 
     // 特殊能力直接强关联
@@ -386,11 +422,11 @@ function resolveWidgetsFromCapabilities(
     // 仅收录具备能力交集或作为基础信息锚点 (如 quick_answer, takeaways, sources) 的组件
     const isAnchorWidget = ["quick_answer", "takeaways", "sources", "custom_cards", "actions_toolbox"].includes(key);
     if (matchCount > 0 || isAnchorWidget) {
-      // 尺寸随"命中多少任务能力"伸缩：命中越多面积越大（最多升一级），
-      // 只命中 1 项则降一级。这让磁贴比例真正跟随任务，而不是所有组件共用固定比例。
+      // 尺寸随"对口程度"伸缩：用能力特异性而非命中条数决定面积，
+      // 避免一个泛化组件仅靠堆命中数就吃掉首屏大块版面。
       let finalSize = scaleTileSize(
         def.defaultSize,
-        matchCount >= 3 ? 1 : matchCount === 1 ? -1 : 0
+        specificity >= 2.2 ? 1 : specificity > 0 && specificity <= 0.8 ? -1 : 0
       );
 
       // custom_cards 是复合蓝图宿主，需要足够面积承载多分区内容：
@@ -415,8 +451,8 @@ function resolveWidgetsFromCapabilities(
           size: finalSize,
           flexible: def.flexible,
           capabilities: matchedCaps,
-          reason: matchCount > 0 
-            ? `匹配所需能力: [${matchedCaps.join(", ")}]` 
+          reason: matchCount > 0
+            ? `匹配所需能力: [${matchedCaps.join(", ")}] · 对口度 ${specificity.toFixed(2)}`
             : `作为任务基础信息支撑组件`
         },
         score: dynamicScore
@@ -427,18 +463,21 @@ function resolveWidgetsFromCapabilities(
   // 按综合动态得分从高到低排列（同一层级内）
   scoredWidgets.sort((a, b) => b.score - a.score);
 
-  // 提取排序后的 WidgetPlannedItem
-  const resultList = scoredWidgets.map(s => s.item);
+  // 按相关度截断后提取 WidgetPlannedItem：
+  // "命中即上桌"会让桌面长期堆满弱相关磁贴，与"选择更精准"背道而驰。
+  const resultList = scoredWidgets.slice(0, MAX_PLANNED_WIDGETS).map(s => s.item);
 
-  // 保证必备核心来源链
+  // 保证必备核心来源链：若被截断则挤掉末位弱相关组件，而不是让清单超编
   if (!resultList.some(w => w.type === "sources")) {
-    resultList.push({
+    const sourceItem: WidgetPlannedItem = {
       type: "sources",
       priority: 60,
       size: "medium",
       flexible: false,
       reason: "信源存证与文献追溯"
-    });
+    };
+    if (resultList.length >= MAX_PLANNED_WIDGETS) resultList.pop();
+    resultList.push(sourceItem);
   }
 
   return resultList;

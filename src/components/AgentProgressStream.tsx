@@ -10,23 +10,13 @@ import {
   Search,
   Blocks,
   LayoutGrid,
-  ShieldCheck,
-  Zap,
-  Clock,
-  Sparkles,
   ArrowRight,
-  TrendingUp,
   Workflow,
-  Cpu,
-  RefreshCw,
-  GitFork,
-  CheckCheck,
-  FileCheck,
-  Crown,
-  Share2,
-  BookOpen
+  GitFork
 } from "lucide-react";
 import { IOSWidget } from "./ui/IOSWidget.js";
+import { Badge } from "./ui/badge.js";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.js";
 
 interface AgentProgressStreamProps {
   steps: AgentStep[];
@@ -63,6 +53,7 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
 
     const hasSearchDone = steps.some(s => (s.id === "search_main" || s.id === "search") && s.status === "completed");
     const hasForgeDone = steps.some(s => s.id === "forge_unique_widget" && s.status === "completed");
+    const hasLayoutDone = steps.some(s => s.id === "layout_plan" && s.status === "completed");
 
     const isConcurrentTeamActive = hasPlanDone && !isComplete;
 
@@ -76,10 +67,10 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         dedicatedDuty: "全局需求研判、协作任务拆解、向检索与小组件专职 Agent 派发独立任务指令并最终验收交付",
         avatarIcon: "Bot",
         status: hasPlanDone ? "completed" : isPlanRunning ? "running" : "idle",
-        currentTask: hasPlanDone ? "任务委派完毕，检索 Agent 与小组件 Agent 正在协同作业" : isPlanRunning ? "剖析意图并分发专职任务" : "待命统筹",
-        completedTasksCount: hasPlanDone ? 2 : 0,
-        totalTasksCount: 2,
-        outputSummary: "完成原词与多维检索规划，向全网检索 Agent 与小组件构建 Agent 派发独立任务"
+        currentTask: hasPlanDone ? "任务委派完毕，检索、小组件构建与排版 Agent 正在协同作业" : isPlanRunning ? "剖析意图并分发专职任务" : "待命统筹",
+        completedTasksCount: hasPlanDone ? 3 : 0,
+        totalTasksCount: 3,
+        outputSummary: "完成原词与多维检索规划，向全网检索 Agent、小组件构建 Agent 与小组件排版 Agent 派发独立任务"
       },
       {
         id: "agent-retrieval",
@@ -93,7 +84,6 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         currentTask: hasSearchDone ? "TASK-RETRIEVE 专职检索完成并交付" : isConcurrentTeamActive ? "正在专职并发执行多路全网检索" : "等待主 Agent 派发检索任务",
         completedTasksCount: hasSearchDone ? 2 : 0,
         totalTasksCount: 2,
-        speedupMultiplier: 2.4,
         outputSummary: "完成主词、跨语言与深度词抓取，甄别官方入口并清洗低质信源"
       },
       {
@@ -108,8 +98,21 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         currentTask: hasForgeDone ? "TASK-WIDGET-ARCHITECT 专职组件构建完成并交付" : isConcurrentTeamActive ? "正在专职架构能力模型与锻造专属小组件" : "等待主 Agent 派发构建任务",
         completedTasksCount: hasForgeDone ? 2 : 0,
         totalTasksCount: 2,
-        speedupMultiplier: 2.6,
         outputSummary: "规划小组件能力模型并自主锻造独有交互式业务卡片"
+      },
+      {
+        id: "agent-layout",
+        role: "layout",
+        name: "小组件排版 Agent",
+        title: "12 栅格小组件排版编排专家",
+        isMaster: false,
+        dedicatedDuty: "专职决定小组件的上桌启停、阅读序、板块栅格跨度与视觉焦点，执行稠密装箱补位，把组件清单翻译成零留白的 12 栅格桌面",
+        avatarIcon: "LayoutGrid",
+        status: hasLayoutDone ? "completed" : isConcurrentTeamActive ? "running" : "idle",
+        currentTask: hasLayoutDone ? "TASK-LAYOUT 排版编排完成并交付" : isConcurrentTeamActive ? "正在编排 12 栅格桌面排版" : "等待主 Agent 派发排版任务",
+        completedTasksCount: hasLayoutDone ? 2 : 0,
+        totalTasksCount: 2,
+        outputSummary: "完成小组件启停、阅读序、栅格跨度与视觉焦点编排，并执行行带对齐装箱"
       }
     ];
   };
@@ -122,6 +125,7 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
     const hasPlanDone = steps.some(s => s.id === "plan" && s.status === "completed");
     const hasSearchDone = steps.some(s => (s.id === "search_main" || s.id === "search") && s.status === "completed");
     const hasForgeDone = steps.some(s => s.id === "forge_unique_widget" && s.status === "completed");
+    const hasLayoutDone = steps.some(s => s.id === "layout_plan" && s.status === "completed");
 
     const isConcurrentTeamActive = hasPlanDone && !isComplete;
 
@@ -143,6 +147,15 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         mandate: "专职分析实体类型与语义，规划能力模型 (WidgetPlan)，智能决策最契合交互原型，构建独有业务交互模型并执行防重复护栏。",
         status: hasForgeDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
         deliverables: hasForgeDone ? ["小组件意图与能力模型已就绪", "独有业务小组件已锻造", "防重复护栏核验通过"] : undefined
+      },
+      {
+        id: "TASK-LAYOUT",
+        assignedToRole: "layout",
+        assignedAgentName: "小组件排版 Agent",
+        taskName: "12 栅格小组件排版编排与视觉焦点规划",
+        mandate: "专职接收 WidgetPlan 与既有组件清单，裁决组件的上桌启停、主阅读序、每张卡片的 12 栅格跨度与视觉焦点组件，并执行稠密装箱补位，输出可直接渲染的排版决策单。",
+        status: hasLayoutDone ? "completed" : isConcurrentTeamActive ? "running" : "pending",
+        deliverables: hasLayoutDone ? ["排版意图与阅读主序已固化", "栅格跨度与视觉焦点已提权", "稠密装箱补位已消除栅格断层"] : undefined
       }
     ];
   };
@@ -156,7 +169,13 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
     mandateSummary: "负责全局需求剖析，制定任务委派清单，向检索 Agent 与小组件 Agent 派发独立专有指令，并最终集中验收交付。"
   };
 
-  const speedup = agentTeam?.speedupMultiplier || (isComplete ? 2.6 : 2.2);
+  // 加速比只呈现真实测量值：编排内核报告「各阶段耗时之和 ÷ 实际墙钟」。
+  // 旧实现在没有测量数据时硬编码一个 2.6/2.2 展示给用户，属于凭空捏造的指标，已移除。
+  const orchestration = agentTeam?.orchestration;
+  const speedup: number | null = orchestration?.speedup ?? agentTeam?.speedupMultiplier ?? null;
+  const savedMs: number | null = orchestration
+    ? Math.max(agentTeam?.totalSavedTimeMs ?? 0, orchestration.estimatedSequentialMs - orchestration.totalDurationMs)
+    : (agentTeam?.totalSavedTimeMs ?? null);
   const completedCount = steps.filter((s) => s.status === "completed").length;
   const runningMembers = members.filter(m => m.status === "running").length;
   const completedMembers = members.filter(m => m.status === "completed").length;
@@ -169,6 +188,8 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
         return <Search className={className} />;
       case "widget_forge":
         return <Blocks className={className} />;
+      case "layout":
+        return <LayoutGrid className={className} />;
       default:
         return <Workflow className={className} />;
     }
@@ -177,103 +198,60 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
   return (
     <IOSWidget
       id="widget-agent-team"
-      title="AgentTeam 双核智能体协作中枢"
+      title="AgentTeam 三核智能体协作中枢"
       subtitle={
         isComplete
-          ? `主 Agent 统筹验收交付 · 耗时 ${((executionTimeMs || 0) / 1000).toFixed(1)} 秒 · 检索 Agent 与小组件 Agent 协同已闭环`
+          ? `主 Agent 统筹验收交付 · 耗时 ${((executionTimeMs || 0) / 1000).toFixed(1)} 秒 · 检索、小组件构建与排版 Agent 协同已闭环`
           : `主 Agent 正在统筹调度：${runningMembers} 位专职智能体正在执行独立任务...`
       }
-      icon={<Workflow className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+      icon={<Workflow />}
       badge={
-        <div className="flex items-center gap-1.5">
-          <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-mono">
-            <Zap className="w-3 h-3 fill-emerald-500 text-emerald-500" />
-            <span>协同加速 {speedup}x</span>
-          </span>
-          {isComplete ? (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
-              全项验收通过
-            </span>
-          ) : (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 animate-pulse">
-              多智能体执行中
-            </span>
-          )}
-        </div>
+        <Badge
+          variant="secondary"
+          className={`font-mono${orchestration ? " cursor-help" : ""}`}
+          title={orchestration
+            ? [
+              `声明式编排实测剖面（加速比 = 各阶段耗时之和 ÷ 实际墙钟）`,
+              ...orchestration.stages.map(
+                (s) => `· ${s.name}：执行 ${s.durationMs}ms，启动于 +${s.waitMs}ms（${s.status}）`
+              ),
+              `峰值并发 ${orchestration.maxConcurrency} 个阶段`,
+              orchestration.degradedCount > 0 ? `${orchestration.degradedCount} 个阶段已降级兜底` : "无降级"
+            ].join("\n")
+            : "编排实测数据将在流水线完成后给出"}
+        >
+          协同加速 {speedup !== null ? `${speedup}x` : "测量中"}
+        </Badge>
       }
       actions={
-        <div className="flex items-center gap-1 p-0.5 rounded-xl bg-zinc-200/60 dark:bg-zinc-800 text-[11px] font-medium">
-          <button
-            type="button"
-            onClick={() => setViewMode("matrix")}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              viewMode === "matrix"
-                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            }`}
-          >
-            主 Agent 任务委派图谱
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("team")}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              viewMode === "team"
-                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            }`}
-          >
-            智能体专家成员 ({completedMembers}/{members.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("timeline")}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              viewMode === "timeline"
-                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-            }`}
-          >
-            协作流水日志 ({completedCount})
-          </button>
-        </div>
+        <Tabs
+          value={viewMode}
+          onValueChange={(v) => setViewMode(v as "matrix" | "team" | "timeline")}
+        >
+          <TabsList>
+            <TabsTrigger value="matrix">委派图谱</TabsTrigger>
+            <TabsTrigger value="team">专家成员</TabsTrigger>
+            <TabsTrigger value="timeline">协作流水</TabsTrigger>
+          </TabsList>
+        </Tabs>
       }
       className="w-full"
     >
-      {/* 🚀 Architectural Header: Master-Worker Explicit Delegation Notice */}
-      <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-purple-50/80 dark:from-blue-950/30 dark:via-indigo-950/20 dark:to-purple-950/30 border border-blue-100/80 dark:border-blue-900/40 text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-              <Crown className="w-4 h-4 fill-amber-300 text-amber-300" />
+      {/* Master-Worker 委派机制说明 */}
+      <div className="mb-4 p-4 rounded-xl border border-border bg-muted/40">
+        <div className="flex items-start gap-3">
+          <Workflow className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="font-medium text-foreground">
+              主 Agent 任务分派与专职协同机制
             </div>
-            <div>
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <span>主 Agent 任务分派与专职协同机制</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-medium">
-                  双核专职 · 拒绝重复
-                </span>
-              </div>
-              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
-                由<strong>主 Agent (调度总控)</strong>研判意图并下达《专属任务委派书》，<strong>全网检索 Agent 与小组件规划构建 Agent</strong> 各自专注负责专属领域（全网检索嗅探、业务小组件架构与锻造），互不重叠并在最后交付主 Agent 验收。
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="px-2.5 py-1 rounded-xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-zinc-500 text-[10px]">协同提速</span>
-              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{speedup}x</span>
-            </div>
-
-            <div className="px-2.5 py-1 rounded-xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span className="text-zinc-500 text-[10px]">缩短延迟</span>
-              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                ~{Math.round((executionTimeMs || 1500) * (speedup - 1))}ms
-              </span>
-            </div>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              由<strong className="text-foreground">主 Agent（调度总控）</strong>研判意图并下达《专属任务委派书》，<strong className="text-foreground">全网检索 Agent、小组件规划构建 Agent 与小组件排版 Agent</strong> 各自专注负责专属领域（全网信源嗅探、业务小组件架构与锻造、12 栅格排版编排），互不重叠并在最后交付主 Agent 验收。
+            </p>
+            <p className="text-xs text-muted-foreground mt-2 font-mono">
+              实测：协同提速 {speedup !== null ? `${speedup}x` : "—"}
+              {savedMs !== null && savedMs > 0 ? ` · 缩短延迟 ~${savedMs}ms` : ""}
+            </p>
           </div>
         </div>
       </div>
@@ -283,50 +261,41 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
       {/* ========================================================================= */}
       {viewMode === "matrix" && (
         <div className="space-y-4">
-          {/* 1. Master Agent Center Box */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-zinc-800 border-2 border-blue-500/40 shadow-xs relative">
+          {/* 主 Agent 调度中枢 */}
+          <div className="p-4 rounded-xl border border-border bg-card">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <Bot className="w-5 h-5" />
-                </div>
+              <div className="flex items-start gap-2.5">
+                <Bot className="size-4 text-muted-foreground shrink-0 mt-0.5" />
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                      <span>{masterAgent.name}</span>
-                      <span className="text-[10px] px-2 py-0.2 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold border border-amber-300 dark:border-amber-800 flex items-center gap-1">
-                        <Crown className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
-                        指挥调度核心
-                      </span>
-                    </h3>
-                  </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  <h3 className="font-medium text-sm text-foreground">
+                    {masterAgent.name}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {masterAgent.title} · 当前研判输入：“{query}”
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                  已向 2 位专长 Agent 派发独立委派单
-                </span>
-              </div>
+              <span className="text-xs text-muted-foreground">
+                已向 {tasks.length} 位专长 Agent 派发独立委派单
+              </span>
             </div>
 
-            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-700/60 text-xs text-zinc-600 dark:text-zinc-300 bg-blue-50/40 dark:bg-blue-950/20 p-2.5 rounded-xl">
-              <strong>👑 主 Agent 调度指令：</strong> {masterAgent.mandateSummary}
+            <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">主 Agent 调度指令：</span>{" "}
+              {masterAgent.mandateSummary}
             </div>
           </div>
 
-          {/* Visual Link Indicator: Master Agent Distributing Tasks Downwards */}
-          <div className="flex items-center justify-center gap-2 text-zinc-400 text-xs font-mono py-0.5">
-            <span className="w-12 h-px bg-zinc-300 dark:bg-zinc-700" />
-            <GitFork className="w-4 h-4 text-blue-500" />
+          {/* 主 Agent 向下派发 */}
+          <div className="flex items-center justify-center gap-2 text-muted-foreground text-xs py-0.5">
+            <span className="w-12 h-px bg-border" />
+            <GitFork className="size-3.5" />
             <span>主 Agent 任务派发与专职执行矩阵</span>
-            <span className="w-12 h-px bg-zinc-300 dark:bg-zinc-700" />
+            <span className="w-12 h-px bg-border" />
           </div>
 
-          {/* 2. 4 Specialized Delegated Tasks Grid */}
+          {/* 专职委派任务 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {tasks.map((task) => {
               const assignedMember = members.find(m => m.role === task.assignedToRole);
@@ -336,92 +305,71 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
               return (
                 <div
                   key={task.id}
-                  className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between ${
+                  className={`p-4 rounded-xl border flex flex-col justify-between ${
                     isRunning
-                      ? "bg-white dark:bg-zinc-800 border-blue-400 dark:border-blue-600 shadow-xs"
+                      ? "bg-card border-foreground/20"
                       : isCompleted
-                      ? "bg-zinc-50/90 dark:bg-zinc-800/80 border-zinc-200/80 dark:border-zinc-700/80"
-                      : "bg-zinc-50/40 dark:bg-zinc-900/40 border-zinc-200/40 dark:border-zinc-800 text-zinc-400"
+                      ? "bg-card border-border"
+                      : "bg-muted/40 border-border text-muted-foreground"
                   }`}
                 >
                   <div>
-                    {/* Header: Task ID & Assignee */}
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className={`p-1.5 rounded-xl shrink-0 ${
-                          isRunning
-                            ? "bg-blue-600 text-white"
-                            : isCompleted
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "bg-zinc-200 dark:bg-zinc-700 text-zinc-500"
-                        }`}>
-                          {renderAgentIcon(task.assignedToRole, "w-3.5 h-3.5")}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">
-                              {task.taskName}
-                            </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-bold">
-                              {task.id}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1 mt-0.5">
-                            <span>承接智能体：</span>
-                            <span className="font-semibold text-blue-600 dark:text-blue-400">
-                              {task.assignedAgentName}
-                            </span>
-                          </div>
+                    {/* 任务名与承接智能体 */}
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                      <div className="min-w-0">
+                        <span className="font-medium text-sm text-foreground truncate block">
+                          {task.taskName}
+                        </span>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          承接智能体：
+                          <span className="text-foreground">{task.assignedAgentName}</span>
                         </div>
                       </div>
 
-                      {/* Status Tag */}
                       <div className="shrink-0">
                         {isRunning && (
-                          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 animate-pulse">
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                            专职执行中
-                          </span>
+                          <Badge variant="secondary" className="gap-1">
+                            <Loader2 className="size-3 animate-spin" />
+                            执行中
+                          </Badge>
                         )}
                         {isCompleted && (
-                          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                            已交付主Agent
-                          </span>
+                          <Badge variant="outline" className="gap-1">
+                            <CheckCircle2 className="size-3" />
+                            已交付
+                          </Badge>
                         )}
                         {task.status === "pending" && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-200/60 dark:bg-zinc-800 text-zinc-400">
-                            排队待命
-                          </span>
+                          <Badge variant="ghost">待命</Badge>
                         )}
                       </div>
                     </div>
 
-                    {/* Dedicated Responsibility Statement (突出该 Agent 的独有专长，绝不与其它重复) */}
-                    <div className="mb-2 p-2 rounded-xl bg-zinc-100/70 dark:bg-zinc-900/60 text-[11px] text-zinc-600 dark:text-zinc-300 leading-snug">
-                      <span className="font-bold text-zinc-800 dark:text-zinc-200">🎯 专属职责：</span>
+                    {/* 该 Agent 的专属职责 */}
+                    <div className="mb-2.5 p-2.5 rounded-lg bg-muted/60 text-xs text-muted-foreground leading-relaxed">
+                      <span className="font-medium text-foreground">专属职责：</span>
                       <span>{assignedMember?.dedicatedDuty}</span>
                     </div>
 
-                    {/* Master Agent Mandate (主 Agent 指令) */}
-                    <div className="mb-2 text-[11px] text-zinc-600 dark:text-zinc-400 pl-1 border-l-2 border-blue-500/60">
-                      <span className="font-semibold text-zinc-700 dark:text-zinc-300">📜 主 Agent 派发指令：</span>
+                    {/* 主 Agent 派发指令 */}
+                    <div className="mb-2.5 text-xs text-muted-foreground pl-2.5 border-l-2 border-border">
+                      <span className="font-medium text-foreground">主 Agent 派发指令：</span>
                       <p className="mt-0.5">{task.mandate}</p>
                     </div>
 
-                    {/* Deliverables Delivered to Master Agent */}
+                    {/* 交付物 */}
                     {task.deliverables && task.deliverables.length > 0 && (
-                      <div className="mt-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-700/60">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                          📦 向主 Agent 提交的专职交付物：
+                      <div className="mt-2.5 pt-2.5 border-t border-border">
+                        <span className="text-xs font-medium text-muted-foreground block mb-1.5">
+                          向主 Agent 提交的专职交付物
                         </span>
                         <div className="space-y-1">
                           {task.deliverables.map((item, idx) => (
                             <div
                               key={idx}
-                              className="text-[11px] flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300"
+                              className="text-xs flex items-center gap-1.5 text-muted-foreground"
                             >
-                              <CheckCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                              <CheckCircle2 className="size-3.5 shrink-0" />
                               <span className="truncate">{item}</span>
                             </div>
                           ))}
@@ -431,11 +379,8 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
                   </div>
 
                   {task.executionTimeMs && (
-                    <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-700/60 flex items-center justify-between text-[10px] text-zinc-400 font-mono">
-                      <span>耗时: {task.executionTimeMs}ms</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        独立闭环交付 ✓
-                      </span>
+                    <div className="mt-2.5 pt-2.5 border-t border-border text-xs text-muted-foreground font-mono">
+                      耗时 {task.executionTimeMs}ms
                     </div>
                   )}
                 </div>
@@ -461,87 +406,73 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
                 <div
                   key={member.id}
                   onClick={() => setSelectedAgentRole(isSelected ? null : member.role)}
-                  className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
+                  className={`p-4 rounded-xl border cursor-pointer transition-colors ${
                     isSelected
-                      ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs"
+                      ? "ring-2 ring-foreground/30 border-border bg-muted/40"
                       : isRunning
-                      ? "bg-white dark:bg-zinc-800 border-blue-300 dark:border-blue-700 shadow-2xs"
+                      ? "bg-card border-foreground/20"
                       : isDone
-                      ? "bg-zinc-50/80 dark:bg-zinc-800/70 border-zinc-200/80 dark:border-zinc-700/80 hover:bg-zinc-100/80 dark:hover:bg-zinc-800"
-                      : "bg-zinc-50/40 dark:bg-zinc-900/40 border-zinc-200/40 dark:border-zinc-800/60 text-zinc-400"
+                      ? "bg-card border-border hover:bg-accent"
+                      : "bg-muted/40 border-border text-muted-foreground"
                   }`}
                 >
-                  {/* Top Status & Role Icon */}
+                  {/* 状态与角色 */}
                   <div className="flex items-center justify-between gap-1.5 mb-2">
-                    <div className={`p-1.5 rounded-xl transition-colors ${
-                      isRunning
-                        ? "bg-blue-600 text-white shadow-xs"
-                        : isDone
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                        : "bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400"
-                    }`}>
-                      {renderAgentIcon(member.role, "w-4 h-4")}
-                    </div>
+                    <span className="text-muted-foreground">
+                      {renderAgentIcon(member.role, "size-4")}
+                    </span>
 
                     <div className="flex items-center gap-1">
                       {member.isMaster && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                          主Agent
-                        </span>
+                        <Badge variant="outline">主 Agent</Badge>
                       )}
                       {isRunning && (
-                        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 animate-pulse">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                        <Badge variant="secondary" className="gap-1">
+                          <Loader2 className="size-3 animate-spin" />
                           运行中
-                        </span>
+                        </Badge>
                       )}
                       {isDone && (
-                        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">
-                          <CheckCircle2 className="w-2.5 h-2.5" />
+                        <Badge variant="outline" className="gap-1">
+                          <CheckCircle2 className="size-3" />
                           就绪
-                        </span>
+                        </Badge>
                       )}
                       {isIdle && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-200/60 dark:bg-zinc-800 text-zinc-400">
-                          待命
-                        </span>
+                        <Badge variant="ghost">待命</Badge>
                       )}
                     </div>
                   </div>
 
-                  {/* Name & Title */}
+                  {/* 名称与职责 */}
                   <div className="mb-2">
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                    <h4 className="text-sm font-medium text-foreground truncate">
                       {member.name}
                     </h4>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-1">
+                    <p className="text-xs text-muted-foreground line-clamp-1">
                       {member.title}
                     </p>
                   </div>
 
-                  {/* Real-time Task / Progress */}
-                  <div className="pt-2 border-t border-zinc-100 dark:border-zinc-700/60 text-[11px]">
-                    <div className="flex items-center justify-between text-zinc-500 mb-1">
-                      <span className="text-[10px] font-medium">当前指派任务</span>
-                      <span className="font-mono text-[10px]">
+                  {/* 当前任务 */}
+                  <div className="pt-2 border-t border-border text-xs">
+                    <div className="flex items-center justify-between text-muted-foreground mb-1">
+                      <span>当前指派任务</span>
+                      <span className="font-mono">
                         {member.completedTasksCount}/{member.totalTasksCount}
                       </span>
                     </div>
-                    <p className={`text-[11px] leading-tight line-clamp-2 ${
-                      isRunning
-                        ? "text-blue-600 dark:text-blue-400 font-medium"
-                        : "text-zinc-600 dark:text-zinc-400"
+                    <p className={`leading-relaxed line-clamp-2 ${
+                      isRunning ? "text-foreground font-medium" : "text-muted-foreground"
                     }`}>
                       {member.currentTask}
                     </p>
 
                     {member.executionTimeMs && (
-                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-zinc-400 font-mono">
-                        <span>耗时: {member.executionTimeMs}ms</span>
+                      <div className="mt-1.5 flex items-center justify-between text-muted-foreground font-mono">
+                        <span>耗时 {member.executionTimeMs}ms</span>
                         {member.speedupMultiplier && (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                            ⚡ {member.speedupMultiplier}x
-                          </span>
+                          <span>{member.speedupMultiplier}x</span>
                         )}
                       </div>
                     )}
@@ -551,51 +482,47 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
             })}
           </div>
 
-          {/* Selected Agent Output Summary Panel */}
+          {/* 选中成员的交付报告 */}
           {selectedAgentRole && (
-            <div className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/80 border border-blue-200 dark:border-blue-900/60 text-xs animate-in fade-in duration-200">
+            <div className="p-4 rounded-xl bg-muted/40 border border-border text-xs">
               {(() => {
                 const target = members.find(m => m.role === selectedAgentRole);
                 if (!target) return null;
                 return (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-bold text-zinc-900 dark:text-zinc-100">
-                        {renderAgentIcon(target.role, "w-4 h-4 text-blue-600")}
+                      <div className="flex items-center gap-2 font-medium text-foreground">
+                        {renderAgentIcon(target.role, "size-4 text-muted-foreground")}
                         <span>{target.name} 专属职责与交付报告</span>
-                        {target.isMaster && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold">
-                            调度主官
-                          </span>
-                        )}
                       </div>
-                      <span className="text-[11px] text-zinc-400 font-mono">
+                      <span className="text-muted-foreground font-mono">
                         {target.completedTasksCount} / {target.totalTasksCount} 任务完成
                       </span>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-700/60 text-xs">
-                      <div className="font-semibold text-zinc-800 dark:text-zinc-200 mb-0.5">
-                        🎯 独立负责的专业领域：
+                    <div className="p-3 rounded-lg bg-card border border-border">
+                      <div className="font-medium text-foreground mb-0.5">
+                        独立负责的专业领域
                       </div>
-                      <p className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                      <p className="text-muted-foreground leading-relaxed">
                         {target.dedicatedDuty}
                       </p>
                     </div>
 
-                    <p className="text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                      <strong>向主 Agent 的交付汇报：</strong> {target.outputSummary || "该智能体已完成专职任务交付，输出已被主 Agent 验收。"}
+                    <p className="text-muted-foreground leading-relaxed">
+                      <strong className="text-foreground">向主 Agent 的交付汇报：</strong>{" "}
+                      {target.outputSummary || "该智能体已完成专职任务交付，输出已被主 Agent 验收。"}
                     </p>
 
                     {target.deliverables && target.deliverables.length > 0 && (
-                      <div className="mt-1 pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                          具体交付成果物清单：
+                      <div className="mt-1 pt-2 border-t border-border">
+                        <span className="text-xs font-medium text-muted-foreground block mb-1.5">
+                          具体交付成果物清单
                         </span>
                         <div className="space-y-1">
                           {target.deliverables.map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 text-xs">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <div key={idx} className="flex items-center gap-2 text-muted-foreground text-xs">
+                              <CheckCircle2 className="size-3.5 shrink-0" />
                               <span>{item}</span>
                             </div>
                           ))}
@@ -622,33 +549,33 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
             return (
               <div
                 key={step.id}
-                className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200/60 dark:border-zinc-700/80 transition-all"
+                className="p-4 rounded-xl bg-card border border-border"
               >
                 <div
                   onClick={() => hasDetails && toggleExpand(step.id)}
                   className={`flex items-center justify-between gap-3 ${hasDetails ? "cursor-pointer" : ""}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="shrink-0">
+                    <div className="shrink-0 text-muted-foreground">
                       {step.status === "completed" && (
-                        <CheckCircle2 className="w-4 h-4 text-zinc-900 dark:text-zinc-100" />
+                        <CheckCircle2 className="size-4" />
                       )}
                       {step.status === "running" && (
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+                        <Loader2 className="size-4 animate-spin" />
                       )}
                       {step.status === "error" && (
-                        <AlertCircle className="w-4 h-4 text-red-500" />
+                        <AlertCircle className="size-4 text-destructive" />
                       )}
                     </div>
 
                     <div className="flex items-center gap-2 min-w-0">
                       {step.agentRole && (
-                        <span className="shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
-                          {renderAgentIcon(step.agentRole, "w-3 h-3")}
+                        <Badge variant="secondary" className="gap-1">
+                          {renderAgentIcon(step.agentRole, "size-3")}
                           <span>{step.agentName || "Agent"}</span>
-                        </span>
+                        </Badge>
                       )}
-                      <span className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                      <span className="text-sm font-medium text-foreground truncate">
                         {step.title}
                       </span>
                     </div>
@@ -656,40 +583,40 @@ export const AgentProgressStream: React.FC<AgentProgressStreamProps> = ({
 
                   <div className="flex items-center gap-2 shrink-0">
                     {step.speedupFactor && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-mono">
-                        ⚡ {step.speedupFactor}
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {step.speedupFactor}
                       </span>
                     )}
                     {step.timestamp && (
-                      <span className="text-[10px] text-zinc-400 font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         {new Date(step.timestamp).toLocaleTimeString()}
                       </span>
                     )}
                     {hasDetails && (
-                      <div className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
+                      <span className="text-muted-foreground">
                         {isExpanded ? (
-                          <ChevronUp className="w-3.5 h-3.5" />
+                          <ChevronUp className="size-3.5" />
                         ) : (
-                          <ChevronDown className="w-3.5 h-3.5" />
+                          <ChevronDown className="size-3.5" />
                         )}
-                      </div>
+                      </span>
                     )}
                   </div>
                 </div>
 
-                <p className="mt-1.5 text-xs text-zinc-600 dark:text-zinc-300 pl-6.5 leading-relaxed">
+                <p className="mt-1.5 text-xs text-muted-foreground pl-6.5 leading-relaxed">
                   {step.description}
                 </p>
 
-                {/* Expandable Step Details */}
+                {/* 展开的步骤明细 */}
                 {isExpanded && hasDetails && (
-                  <div className="mt-3 pl-6.5 pt-3 border-t border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5 animate-in fade-in duration-150">
+                  <div className="mt-3 pl-6.5 pt-3 border-t border-border space-y-1.5">
                     {step.details?.map((detail, idx) => (
                       <div
                         key={idx}
-                        className="text-xs font-mono text-zinc-600 dark:text-zinc-400 flex items-start gap-2 bg-white/60 dark:bg-zinc-900/50 p-2 rounded-xl border border-zinc-200/40 dark:border-zinc-800"
+                        className="text-xs font-mono text-muted-foreground flex items-start gap-2 bg-muted/40 p-2 rounded-lg"
                       >
-                        <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                        <ArrowRight className="size-3.5 shrink-0 mt-0.5" />
                         <span className="break-all">{detail}</span>
                       </div>
                     ))}

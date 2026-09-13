@@ -1,57 +1,179 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ==========================================================================
+   单色令牌层 —— 全站只允许出现黑、白与中性灰
+   --------------------------------------------------------------------------
+   设计约定：界面中不存在任何色相（hue），只有明度差异。
+
+   实现方式：用 @theme 把 Tailwind 的**每一族色阶整体重映射**到同一条纯中性灰阶
+   （R = G = B），而不是逐个文件改 className —— 全站 1200+ 处彩色工具类因此在
+   同一处被一次性收敛，并且完整保留原有的明暗关系：
+     · blue-500 与 emerald-500 都变成 #737373
+     · blue-50  与 emerald-50  都变成 #fafafa
+   因此所有基于"浅底 + 深字"的既有配色对比度不变，只是不再有颜色。
+
+   语义色（成功 / 警告 / 危险）同样收敛为灰阶；层级与状态区分改由图标形状、
+   边框粗细、透明度与明度对比来承担。
+   ========================================================================== */
 @theme {
-  --color-zinc-750: #303036;
-  --color-zinc-850: #1e1e22;
+  /* 灰阶基准（11 档，纯中性，R = G = B）
+     50=#fafafa  100=#f5f5f5  200=#e5e5e5  300=#d4d4d4  400=#a3a3a3
+     500=#737373 600=#525252  700=#404040  800=#262626  900=#171717  950=#0a0a0a */
+
+  /* —— 彩色族（17 族）：全部收敛到同一条灰阶 —— */
+  --color-red-50:#fafafa;      --color-red-100:#f5f5f5;    --color-red-200:#e5e5e5;    --color-red-300:#d4d4d4;    --color-red-400:#a3a3a3;    --color-red-500:#737373;    --color-red-600:#525252;    --color-red-700:#404040;    --color-red-800:#262626;    --color-red-900:#171717;    --color-red-950:#0a0a0a;
+  --color-orange-50:#fafafa;   --color-orange-100:#f5f5f5; --color-orange-200:#e5e5e5; --color-orange-300:#d4d4d4; --color-orange-400:#a3a3a3; --color-orange-500:#737373; --color-orange-600:#525252; --color-orange-700:#404040; --color-orange-800:#262626; --color-orange-900:#171717; --color-orange-950:#0a0a0a;
+  --color-amber-50:#fafafa;    --color-amber-100:#f5f5f5;  --color-amber-200:#e5e5e5;  --color-amber-300:#d4d4d4;  --color-amber-400:#a3a3a3;  --color-amber-500:#737373;  --color-amber-600:#525252;  --color-amber-700:#404040;  --color-amber-800:#262626;  --color-amber-900:#171717;  --color-amber-950:#0a0a0a;
+  --color-yellow-50:#fafafa;   --color-yellow-100:#f5f5f5; --color-yellow-200:#e5e5e5; --color-yellow-300:#d4d4d4; --color-yellow-400:#a3a3a3; --color-yellow-500:#737373; --color-yellow-600:#525252; --color-yellow-700:#404040; --color-yellow-800:#262626; --color-yellow-900:#171717; --color-yellow-950:#0a0a0a;
+  --color-lime-50:#fafafa;     --color-lime-100:#f5f5f5;   --color-lime-200:#e5e5e5;   --color-lime-300:#d4d4d4;   --color-lime-400:#a3a3a3;   --color-lime-500:#737373;   --color-lime-600:#525252;   --color-lime-700:#404040;   --color-lime-800:#262626;   --color-lime-900:#171717;   --color-lime-950:#0a0a0a;
+  --color-green-50:#fafafa;    --color-green-100:#f5f5f5;  --color-green-200:#e5e5e5;  --color-green-300:#d4d4d4;  --color-green-400:#a3a3a3;  --color-green-500:#737373;  --color-green-600:#525252;  --color-green-700:#404040;  --color-green-800:#262626;  --color-green-900:#171717;  --color-green-950:#0a0a0a;
+  --color-emerald-50:#fafafa;  --color-emerald-100:#f5f5f5;--color-emerald-200:#e5e5e5;--color-emerald-300:#d4d4d4;--color-emerald-400:#a3a3a3;--color-emerald-500:#737373;--color-emerald-600:#525252;--color-emerald-700:#404040;--color-emerald-800:#262626;--color-emerald-900:#171717;--color-emerald-950:#0a0a0a;
+  --color-teal-50:#fafafa;     --color-teal-100:#f5f5f5;   --color-teal-200:#e5e5e5;   --color-teal-300:#d4d4d4;   --color-teal-400:#a3a3a3;   --color-teal-500:#737373;   --color-teal-600:#525252;   --color-teal-700:#404040;   --color-teal-800:#262626;   --color-teal-900:#171717;   --color-teal-950:#0a0a0a;
+  --color-cyan-50:#fafafa;     --color-cyan-100:#f5f5f5;   --color-cyan-200:#e5e5e5;   --color-cyan-300:#d4d4d4;   --color-cyan-400:#a3a3a3;   --color-cyan-500:#737373;   --color-cyan-600:#525252;   --color-cyan-700:#404040;   --color-cyan-800:#262626;   --color-cyan-900:#171717;   --color-cyan-950:#0a0a0a;
+  --color-sky-50:#fafafa;      --color-sky-100:#f5f5f5;    --color-sky-200:#e5e5e5;    --color-sky-300:#d4d4d4;    --color-sky-400:#a3a3a3;    --color-sky-500:#737373;    --color-sky-600:#525252;    --color-sky-700:#404040;    --color-sky-800:#262626;    --color-sky-900:#171717;    --color-sky-950:#0a0a0a;
+  --color-blue-50:#fafafa;     --color-blue-100:#f5f5f5;   --color-blue-200:#e5e5e5;   --color-blue-300:#d4d4d4;   --color-blue-400:#a3a3a3;   --color-blue-500:#737373;   --color-blue-600:#525252;   --color-blue-700:#404040;   --color-blue-800:#262626;   --color-blue-900:#171717;   --color-blue-950:#0a0a0a;
+  --color-indigo-50:#fafafa;   --color-indigo-100:#f5f5f5; --color-indigo-200:#e5e5e5; --color-indigo-300:#d4d4d4; --color-indigo-400:#a3a3a3; --color-indigo-500:#737373; --color-indigo-600:#525252; --color-indigo-700:#404040; --color-indigo-800:#262626; --color-indigo-900:#171717; --color-indigo-950:#0a0a0a;
+  --color-violet-50:#fafafa;   --color-violet-100:#f5f5f5; --color-violet-200:#e5e5e5; --color-violet-300:#d4d4d4; --color-violet-400:#a3a3a3; --color-violet-500:#737373; --color-violet-600:#525252; --color-violet-700:#404040; --color-violet-800:#262626; --color-violet-900:#171717; --color-violet-950:#0a0a0a;
+  --color-purple-50:#fafafa;   --color-purple-100:#f5f5f5; --color-purple-200:#e5e5e5; --color-purple-300:#d4d4d4; --color-purple-400:#a3a3a3; --color-purple-500:#737373; --color-purple-600:#525252; --color-purple-700:#404040; --color-purple-800:#262626; --color-purple-900:#171717; --color-purple-950:#0a0a0a;
+  --color-fuchsia-50:#fafafa;  --color-fuchsia-100:#f5f5f5;--color-fuchsia-200:#e5e5e5;--color-fuchsia-300:#d4d4d4;--color-fuchsia-400:#a3a3a3;--color-fuchsia-500:#737373;--color-fuchsia-600:#525252;--color-fuchsia-700:#404040;--color-fuchsia-800:#262626;--color-fuchsia-900:#171717;--color-fuchsia-950:#0a0a0a;
+  --color-pink-50:#fafafa;     --color-pink-100:#f5f5f5;   --color-pink-200:#e5e5e5;   --color-pink-300:#d4d4d4;   --color-pink-400:#a3a3a3;   --color-pink-500:#737373;   --color-pink-600:#525252;   --color-pink-700:#404040;   --color-pink-800:#262626;   --color-pink-900:#171717;   --color-pink-950:#0a0a0a;
+  --color-rose-50:#fafafa;     --color-rose-100:#f5f5f5;   --color-rose-200:#e5e5e5;   --color-rose-300:#d4d4d4;   --color-rose-400:#a3a3a3;   --color-rose-500:#737373;   --color-rose-600:#525252;   --color-rose-700:#404040;   --color-rose-800:#262626;   --color-rose-900:#171717;   --color-rose-950:#0a0a0a;
+
+  /* —— 冷灰族（自带蓝调偏色）：一并纠正为纯中性，做到严格 R = G = B —— */
+  --color-slate-50:#fafafa;    --color-slate-100:#f5f5f5;  --color-slate-200:#e5e5e5;  --color-slate-300:#d4d4d4;  --color-slate-400:#a3a3a3;  --color-slate-500:#737373;  --color-slate-600:#525252;  --color-slate-700:#404040;  --color-slate-800:#262626;  --color-slate-900:#171717;  --color-slate-950:#0a0a0a;
+  --color-gray-50:#fafafa;     --color-gray-100:#f5f5f5;   --color-gray-200:#e5e5e5;   --color-gray-300:#d4d4d4;   --color-gray-400:#a3a3a3;   --color-gray-500:#737373;   --color-gray-600:#525252;   --color-gray-700:#404040;   --color-gray-800:#262626;   --color-gray-900:#171717;   --color-gray-950:#0a0a0a;
+  --color-zinc-50:#fafafa;     --color-zinc-100:#f5f5f5;   --color-zinc-200:#e5e5e5;   --color-zinc-300:#d4d4d4;   --color-zinc-400:#a3a3a3;   --color-zinc-500:#737373;   --color-zinc-600:#525252;   --color-zinc-700:#404040;   --color-zinc-800:#262626;   --color-zinc-900:#171717;   --color-zinc-950:#0a0a0a;
+  --color-neutral-50:#fafafa;  --color-neutral-100:#f5f5f5;--color-neutral-200:#e5e5e5;--color-neutral-300:#d4d4d4;--color-neutral-400:#a3a3a3;--color-neutral-500:#737373;--color-neutral-600:#525252;--color-neutral-700:#404040;--color-neutral-800:#262626;--color-neutral-900:#171717;--color-neutral-950:#0a0a0a;
+  --color-stone-50:#fafafa;    --color-stone-100:#f5f5f5;  --color-stone-200:#e5e5e5;  --color-stone-300:#d4d4d4;  --color-stone-400:#a3a3a3;  --color-stone-500:#737373;  --color-stone-600:#525252;  --color-stone-700:#404040;  --color-stone-800:#262626;  --color-stone-900:#171717;  --color-stone-950:#0a0a0a;
+
+  /* 项目自定义的两档中间灰（原为冷调，现纠正为纯中性） */
+  --color-zinc-750: #333333;
+  --color-zinc-850: #1f1f1f;
+
+  /* ==========================================================================
+     字体令牌层 —— 与 index.html 预加载的 Web Font 保持一致
+     --------------------------------------------------------------------------
+     改造前的问题：index.html 已经用 <link> 拉取了 Plus Jakarta Sans 与
+     JetBrains Mono，但 @theme 里没有任何字体令牌、body 又写死了系统字体栈，
+     结果字体白下载 —— 正文与小组件里的 font-mono 全部回落到系统默认字体。
+
+     实现方式：在 @theme 声明 --font-sans / --font-mono 两个令牌，
+     font-sans / font-mono 工具类即指向真实字体，body 再由 var(--font-sans)
+     统一继承，做到"字体定义"单一事实源。
+
+     Plus Jakarta Sans 与 JetBrains Mono 都不含 CJK 字形，
+     因此栈尾显式声明中文字体：中英混排时浏览器按字符逐级回落，
+     英文/数字走 Web Font，中文走系统字体，而不是依赖浏览器默认行为。
+     ========================================================================== */
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Google Sans", "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+/* ==========================================================================
+   shadcn/ui 语义色令牌层
+   --------------------------------------------------------------------------
+   为什么需要这一层：下面 @layer base 里的 :root 已经按 shadcn 的约定定义了
+   --background / --card / --primary / --muted / --border / --ring 等 HSL 三通道变量，
+   但它们此前**从未被映射进 Tailwind 主题**，于是 bg-card、text-muted-foreground、
+   border-border、ring-ring 这些 shadcn 原版类名全部是无效工具类 ——
+   组件只能退回硬编码的 zinc-* / white/[0.06] 手写色，这正是小组件观感
+   与 shadcn 原版脱节的根因。
+
+   这里用 @theme inline 把三通道变量接成真实颜色令牌：
+     · inline 关键字确保生成的是 hsl(var(--card)) 而非被静态化的值，
+       因此 .dark 下的变量切换能正常生效；
+     · 只新增 --color-* 令牌，不覆盖 Tailwind 既有的 --radius-* 与任何 --color-zinc-*，
+       所以站内其余硬编码色板与圆角尺度完全不受影响。
+   ========================================================================== */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
 }
 
 @layer base {
+  /* 所有 HSL 变量的饱和度一律为 0% —— 单色约束的底层保证。
+     原值中的品牌蓝、品牌红等色相全部收敛为中性灰，
+     并交由明度承担原"主色 / 危险色"的层级区分。 */
   :root {
-    --background: 240 5% 96%; /* #f4f4f7 Clean light canvas */
-    --foreground: 220 14% 14%; /* #202124 Google dark gray text */
+    /* 明度取值对齐 shadcn 官方 neutral 主题：页面纯白、文字近黑、主色近黑。
+       原先是「页面浅灰 + 文字中灰 + 主色中灰」的 iOS 分组底色画法，
+       层级靠大面积灰块堆叠，正是「工程软件感」的来源之一。 */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 220 14% 14%;
+    --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 14% 14%;
-    --primary: 217 89% 61%; /* #1a73e8 Google Blue */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%; /* #f1f3f4 Google light gray */
-    --secondary-foreground: 220 14% 20%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%; /* #5f6368 Google secondary */
-    --accent: 220 14% 96%;
-    --accent-foreground: 217 89% 61%;
-    --destructive: 4 90% 58%; /* #ea4335 Google Red */
-    --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%; /* #dfe1e5 Google light border */
-    --input: 220 13% 91%;
-    --ring: 217 89% 61%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 0% 30%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 3.9%;
     --radius: 0.75rem;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 220 6% 13%; /* #121214 Dark background */
-    --foreground: 220 14% 92%; /* #e8eaed Google dark text */
-    --card: 220 4% 19%; /* #303134 Google dark surface */
-    --card-foreground: 220 14% 92%;
-    --popover: 220 4% 19%;
-    --popover-foreground: 220 14% 92%;
-    --primary: 217 91% 75%; /* #8ab4f8 Google dark blue */
-    --primary-foreground: 220 6% 13%;
-    --secondary: 220 4% 24%; /* #3c4043 Google dark secondary */
-    --secondary-foreground: 220 14% 92%;
-    --muted: 220 4% 24%;
-    --muted-foreground: 220 7% 65%; /* #9aa0a6 Google dark muted */
-    --accent: 220 4% 24%;
-    --accent-foreground: 217 91% 75%;
-    --destructive: 4 90% 65%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 220 4% 24%; /* #3c4043 Google dark border */
-    --input: 220 4% 24%;
-    --ring: 217 91% 75%;
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    /* 卡片刻意比页面亮一档（13% vs 3.9%）：磁贴需要凭自身明度浮出页面，
+       不能像官方默认那样只靠 border 区分，否则整屏磁贴会糊成一片。 */
+    --card: 0 0% 13%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 13%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 62%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 0% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 0% 83%;
   }
 }
 
@@ -60,15 +182,18 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Google Sans", "Helvetica Neue", Arial, sans-serif;
+  /* 字体单一事实源：与 @theme 的 --font-sans 保持一致，
+     原先此处写死的系统字体栈会覆盖 html 继承，导致预加载的 Web Font 失效 */
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  background-color: #f4f4f7;
-  color: #18181b;
+  /* 基色不再写死 hex：直接取令牌，与 bg-background / text-foreground 同源 */
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .dark body {
-  background-color: #121214;
-  color: #f4f4f5;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 /* Custom subtle scrollbars for light and dark modes */
@@ -80,15 +205,137 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(160, 160, 165, 0.35);
+  background: rgba(163, 163, 163, 0.35);
   border-radius: 9999px;
 }
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(128, 134, 139, 0.3);
+  background: rgba(140, 140, 140, 0.3);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(130, 130, 135, 0.55);
+  background: rgba(130, 130, 130, 0.55);
 }
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 134, 139, 0.5);
+  background: rgba(140, 140, 140, 0.5);
 }
+
+/* 隐藏滚动条但保留滚动能力。
+   小组件内的 Tabs 槽（如「分面专题研报」「多源交叉对比矩阵」）在窄磁贴里
+   会横向溢出，露出轨道滚动条会把 h-9 的控件挤变形；此前的 no-scrollbar
+   是个从未被定义过的空类，这里补上真实实现。 */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==========================================================================
+   AgentTeam 编排加载动画（专属）
+   由 AgentOrchestrationLoader 使用：同心环旋转 + 核心呼吸 + 卫星节点激活
+   ========================================================================== */
+@keyframes agent-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes agent-orbit-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@keyframes agent-core-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes agent-halo {
+  0% { transform: scale(0.66); opacity: 0.5; }
+  75% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@keyframes agent-node-in {
+  0% { transform: translate(-50%, -50%) scale(0.55); opacity: 0; }
+  60% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+@keyframes agent-dash-flow {
+  to { stroke-dashoffset: -16; }
+}
+@keyframes agent-sheen {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(260%); }
+}
+@keyframes agent-fade-up {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes agent-dot-blink {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.agent-orbit { animation: agent-orbit 8s linear infinite; }
+.agent-orbit-slow { animation: agent-orbit 26s linear infinite; }
+.agent-orbit-reverse { animation: agent-orbit-reverse 16s linear infinite; }
+.agent-core { animation: agent-core-breathe 2.8s ease-in-out infinite; }
+.agent-halo { animation: agent-halo 2.8s ease-out infinite; }
+.agent-node-in { animation: agent-node-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.agent-spoke { stroke-dasharray: 2 4; animation: agent-dash-flow 0.9s linear infinite; }
+.agent-fade-up { animation: agent-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.agent-dot { animation: agent-dot-blink 1.4s ease-in-out infinite; }
+
+.agent-sheen-host { position: relative; overflow: hidden; }
+.agent-sheen-host::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: agent-sheen 1.8s ease-in-out infinite;
+}
+.dark .agent-sheen-host::after {
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-orbit,
+  .agent-orbit-slow,
+  .agent-orbit-reverse,
+  .agent-core,
+  .agent-halo,
+  .agent-node-in,
+  .agent-spoke,
+  .agent-fade-up,
+  .agent-dot,
+  .agent-sheen-host::after {
+    animation: none !important;
+  }
+  .agent-halo { opacity: 0; }
+}
+
+/* ==========================================================================
+   排版微调面板控件行
+   原布局在窄容器下会把每个 chip 压到最小宽度，导致中文逐字竖排。
+   此处保证 chip 保持自身宽度、整块换行，文案永不折行。
+   ========================================================================== */
+.layout-chip-row {
+  flex-wrap: wrap;
+}
+.layout-chip-row > * {
+  flex-shrink: 0;
+}
+.layout-chip-row span {
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   图标一律继承文字色
+   --------------------------------------------------------------------------
+   本文件顶部已把 22 族色阶整体重映射为纯中性灰，因此组件的字体色即灰阶。
+   图标不另设配色：color: currentColor（Tailwind 默认）让图标自动跟随所在
+   文本的灰阶层级 —— 正文里的图标随 text-foreground，次要信息里的随
+   text-muted-foreground，主按钮里的随 text-primary-foreground。
+
+   历史上这里曾有一层「按语义给图标上色」的例外层（检索=蓝/校验=绿/警示=红）。
+   它已被移除：shadcn 的画风是中性灰 + 单一强调色，五十种彩色图标正好是全站
+   最背离该画风的部分。语义区分改由位置、图标形状与文案承担。
+   ========================================================================== */

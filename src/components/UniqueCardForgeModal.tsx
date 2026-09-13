@@ -15,13 +15,16 @@ import {
   Clock,
   Target,
   Palette,
-  Columns3,
   Columns4,
   Loader2,
   Check,
   Globe,
   SlidersHorizontal
 } from "lucide-react";
+import { Button } from "./ui/button.js";
+import { Input } from "./ui/input.js";
+import { Label } from "./ui/label.js";
+import { Alert, AlertDescription } from "./ui/alert.js";
 
 interface UniqueCardForgeModalProps {
   isOpen: boolean;
@@ -92,7 +95,7 @@ const THEME_COLORS: {
   { id: "violet", label: "紫罗兰", bgClass: "bg-purple-500" },
   { id: "amber", label: "琥珀橙", bgClass: "bg-amber-500" },
   { id: "rose", label: "玫瑰红", bgClass: "bg-rose-500" },
-  { id: "zinc", label: "极简灰", bgClass: "bg-zinc-600" }
+  { id: "zinc", label: "极简灰", bgClass: "bg-muted-foreground" }
 ];
 
 const SPAN_OPTIONS = [
@@ -194,49 +197,44 @@ export const UniqueCardForgeModal: React.FC<UniqueCardForgeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div 
-        className="relative w-full max-w-2xl bg-white dark:bg-[#18181b] rounded-3xl border border-zinc-200/90 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div
+        className="relative w-full max-w-2xl bg-card text-card-foreground rounded-xl border border-border shadow-lg overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800/80 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 flex items-center justify-center shadow-2xs">
-              <Sparkles className="w-5 h-5" />
-            </div>
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <div className="flex items-start gap-2.5">
+            <Sparkles className="size-4 text-muted-foreground shrink-0 mt-1" />
             <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">
                 根据搜索结果创建独有卡片组件
               </h3>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 将当前检索 “{query}” 的信源提炼为定制专属 Widget
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} title="关闭">
+            <X />
+          </Button>
         </div>
 
-        {/* Modal Body */}
+        {/* 主体 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300">
-              {errorMsg}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{errorMsg}</AlertDescription>
+            </Alert>
           )}
 
-          {/* 1. Archetype Selection */}
+          {/* 形态原型 */}
           <div>
-            <label className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mb-2.5">
-              <Layers className="w-3.5 h-3.5 text-zinc-500" />
-              <span>1. 选择卡片形态原型</span>
-            </label>
+            <Label className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-2.5">
+              <Layers className="size-3.5 text-muted-foreground" />
+              <span>选择卡片形态原型</span>
+            </Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {ARCHETYPES.map((item) => {
                 const Icon = item.icon;
@@ -245,18 +243,18 @@ export const UniqueCardForgeModal: React.FC<UniqueCardForgeModalProps> = ({
                   <button
                     key={item.id}
                     onClick={() => setArchetype(item.id)}
-                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-colors cursor-pointer ${
                       isSelected
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 shadow-sm"
-                        : "bg-zinc-50/70 dark:bg-zinc-800/50 border-zinc-200/80 dark:border-zinc-700/70 hover:border-zinc-300 dark:hover:border-zinc-600 text-zinc-800 dark:text-zinc-200"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card border-border hover:bg-accent text-foreground"
                     }`}
                   >
                     <div className="flex items-center justify-between w-full mb-1.5">
-                      <Icon className={`w-4 h-4 ${isSelected ? "text-white dark:text-zinc-900" : "text-zinc-500"}`} />
-                      {isSelected && <Check className="w-3.5 h-3.5" />}
+                      <Icon className={`size-4 ${isSelected ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                      {isSelected && <Check className="size-3.5" />}
                     </div>
-                    <span className="text-xs font-bold block">{item.label}</span>
-                    <span className={`text-[10px] mt-0.5 line-clamp-1 ${isSelected ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-400"}`}>
+                    <span className="text-xs font-medium block">{item.label}</span>
+                    <span className={`text-xs mt-0.5 line-clamp-1 ${isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                       {item.desc}
                     </span>
                   </button>
@@ -265,108 +263,108 @@ export const UniqueCardForgeModal: React.FC<UniqueCardForgeModalProps> = ({
             </div>
           </div>
 
-          {/* 2. Custom Prompt Input */}
+          {/* 定制指令 */}
           <div>
-            <label className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center justify-between mb-1.5">
+            <Label className="text-xs font-medium text-foreground flex items-center justify-between mb-1.5">
               <span className="flex items-center gap-1.5">
-                <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                <span>2. 定制聚焦指令 (可选)</span>
+                <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+                <span>定制聚焦指令（可选）</span>
               </span>
-              <span className="text-[11px] text-zinc-400 font-normal">留空则全自动智能提炼</span>
-            </label>
-            <input
+              <span className="text-xs text-muted-foreground font-normal">留空则全自动智能提炼</span>
+            </Label>
+            <Input
               type="text"
               value={userPrompt}
               onChange={(e) => setUserPrompt(e.target.value)}
               placeholder="例如：提炼所有价格及免费版额度限制；或总结针对小白的 5 个关键步骤"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200/80 dark:border-zinc-700/80 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100"
             />
           </div>
 
-          {/* 3. Style & Layout */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-            {/* Color */}
+          {/* 样式与布局 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 主题色调 */}
             <div>
-              <label className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mb-2">
-                <Palette className="w-3.5 h-3.5 text-zinc-500" />
-                <span>3. 卡片主题色调</span>
-              </label>
+              <Label className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-2">
+                <Palette className="size-3.5 text-muted-foreground" />
+                <span>卡片主题色调</span>
+              </Label>
               <div className="flex items-center gap-2">
                 {THEME_COLORS.map((c) => (
                   <button
                     key={c.id}
                     onClick={() => setThemeColor(c.id)}
                     title={c.label}
-                    className={`w-7 h-7 rounded-xl ${c.bgClass} flex items-center justify-center transition-transform cursor-pointer ${
-                      themeColor === c.id ? "scale-110 ring-2 ring-offset-2 ring-zinc-900 dark:ring-zinc-100 dark:ring-offset-zinc-900" : "opacity-80 hover:opacity-100"
+                    className={`size-7 rounded-md ${c.bgClass} flex items-center justify-center transition-transform cursor-pointer ${
+                      themeColor === c.id ? "scale-110 ring-2 ring-offset-2 ring-ring ring-offset-background" : "opacity-80 hover:opacity-100"
                     }`}
                   >
-                    {themeColor === c.id && <Check className="w-3.5 h-3.5 text-white" />}
+                    {themeColor === c.id && <Check className="size-3.5 text-white" />}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Col Span */}
+            {/* 宽度占比 */}
             <div>
-              <label className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mb-2">
-                <Columns4 className="w-3.5 h-3.5 text-zinc-500" />
-                <span>4. 瀑布流宽度占比</span>
-              </label>
+              <Label className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-2">
+                <Columns4 className="size-3.5 text-muted-foreground" />
+                <span>瀑布流宽度占比</span>
+              </Label>
               <div className="flex items-center gap-1.5">
                 {SPAN_OPTIONS.map((opt) => (
-                  <button
+                  <Button
                     key={opt.span}
+                    type="button"
+                    variant={colSpan === opt.span ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
                     onClick={() => setColSpan(opt.span)}
-                    className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all border cursor-pointer ${
-                      colSpan === opt.span
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent"
-                        : "bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200/80 dark:border-zinc-700/80 hover:bg-zinc-100"
-                    }`}
                   >
                     {opt.label.split(" ")[0]}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* 4. Grounding Source Selection */}
+          {/* 依凭信源 */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-zinc-500" />
-                <span>5. 依凭的搜索信源库</span>
-              </label>
-              <button
+              <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                <Globe className="size-3.5 text-muted-foreground" />
+                <span>依凭的搜索信源库</span>
+              </Label>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
                 onClick={handleToggleSelectAll}
-                className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
               >
                 {isAllSelected ? "清空选择" : "全选信源"}
-              </button>
+              </Button>
             </div>
 
-            <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-zinc-50 dark:bg-zinc-850/60 border border-zinc-200/70 dark:border-zinc-800 custom-scrollbar">
+            <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-muted/40 border border-border custom-scrollbar">
               {results.slice(0, 8).map((r, idx) => {
                 const isChecked = selectedResultIds.includes(r.id);
                 return (
                   <div
                     key={r.id || idx}
                     onClick={() => handleToggleResult(r.id)}
-                    className={`flex items-center gap-2 p-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                    className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors ${
                       isChecked
-                        ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
-                        : "text-zinc-500 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40"
+                        ? "bg-card text-foreground"
+                        : "text-muted-foreground hover:bg-accent"
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={isChecked}
                       onChange={() => {}} // handled by parent onClick
-                      className="rounded text-zinc-900 focus:ring-0 shrink-0"
+                      className="rounded accent-foreground focus:ring-0 shrink-0"
                     />
-                    <span className="font-semibold truncate flex-1">{r.title}</span>
-                    <span className="text-[10px] text-zinc-400 shrink-0 font-mono">
+                    <span className="font-medium truncate flex-1">{r.title}</span>
+                    <span className="text-xs text-muted-foreground shrink-0 font-mono">
                       {r.engine || "web"}
                     </span>
                   </div>
@@ -376,38 +374,30 @@ export const UniqueCardForgeModal: React.FC<UniqueCardForgeModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-900/60 flex items-center justify-between shrink-0">
-          <span className="text-xs text-zinc-400">
+        {/* 底部 */}
+        <div className="px-6 py-4 border-t border-border bg-muted/40 flex items-center justify-between shrink-0">
+          <span className="text-xs text-muted-foreground">
             已勾选 {selectedResultIds.length} 篇参考信源
           </span>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              disabled={isForging}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-            >
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={isForging}>
               取消
-            </button>
+            </Button>
 
-            <button
-              onClick={handleForge}
-              disabled={isForging}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-bold hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
-            >
+            <Button onClick={handleForge} disabled={isForging}>
               {isForging ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>正在深度萃取并创建卡片...</span>
+                  <Loader2 className="animate-spin" />
+                  正在深度萃取并创建卡片...
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>立即生成独有卡片组件</span>
+                  <Sparkles />
+                  立即生成独有卡片组件
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

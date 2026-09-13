@@ -1,0 +1,14 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "topic_digest",
+  "name": "主题分面消化",
+  "version": "1.0.0",
+  "description": "多层次核心概念分面摘要提炼",
+  "category": "synthesis",
+  "icon": "Layers",
+  "grid": {
+    "defaultSize": "large",
+    "supportedSizes": ["medium", "large", "wide"],
+    "ratio": "4:3"
+  }
+}

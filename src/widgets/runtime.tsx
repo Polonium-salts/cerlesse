@@ -8,6 +8,8 @@ import {
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 import { TileAtomRenderer } from "./tileRenderer.js";
 import { SearchSynthesisResult } from "../types.js";
+import { Alert, AlertDescription } from "../components/ui/alert.js";
+import { Button } from "../components/ui/button.js";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface WidgetRuntimeProps {
@@ -164,7 +166,7 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
 
     if (!frontContent && !backContent) {
       return (
-        <div className="p-4 rounded-3xl bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-500">
+        <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-xs text-muted-foreground">
           小组件 [{module.name || module.id}] 缺少可渲染的视图
         </div>
       );
@@ -175,16 +177,18 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
       return (
         <div className="relative w-full h-full group/livetile" style={{ perspective: 1200 }}>
           {/* 磁贴右上角 Live Tile 快捷翻转把手 */}
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={(e) => {
               e.stopPropagation();
               flipTile();
             }}
             title={isFlipped ? "翻转回正面速览" : "翻转至磁贴背面"}
-            className="absolute top-3 right-3 z-30 opacity-0 group-hover/livetile:opacity-100 p-1.5 rounded-full bg-white/80 dark:bg-zinc-800/80 backdrop-blur-md border border-zinc-200/60 dark:border-zinc-700/60 text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm transition-all cursor-pointer"
+            className="absolute top-3 right-3 z-30 bg-card border border-border text-muted-foreground hover:text-foreground"
           >
-            <RefreshCw className={`w-3.5 h-3.5 transition-transform duration-500 ${isFlipped ? "rotate-180 text-blue-600" : ""}`} />
-          </button>
+            <RefreshCw className={`transition-transform duration-500 ${isFlipped ? "rotate-180" : ""}`} />
+          </Button>
 
           <div
             className="w-full h-full transition-transform duration-500 ease-out"
@@ -206,7 +210,7 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
 
             {/* 背面卡片 */}
             <div
-              className="w-full h-full absolute inset-0 rounded-3xl overflow-hidden bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-blue-500/20 shadow-lg"
+              className="w-full h-full absolute inset-0 rounded-xl overflow-hidden border border-border bg-card/95 backdrop-blur-xl shadow-sm"
               style={{
                 backfaceVisibility: "hidden",
                 WebkitBackfaceVisibility: "hidden",
@@ -225,10 +229,10 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
   } catch (err: any) {
     console.error(`Crash in WidgetRuntime [${module.id}]:`, err);
     return (
-      <div className="p-4 rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
-        <AlertCircle className="w-4 h-4 shrink-0" />
-        <span>组件渲染异常: {err?.message || "未知错误"}</span>
-      </div>
+      <Alert variant="destructive" className="items-center">
+        <AlertCircle />
+        <AlertDescription>组件渲染异常: {err?.message || "未知错误"}</AlertDescription>
+      </Alert>
     );
   }
 };

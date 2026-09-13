@@ -127,19 +127,51 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
     };
   }
 
-  // 2. 软件与应用套件下载 (Software Download)
+  // 2. 显式竞品意图探测：查询词本身就点明了"对比 / 排障 / 定义 / 研报"时，
+  //    不允许被"检索结果里恰好出现下载二字"劫持成软件下载任务。
+  //    实测：query="什么是量子退火" 仅因某条结果标题含"安装文档"就被判成
+  //    software_download(0.95)，并以高于阈值的置信度覆盖了另一分类器的正确判定，
+  //    最终桌面挂上安装入口、事实核查与官网门户 —— 这正是"组件选不准"的源头。
+  const hasExplicitComparisonIntent = /(对比|区别|选哪个|pk|vs|哪个好|好用吗|优缺点|测评)/i.test(cleanQ);
+  const hasExplicitTroubleshootingIntent = /(报错|错误|失败|failed|error|bug|crash|崩溃|排查|无法启动|解决办法|code \d+)/i.test(cleanQ);
+  const hasExplicitConceptIntent = /(什么是|原理|定义|介绍|概念|为什么|架构图)/i.test(cleanQ);
+  const hasExplicitResearchIntent = /(研报|报告|白皮书|现状|发展趋势|市场份额|产业链|前景|调研)/i.test(cleanQ);
+  const hasCompetingIntent =
+    hasExplicitComparisonIntent ||
+    hasExplicitTroubleshootingIntent ||
+    hasExplicitConceptIntent ||
+    hasExplicitResearchIntent;
+
+  // 3. 软件与应用套件下载 (Software Download)
   // 支持显式下载词，或知名生产力软件/应用名称（如 Photoshop, Blender, VSCode, Chrome 等）
   const knownSoftwareRegex = /(photoshop|blender|vscode|visual studio|chrome|firefox|docker|postman|steam|obs|figma|notion|git|nginx|redis|wechat|qq|telegram)/i;
-  const isSoftwareExplicit = /(下载|安装|download|installer|release|client|客户端|exe|dmg|pkg|deb|rpm|zip|github release)/i.test(cleanQ) ||
-    results.some(r => /(下载|download|github\.com\/.*\/releases|install)/i.test(r.title + " " + r.snippet));
-  const isSoftwareContext = knownSoftwareRegex.test(cleanQ) || 
+  /** 查询里出现了"获取软件"的动作词（下载/安装/正式版…） */
+  const queryHasDownloadVerb = /(下载|安装|download|installer|release|client|客户端|电脑版|绿色版|mac版|windows版|免安装版|稳定版|正式版|exe|dmg|pkg|deb|rpm|zip)/i.test(cleanQ);
+  /** 查询里出现了已知软件名 —— 但光有名字不构成"下载任务" */
+  const queryNamesSoftware = knownSoftwareRegex.test(cleanQ);
+  /**
+   * 强证据：查询确实是在要软件。
+   * 注意 "Docker 和 Podman 对比区别" 里虽有软件名，但它问的是选型对比；
+   * 若把"含软件名"当作下载意图，技术对比任务就会被误判成下载任务。
+   */
+  const queryAsksSoftware = queryHasDownloadVerb || (queryNamesSoftware && !hasCompetingIntent);
+  /** 弱证据：只有检索结果在谈下载/安装，查询本身没要软件 */
+  const evidenceResults = results.filter(r =>
+    /(下载|download|github\.com\/.*\/releases|install|安装)/i.test(`${r.title} ${r.snippet}`)
+  ).length;
+  const softwareOnlyFromEvidence = !queryAsksSoftware && evidenceResults >= 2 && !hasCompetingIntent;
+  const isSoftwareContext = knownSoftwareRegex.test(cleanQ) ||
     results.some(r => /(软件|应用程序|客户端|桌面套件|图形软件|开发工具)/i.test(r.title + " " + r.snippet));
 
-  if (isSoftwareExplicit || isSoftwareContext) {
+  if (queryAsksSoftware || softwareOnlyFromEvidence || (isSoftwareContext && !hasCompetingIntent && evidenceResults >= 1)) {
     const entityMatch = cleanQ
       .replace(/(下载|安装|最新版|官方|官网|客户端|电脑版|绿色版|mac版|windows版|破解版|破解|破解教程|免安装版|稳定版|正式版|installer|download|client)/gi, "")
       .trim();
     const entity = entityMatch || (results[0]?.title ? results[0].title.split(/[-_|]/)[0].trim() : "Software");
+    // 置信度必须反映证据强度：
+    //   查询明确要软件 -> 0.95（可覆盖另一分类器）
+    //   仅凭检索结果推断，或查询本身已指向对比/排障/定义/研报 -> 0.72（低于覆盖阈值，交给两个分类器取并集）
+    const strongEvidence = queryAsksSoftware && !hasCompetingIntent;
     return {
       intent: "software_download",
       intents: ["software_download", "download", "version", "compare"],
@@ -148,12 +180,15 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
       needs: [...INTENT_CAPABILITIES_MAP.software_download],
       requiredCapabilities: [...INTENT_CAPABILITIES_MAP.software_download],
       suggestedLayout: "composite_card",
-      confidence: 0.95
+      confidence: strongEvidence ? 0.95 : 0.72
     };
   }
 
-  // 3. GitHub / 开源项目研究 (GitHub Project)
-  if (/(github|开源项目|开源库|repo|repository|star|git clone)/i.test(cleanQ) || results.some(r => /github\.com/i.test(r.url))) {
+  // 4. GitHub / 开源项目研究 (GitHub Project)
+  //    同样是证据型判定：仅有 github.com 结果不足以定性，查询本身点名才算强证据。
+  const queryMentionsGithub = /(github|开源项目|开源库|repo|repository|star|git clone)/i.test(cleanQ);
+  const hasGithubResult = results.some(r => /github\.com/i.test(r.url));
+  if (queryMentionsGithub || (hasGithubResult && !hasCompetingIntent)) {
     const entity = cleanQ.replace(/(github|开源项目|repo|repository|star|git clone|开源库|下载|官网)/gi, "").trim();
     return {
       intent: "github_project",
@@ -163,7 +198,7 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
       needs: [...INTENT_CAPABILITIES_MAP.github_project],
       requiredCapabilities: [...INTENT_CAPABILITIES_MAP.github_project],
       suggestedLayout: "composite_card",
-      confidence: 0.93
+      confidence: queryMentionsGithub ? 0.93 : 0.7
     };
   }
 
@@ -226,7 +261,14 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
   }
 
   // 8. 官网直达与门户 (Portal Navigation)
-  if (/(官网|官方网站|入口|网址|首页|portal|official)/i.test(cleanQ) || results.some(r => r.isOfficial)) {
+  //    ⚠️ 关键修正：绝大多数检索都会返回官方域名，若把"结果里含官方站点"
+  //    当作 portal_navigation 的定性证据（旧实现置信度 0.85 > 覆盖阈值 0.8），
+  //    "什么是量子退火""产业链发展趋势研报"这类任务都会被改判成"官网寻址"，
+  //    桌面随即被官方门户占据、导图与研报组件全部退场。
+  //    只有查询本身在找官网/入口时才给出高置信度；纯证据推断降为 0.7（不覆盖另一分类器）。
+  const queryAsksPortal = /(官网|官方网站|入口|网址|首页|portal|official)/i.test(cleanQ);
+  const hasOfficialResult = results.some(r => r.isOfficial);
+  if (queryAsksPortal || (hasOfficialResult && !hasCompetingIntent)) {
     const entity = cleanQ.replace(/(官网|官方网站|入口|网址|首页)/gi, "").trim();
     return {
       intent: "portal_navigation",
@@ -236,7 +278,7 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
       needs: [...INTENT_CAPABILITIES_MAP.portal_navigation],
       requiredCapabilities: [...INTENT_CAPABILITIES_MAP.portal_navigation],
       suggestedLayout: "composite_card",
-      confidence: 0.85
+      confidence: queryAsksPortal ? 0.85 : 0.7
     };
   }
 

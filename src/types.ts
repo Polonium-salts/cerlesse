@@ -58,7 +58,8 @@ export interface AgentPlan {
 export type AgentRole = 
   | "coordinator"           // 主 Agent / 调度总控: 负责全局意图解析、任务拆解与派发、进度监控与最终验收交付
   | "retrieval"             // 全网检索 Agent: 负责全网多引擎检索、跨语言关键词扩展、权威官网甄别与垃圾清洗
-  | "widget_forge";         // 专属小组件构建 Agent: 负责独有交互小组件 (Unique Card) 架构与锻造，多原型智能匹配与防重工程
+  | "widget_forge"          // 专属小组件构建 Agent: 负责独有交互小组件 (Unique Card) 架构与锻造，多原型智能匹配与防重工程
+  | "layout";               // 小组件排版 Agent: 负责 12 栅格小组件排版编排（启停、阅读序、板块跨度、装箱补位与视觉焦点）
 
 /**
  * 由主 Agent 专门派发给特定智能体的独立子任务定义
@@ -95,6 +96,31 @@ export interface TeamMember {
   speedupMultiplier?: number;
 }
 
+/** 编排内核单个阶段的可观测摘要 */
+export interface OrchestrationStageSummary {
+  id: string;
+  name: string;
+  role?: string;
+  status: "pending" | "running" | "completed" | "degraded" | "failed" | "skipped";
+  /** 该阶段自身执行耗时 */
+  durationMs: number;
+  /** 该阶段在依赖上等待的时长：数值高说明并行潜力还没挖干净 */
+  waitMs: number;
+}
+
+/** 编排内核的真实测量数据（性能可观测） */
+export interface OrchestrationSummary {
+  stages: OrchestrationStageSummary[];
+  totalDurationMs: number;
+  /** 全部阶段串行执行的理论耗时 */
+  estimatedSequentialMs: number;
+  /** 并行加速比 = 串行估计 / 实际墙钟 */
+  speedup: number;
+  maxConcurrency: number;
+  degradedCount: number;
+  failedCount: number;
+}
+
 export interface AgentTeamReport {
   teamName: string;
   masterAgent: {
@@ -111,6 +137,8 @@ export interface AgentTeamReport {
   totalSavedTimeMs: number;
   totalDurationMs?: number;
   timestamp: number;
+  /** 声明式编排内核的真实测量数据，用于性能可观测与瓶颈定位 */
+  orchestration?: OrchestrationSummary;
 }
 
 export type AgentStepStatus = "pending" | "running" | "completed" | "error";
@@ -236,7 +264,12 @@ export type QueryIntent =
   | "explain"          // 概念解释/原理科普 (如 什么是 Docker, 量子计算原理)
   | "research";        // 深度研报/全产业链/学术探讨
 
-export type WidgetPlannedSize = "small" | "medium" | "large" | "full";
+/**
+ * 组件规划的语义尺寸。
+ * 与 src/lib/tileLayoutEngine.ts 的 TileSize 保持同一套档位（含 "wide"），
+ * 否则规划器输出 "wide" 时类型不通过，而排版相位又确实会读取该档位。
+ */
+export type WidgetPlannedSize = "small" | "medium" | "wide" | "large" | "tall" | "full";
 
 export interface WidgetPlannedItem {
   type: ResultWidgetKey;
@@ -247,6 +280,25 @@ export interface WidgetPlannedItem {
   capabilities?: string[]; // Capabilities matched to this widget
 }
 
+/**
+ * 语义意图分析结果（组件规划的第一阶段产物）。
+ *
+ * 这是编排链路最关键的契约：它决定"这次任务到底需要哪些能力"，
+ * 进而决定规划器把哪些小组件排上桌。此前该结构体在类型层缺失，
+ * 三个编排文件（分析器 / 规划器 / 合成器）都在引用一个不存在的导出，
+ * 使得这条链路长期处于"能跑但无类型约束"的状态。
+ */
+export interface WidgetIntentAnalysis {
+  intent: string;
+  intents?: string[];
+  entity?: string;
+  goal?: string;
+  needs?: string[];
+  requiredCapabilities?: string[];
+  suggestedLayout?: string;
+  confidence?: number;
+}
+
 export interface WidgetPlan {
   intent: QueryIntent;
   userGoal: string;
@@ -254,6 +306,8 @@ export interface WidgetPlan {
   capabilities: string[]; // ["official_url", "download", "install_command", "install_step", "try_online", "compare_table", "pros_cons", "timeline", "itinerary_timeline"]
   widgets: WidgetPlannedItem[]; // Decided widgets with priority, size and flex specifications
   widgetOrder?: ResultWidgetKey[]; // Flattened sequence of widget keys for direct consumption
+  /** 第一阶段的语义分析结果，供排版相位对账与审计 */
+  intentAnalysis?: WidgetIntentAnalysis;
   primaryActions: WidgetAction[]; // Standardized executable actions
   widgetCustomizations?: {
     cardTitle?: string;
@@ -494,6 +548,47 @@ export interface AdaptiveLayoutStrategy {
   autoFillGaps?: boolean;
   autoFillMode?: AutoFillGapsMode;
   filledGapsCount?: number;
+  /** 小组件排版 Agent 的显式排版决策（用于前端透明化展示排版依据） */
+  layoutAgentDecision?: WidgetLayoutDecision;
+}
+
+/**
+ * 小组件排版 Agent (WidgetLayoutAgent) 输出的排版决策单
+ * 该决策是 12 栅格排版编排的唯一权威来源：决定哪些小组件上桌、以什么顺序阅读、
+ * 每张卡片占据多少栅格跨度，以及视觉焦点落在谁身上。
+ */
+export interface WidgetLayoutDecision {
+  agentName: string;
+  intentType: LayoutIntentType;
+  intentLabel: string;
+  componentOrder: ResultWidgetKey[];     // 最终阅读序（仅含已启用的组件）
+  emphasizedWidget: ResultWidgetKey;     // 视觉焦点组件
+  spans: Partial<Record<ResultWidgetKey, number>>; // 4 | 6 | 8 | 12
+  enabledWidgets: ResultWidgetKey[];
+  disabledWidgets: ResultWidgetKey[];
+  reasoning: string[];                   // 逐条排版决策依据
+  packingMethod: string;
+  /**
+   * 与渲染层（磁贴桌面）同构的装箱预演结果。
+   *
+   * 装箱策略为「瀑布流错落（Staggered Masonry）」而非行带对齐：
+   * 磁贴各自落入当前最低的列区间，顶部不再逐行对齐 —— 参差错落本身即是视觉主张。
+   * 因此这里汇报的是"错落程度"而不是"行数"。
+   */
+  gridRows?: number;
+  /** 桌面下沿的参差度：最高列与最低列的高度差（px），越大越不规则 */
+  raggednessPx?: number;
+  /** 独占一条顶线的磁贴数（越多越错落；0 表示完全逐行对齐） */
+  staggeredTiles?: number;
+  /** 桌面用到的不同顶线总数 */
+  topLines?: number;
+  /** 为封住瀑布流窄缝而微调宽度档位的磁贴数（0 = 完全遵循跨度决策） */
+  adjustedSpans?: number;
+  /** 桌面轮廓内部的真实空洞栅格单元数（不含下沿参差，那是设计意图） */
+  interiorGaps?: number;
+  modelUsed?: string;
+  llmRefined: boolean;                   // 是否经大模型语义精修
+  executionTimeMs: number;
 }
 
 export interface SearchSynthesisResult {

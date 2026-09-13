@@ -7,33 +7,34 @@ import React, { useState, useEffect } from "react";
 import { Header } from "./components/Header.js";
 import { GoogleLogo } from "./components/GoogleLogo.js";
 import { SearchBar } from "./components/SearchBar.js";
-import { AIOverviewWidget } from "./components/AIOverviewWidget.js";
-import { KeyTakeawaysWidget } from "./components/KeyTakeawaysWidget.js";
-import { OfficialPortalWidget } from "./components/OfficialPortalWidget.js";
-import { MindMapWidget } from "./components/MindMapWidget.js";
-import { ComparisonMatrixWidget } from "./components/ComparisonMatrixWidget.js";
-import { SourcesListWidget } from "./components/SourcesListWidget.js";
-import { FollowUpWidget } from "./components/FollowUpWidget.js";
-import { MetricsTelemetryWidget } from "./components/widgets/MetricsTelemetryWidget.js";
-import { QuickActionsToolboxWidget } from "./components/widgets/QuickActionsToolboxWidget.js";
-import { ActionPlanWidget } from "./components/widgets/ActionPlanWidget.js";
-import { QuickAnswerWidget } from "./components/widgets/QuickAnswerWidget.js";
-import { TopicDigestWidget } from "./components/widgets/TopicDigestWidget.js";
-import { AgentAuditWidget } from "./components/widgets/AgentAuditWidget.js";
-import { AnalyticsTrendWidget } from "./components/widgets/AnalyticsTrendWidget.js";
-import { VerificationChecklistWidget } from "./components/widgets/VerificationChecklistWidget.js";
-import { FastChatWidget } from "./components/widgets/FastChatWidget.js";
-import { MobileQRConnectWidget } from "./components/widgets/MobileQRConnectWidget.js";
+import { AIOverviewWidget } from "./widgets/components/AIOverviewWidget.js";
+import { KeyTakeawaysWidget } from "./widgets/components/KeyTakeawaysWidget.js";
+import { OfficialPortalWidget } from "./widgets/components/OfficialPortalWidget.js";
+import { MindMapWidget } from "./widgets/components/MindMapWidget.js";
+import { ComparisonMatrixWidget } from "./widgets/components/ComparisonMatrixWidget.js";
+import { SourcesListWidget } from "./widgets/components/SourcesListWidget.js";
+import { FollowUpWidget } from "./widgets/components/FollowUpWidget.js";
+import { MetricsTelemetryWidget } from "./widgets/components/MetricsTelemetryWidget.js";
+import { QuickActionsToolboxWidget } from "./widgets/components/QuickActionsToolboxWidget.js";
+import { ActionPlanWidget } from "./widgets/components/ActionPlanWidget.js";
+import { QuickAnswerWidget } from "./widgets/components/QuickAnswerWidget.js";
+import { TopicDigestWidget } from "./widgets/components/TopicDigestWidget.js";
+import { AgentAuditWidget } from "./widgets/components/AgentAuditWidget.js";
+import { AnalyticsTrendWidget } from "./widgets/components/AnalyticsTrendWidget.js";
+import { VerificationChecklistWidget } from "./widgets/components/VerificationChecklistWidget.js";
+import { FastChatWidget } from "./widgets/components/FastChatWidget.js";
+import { MobileQRConnectWidget } from "./widgets/components/MobileQRConnectWidget.js";
 import { AgentProgressStream } from "./components/AgentProgressStream.js";
+import { AgentOrchestrationLoader } from "./components/AgentOrchestrationLoader.js";
 import { SearchHistoryDrawer } from "./components/SearchHistoryDrawer.js";
-import { AdaptiveLayoutControl } from "./components/AdaptiveLayoutControl.js";
-import { AdaptiveMasonryGrid } from "./components/AdaptiveMasonryGrid.js";
 import { TileDesktopView } from "./components/desktop/TileDesktopView.js";
 import { WidgetMarketplaceDrawer } from "./components/desktop/WidgetMarketplaceDrawer.js";
 import { CockpitWorkspace } from "./components/CockpitWorkspace.js";
-import { UniqueCardWidget } from "./components/widgets/UniqueCardWidget.js";
+import { UniqueCardWidget } from "./widgets/components/UniqueCardWidget.js";
 import { UniqueCardForgeModal } from "./components/UniqueCardForgeModal.js";
-import { ForgedWidgetsHub } from "./components/widgets/ForgedWidgetsHub.js";
+import { Alert, AlertDescription } from "./components/ui/alert.js";
+import { Button } from "./components/ui/button.js";
+import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs.js";
 import { WidgetRegistry, WidgetRuntime } from "./widgets/index.js";
 import { 
   AgentStep, 
@@ -57,6 +58,7 @@ import {
   getWidgetGridClass,
   resolveDynamicCapabilityWidgets
 } from "./lib/adaptiveLayout.js";
+import { navigate, readRoute, useRoute, RouteTab } from "./lib/router.js";
 import { motion } from "motion/react";
 import { 
   LayoutGrid, 
@@ -114,12 +116,25 @@ export default function App() {
 
   // Search execution state
   const [currentQuery, setCurrentQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => {
+    // 直接访问 /mindmap?q=xxx 等深链接时先进入加载态，避免闪现空状态
+    const initial = readRoute();
+    return Boolean(initial.tab && initial.query);
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [activeResult, setActiveResult] = useState<SearchSynthesisResult | null>(null);
   const [agentTeam, setAgentTeam] = useState<AgentTeamReport | null>(null);
-  const [activeTab, setActiveTab] = useState<"bento" | "mindmap" | "comparison" | "sources" | "reasoning" | "custom_cards">("bento");
+  // 路由驱动页面：每个页面拥有独立的 URL 目录
+  // / 首页 · /search 全景网格 · /mindmap 思维导图 · /comparison 对比矩阵 · /sources 已验证信源 · /reasoning AgentTeam 协作
+  const route = useRoute();
+  const activeTab: RouteTab = route.tab ?? "bento";
+
+  // 页面跳转：结果页携带当前查询词，便于分享与前进/后退
+  const goToPage = (tab: RouteTab | null, options: { replace?: boolean } = {}) => {
+    navigate(tab, tab ? (activeResult?.query || currentQuery) : "", options);
+  };
+
   const [sharedCopied, setSharedCopied] = useState(false);
 
   // Dynamic Unique Custom Cards state
@@ -263,33 +278,8 @@ export default function App() {
     });
   };
 
-  // Intelligent Layout Fine-Tuning Panel Open State (Toggled from Top Navigation Bar)
-  const [isLayoutControlOpen, setIsLayoutControlOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const saved = localStorage.getItem("layout_finetune_collapsed");
-    return saved !== null ? saved === "false" : false; // default hidden
-  });
-
   // Widget Marketplace Drawer Open State
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState<boolean>(false);
-
-  const handleToggleLayoutControl = () => {
-    if (activeTab !== "bento") {
-      setActiveTab("bento");
-      setIsLayoutControlOpen(true);
-      try {
-        localStorage.setItem("layout_finetune_collapsed", "false");
-      } catch (e) {}
-    } else {
-      setIsLayoutControlOpen((prev) => {
-        const next = !prev;
-        try {
-          localStorage.setItem("layout_finetune_collapsed", String(!next));
-        } catch (e) {}
-        return next;
-      });
-    }
-  };
 
   // When a new search completes or activeResult changes, automatically adopt Agent's intent recommendation
   useEffect(() => {
@@ -336,23 +326,33 @@ export default function App() {
       autoFillMode
     });
 
+    // 用户尚未手动调过任何跨度时，布局数字直接沿用排版 Agent 的决策单：
+    // 那份数字是用「磁贴桌面正在使用的同一套行带装箱求解器」预演出来的，
+    // 因此控制栏上的行数/补位列数与用户实际看到的画面口径完全一致（决策即渲染）。
+    const userTouchedSpans = Object.keys(customWidgetSpans).length > 0;
+    const trustAgentMetrics = !userTouchedSpans && baseRec.layoutAgentDecision != null;
+
     return {
       ...baseRec,
       intentType: layoutPreset === "custom" ? baseRec.intentType : (layoutPreset as LayoutIntentType),
       componentOrder: safeVisibleOrder,
       emphasizedWidget: emphasized,
       gridConfig: packing.gridConfig,
-      totalRows: packing.totalRows,
+      totalRows: trustAgentMetrics ? (baseRec.totalRows ?? packing.totalRows) : packing.totalRows,
       maxColumnsPerRow: 12,
       packingMethod: "semantic-css-grid",
       enabledWidgets: activeEnabled,
       disabledWidgets: ALL_RESULT_WIDGET_KEYS.filter(k => !activeEnabled.includes(k)),
       widgetStatusMap: baseRec.widgetStatusMap,
-      customWidgetSpans,
+      // 合并而非覆盖：排版 Agent 给出的栅格跨度是宽度权威，用户手动调整则拥有更高优先级。
+      // （原实现直接用用户态覆盖，会把 Agent 精心编排的宽度整批打回默认值）
+      customWidgetSpans: { ...(baseRec.customWidgetSpans || {}), ...customWidgetSpans },
       alignmentMode,
       autoFillGaps,
       autoFillMode,
-      filledGapsCount: packing.filledGapsCount ?? 0
+      filledGapsCount: trustAgentMetrics
+        ? (baseRec.filledGapsCount ?? packing.filledGapsCount ?? 0)
+        : (packing.filledGapsCount ?? 0)
     };
   }, [activeResult, layoutPreset, customWidgetOrder, customEnabledWidgets, customWidgetSpans, alignmentMode, autoFillGaps, autoFillMode]);
 
@@ -465,19 +465,25 @@ export default function App() {
     setAgentTeam(null);
     setCurrentQuery("");
     setErrorMessage(null);
-    setActiveTab("bento");
+    navigate(null, "", { replace: false });
   };
 
   const executeSearch = async (query: string, deep: boolean = true) => {
     if (!query.trim() || isLoading) return;
+    await runSearch(query, deep);
+  };
 
+  // 真正的检索执行体（不做节流判断，供深链接自动检索直接调用）
+  const runSearch = async (query: string, deep: boolean = true) => {
     setCurrentQuery(query);
     setIsLoading(true);
     setErrorMessage(null);
     setAgentSteps([]);
     setAgentTeam(null);
     setActiveResult(null);
-    setActiveTab("bento");
+
+    // 结果始终落在当前页面目录下并携带查询词，保证每个页面 URL 可分享
+    navigate(route.tab ?? "bento", query.trim(), { replace: !route.isHome });
 
     const queryParams = new URLSearchParams();
     queryParams.set("q", query.trim());
@@ -670,13 +676,43 @@ export default function App() {
     }
   };
 
+  // 路由 ⇄ 研报数据同步：
+  // 1) 深链接直达（如 /mindmap?q=xxx）自动发起检索；
+  // 2) 浏览器前进/后退时按地址栏查询词对齐数据。
+  const hasBootstrappedRef = React.useRef(false);
+  const lastSyncedQueryRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!route.isKnown) {
+      navigate(null, "", { replace: true });
+      return;
+    }
+
+    const routeQuery = route.query.trim();
+    if (!routeQuery) {
+      hasBootstrappedRef.current = true;
+      return;
+    }
+
+    const isBootstrapping = !hasBootstrappedRef.current;
+    hasBootstrappedRef.current = true;
+
+    const activeQuery = (activeResult?.query || "").trim();
+    if (!isBootstrapping && routeQuery === activeQuery) return;
+    if (lastSyncedQueryRef.current === routeQuery) return;
+    if (!isBootstrapping && isLoading) return;
+
+    lastSyncedQueryRef.current = routeQuery;
+    void runSearch(routeQuery, settings.enableDeepSearch);
+  }, [route.path, route.isKnown, route.query, activeResult?.query, isLoading]);
+
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
     setSharedCopied(true);
     setTimeout(() => setSharedCopied(false), 2000);
   };
 
-  const isHomeView = !activeResult && !isLoading && agentSteps.length === 0;
+  const isHomeView = route.isHome;
   const officialSite = activeResult?.filteredResults.find(r => r.isOfficial);
 
   const getGridClassForWidget = (key: ResultWidgetKey, isEmphasized: boolean) => {
@@ -775,13 +811,13 @@ export default function App() {
       ...widgetModule,
       actions: {
         ...(widgetModule.actions || {}),
-        openMindMap: () => setActiveTab("mindmap"),
-        openComparison: () => setActiveTab("comparison"),
+        openMindMap: () => goToPage("mindmap"),
+        openComparison: () => goToPage("comparison"),
         openForgeModal: (sourceIds?: string[]) => handleOpenForgeModal(sourceIds),
         forgeCardFromSource: (sourceId: string) => handleOpenForgeModal([sourceId]),
         reSearch: () => executeSearch(activeResult.query, settings.enableDeepSearch),
-        viewDeepAnalysis: () => setActiveTab("sources"),
-        viewDetails: () => setActiveTab("reasoning")
+        viewDeepAnalysis: () => goToPage("sources"),
+        viewDetails: () => goToPage("reasoning")
       }
     };
 
@@ -799,7 +835,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f2f2f6] dark:bg-[#121214] text-zinc-900 dark:text-zinc-100 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-200">
       {/* iOS App Header */}
       <Header
         darkMode={darkMode}
@@ -815,123 +851,69 @@ export default function App() {
         isLoading={isLoading}
         isWideCanvas={isWideCanvas}
         onToggleCanvasWidth={handleToggleCanvasWidth}
-        onToggleLayoutControl={activeResult ? handleToggleLayoutControl : undefined}
-        isLayoutControlOpen={isLayoutControlOpen}
-        layoutStrategyName={currentStrategy?.intentLabel}
-        isCustomizedLayout={layoutPreset === "custom"}
       />
 
-      {/* iOS Segmented Navigation Bar (When on Search Results Page) */}
+      {/* 结果页顶部导航：单一分段控件 + 一句元信息 + 两个操作按钮。
+          原先每个标签里还挂着 1-6 快捷键提示与加速比药丸，信息噪声大于信息本身，已删除。 */}
       {!isHomeView && (
-        <div className="border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/70 dark:bg-[#121214]/70 backdrop-blur-xl sticky top-16 z-30">
+        <div className="border-b border-border bg-background/70 backdrop-blur-xl sticky top-16 z-30">
           <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-2.5 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar transition-all duration-200`}>
-            {/* iOS Segmented Control */}
-            <div className="p-1 rounded-2xl bg-zinc-200/70 dark:bg-zinc-800/80 flex items-center gap-1 text-xs font-semibold shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveTab("bento")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                  activeTab === "bento"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs"
-                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>全景网格</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("mindmap")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                  activeTab === "mindmap"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs"
-                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                }`}
-              >
-                <GitFork className="w-3.5 h-3.5" />
-                <span>思维导图</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("comparison")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                  activeTab === "comparison"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs"
-                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                }`}
-              >
-                <Scale className="w-3.5 h-3.5" />
-                <span>对比矩阵</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("sources")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                  activeTab === "sources"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs"
-                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>已验证信源</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("reasoning")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                  activeTab === "reasoning"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs"
-                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                }`}
-              >
-                <Workflow className="w-3.5 h-3.5 text-blue-500" />
-                <span>AgentTeam 协作</span>
-                {(activeResult?.agentTeam?.speedupMultiplier || agentTeam?.speedupMultiplier) && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
-                    {activeResult?.agentTeam?.speedupMultiplier || agentTeam?.speedupMultiplier}x
-                  </span>
-                )}
-              </button>
-            </div>
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => goToPage(v as RouteTab)}
+              className="shrink-0"
+            >
+              <TabsList>
+                <TabsTrigger value="bento">
+                  <LayoutGrid />
+                  全景网格
+                </TabsTrigger>
+                <TabsTrigger value="mindmap">
+                  <GitFork />
+                  思维导图
+                </TabsTrigger>
+                <TabsTrigger value="comparison">
+                  <Scale />
+                  对比矩阵
+                </TabsTrigger>
+                <TabsTrigger value="sources">
+                  <Database />
+                  已验证信源
+                </TabsTrigger>
+                <TabsTrigger value="reasoning">
+                  <Workflow />
+                  AgentTeam 协作
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
 
             {/* Right Meta Info & Quick Action */}
-            <div className="hidden md:flex items-center gap-2.5 text-xs text-zinc-500 dark:text-zinc-400">
-              {activeResult?.detectedLanguage && (
-                <div 
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-200/60 dark:bg-zinc-800 border border-zinc-300/60 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 font-medium"
-                >
-                  <span>{activeResult.detectedLanguage.flag}</span>
-                  <span>{activeResult.detectedLanguage.name}</span>
-                  {activeResult.detectedLanguage.crossLingualEnabled && (
-                    <span className="text-[10px] text-zinc-500">· 跨语言</span>
-                  )}
-                </div>
-              )}
+            <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground">
               {activeResult && (
-                <span>
-                  共汇聚 {activeResult.filteredResults.length} 条核心信源
+                <span className="whitespace-nowrap">
+                  {activeResult.detectedLanguage
+                    ? `${activeResult.detectedLanguage.name} · `
+                    : ""}
+                  {activeResult.filteredResults.length} 条核心信源
                 </span>
               )}
-              <button
+              <Button
+                size="sm"
                 onClick={() => handleOpenForgeModal()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:opacity-90 transition-opacity text-xs font-semibold shadow-2xs cursor-pointer"
                 title="根据搜索结果创建独有卡片组件"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>创建独有卡片</span>
-              </button>
-              <button
+                <Sparkles />
+                创建独有卡片
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleShare}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 border border-zinc-200/80 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
                 title="分享此搜索研报"
               >
-                {sharedCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Share2 className="w-3.5 h-3.5" />}
-                <span>{sharedCopied ? "已复制链接" : "分享"}</span>
-              </button>
+                {sharedCopied ? <Check /> : <Share2 />}
+                {sharedCopied ? "已复制链接" : "分享"}
+              </Button>
             </div>
           </div>
         </div>
@@ -964,31 +946,42 @@ export default function App() {
           <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 flex-1 flex flex-col transition-all duration-200`}>
             {/* Error Notification */}
             {errorMessage && (
-              <div className="mb-6 p-4 rounded-3xl border border-red-200 dark:border-red-900/60 bg-red-50/80 dark:bg-red-950/40 flex items-center justify-between gap-3 text-red-700 dark:text-red-300 text-xs sm:text-sm">
+              <Alert
+                variant="destructive"
+                className="mb-6 flex items-center justify-between gap-3"
+              >
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMessage}</span>
+                  <AlertCircle />
+                  <AlertDescription>{errorMessage}</AlertDescription>
                 </div>
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => executeSearch(currentQuery, settings.enableDeepSearch)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-red-200 dark:border-red-800 hover:bg-red-50 flex items-center gap-1.5"
                 >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>重试</span>
-                </button>
+                  <RefreshCw />
+                  重试
+                </Button>
+              </Alert>
+            )}
+
+            {/* Agent 专属编排加载动画：检索进行中以轨道编排隐喻呈现协作，结果就绪后自动让位于研报 */}
+            {(isLoading || (agentSteps.length > 0 && !activeResult)) && (
+              <div className="flex-1 flex items-stretch justify-center">
+                <AgentOrchestrationLoader
+                  steps={agentSteps}
+                  query={currentQuery}
+                  team={agentTeam || activeResult?.agentTeam}
+                />
               </div>
             )}
 
-            {/* Real-time Agent Stream (When loading or before synthesis completed) */}
-            {(isLoading || (agentSteps.length > 0 && !activeResult)) && (
-              <div className="mb-6">
-                <AgentProgressStream
-                  steps={agentSteps}
-                  query={currentQuery}
-                  isComplete={!isLoading && Boolean(activeResult)}
-                  executionTimeMs={activeResult?.executionTimeMs}
-                  agentTeam={agentTeam || activeResult?.agentTeam}
-                />
+            {/* Empty State: 直接访问结果页目录但尚无研报数据 */}
+            {!activeResult && !isLoading && agentSteps.length === 0 && (
+              <div className="flex-1 flex items-center justify-center py-24 text-center">
+                <p className="text-sm text-muted-foreground">
+                  当前页面暂无研报数据，请在顶部搜索框输入关键词开始检索。
+                </p>
               </div>
             )}
 
@@ -998,33 +991,6 @@ export default function App() {
                 {/* 1. PRIMARY SEARCH SYNTHESIS VIEW */}
                 {activeTab === "bento" && (
                   <div className="space-y-5">
-                    {/* Agent Adaptive Layout Control Header */}
-                    <AdaptiveLayoutControl
-                      currentStrategy={currentStrategy}
-                      selectedPreset={layoutPreset}
-                      activeOrder={activeWidgetOrder}
-                      enabledWidgets={currentEnabledWidgets}
-                      alignmentMode={alignmentMode}
-                      interactionMode={interactionMode}
-                      customWidgetSpans={customWidgetSpans}
-                      autoFillGaps={autoFillGaps}
-                      autoFillMode={autoFillMode}
-                      onToggleAutoFillGaps={handleToggleAutoFillGaps}
-                      onChangeAutoFillMode={handleChangeAutoFillMode}
-                      onToggleInteractionMode={handleToggleInteractionMode}
-                      onToggleAlignmentMode={handleToggleAlignmentMode}
-                      onChangeWidgetSpan={handleChangeWidgetSpan}
-                      onSelectPreset={handleSelectPreset}
-                      onMoveWidget={handleMoveWidget}
-                      onToggleWidgetActivation={handleToggleWidgetActivation}
-                      onResetToRecommended={handleResetToRecommended}
-                      isWideCanvas={isWideCanvas}
-                      onToggleCanvasWidth={handleToggleCanvasWidth}
-                      isCollapsed={!isLayoutControlOpen}
-                      onToggleCollapse={(collapsed) => setIsLayoutControlOpen(!collapsed)}
-                      hideCollapsedBar={true}
-                    />
-
                     {/* Mode A: ZERO-SCROLL CLICK-ONLY COCKPIT (Ultra-efficient, no window scroll required) */}
                     {interactionMode === "cockpit" ? (
                       <CockpitWorkspace
@@ -1051,7 +1017,7 @@ export default function App() {
                           onOpenMarketplace={() => setIsMarketplaceOpen(true)}
                           onExecuteSearch={(q, deep) => executeSearch(q, deep)}
                           onOpenForgeModal={(sourceIds) => handleOpenForgeModal(sourceIds)}
-                          onNavigateTab={(tab) => setActiveTab(tab)}
+                          onNavigateTab={(tab) => goToPage(tab)}
                           onUpdateCard={handleUpdateCard}
                           onDeleteCard={handleDeleteCard}
                         />
@@ -1087,7 +1053,6 @@ export default function App() {
                     <SourcesListWidget
                       results={activeResult.filteredResults}
                       rawResultCount={activeResult.rawResultCount}
-                      onForgeCardFromSource={(srcId) => handleOpenForgeModal([srcId])}
                       onOpenForgeModal={() => handleOpenForgeModal()}
                     />
                   </div>
@@ -1123,7 +1088,7 @@ export default function App() {
           if (res.customCards && res.customCards.length > 0) {
             setCustomCards(prev => mergeCustomCards(prev, res.customCards!));
           }
-          setActiveTab("bento");
+          navigate("bento", res.query.trim(), { replace: false });
         }}
         onClear={handleClearHistory}
       />
@@ -1175,17 +1140,17 @@ export default function App() {
         onOpenForgeModal={() => handleOpenForgeModal()}
       />
 
-      {/* iOS Minimalist Footer in Gray & White */}
-      <footer className="w-full border-t border-zinc-200/80 dark:border-zinc-800/80 bg-white/50 dark:bg-[#121214]/50 text-xs text-zinc-500 dark:text-zinc-400 mt-auto">
+      {/* 页脚：一行元信息，无装饰 */}
+      <footer className="w-full border-t border-border text-xs text-muted-foreground mt-auto">
         <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-4 flex flex-wrap items-center justify-between gap-3 transition-all duration-200`}>
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-zinc-800 dark:text-zinc-200">Cerlesse</span>
+            <span className="font-medium text-foreground">Cerlesse</span>
             <span>·</span>
             <span>基于 SearXNG 与 OpenRouter 大模型</span>
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="hover:text-zinc-900 dark:hover:text-zinc-200 cursor-pointer" onClick={() => setIsHistoryOpen(true)}>
+            <span className="hover:text-foreground cursor-pointer" onClick={() => setIsHistoryOpen(true)}>
               历史记录
             </span>
           </div>

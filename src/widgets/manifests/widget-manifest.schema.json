@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cerlesse.local/schemas/widget-manifest.json",
+  "title": "小组件插件清单 (Widget Manifest)",
+  "description": "一个 JSON 即一个小组件的插件清单：元信息 + 网格规格 + 磁贴主题。改这份 JSON 就改变了磁贴的形状与尺寸，无需触碰任何 TSX。",
+  "type": "object",
+  "required": ["id", "name", "version", "grid"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "description": "全局唯一 ID。必须与 WidgetModule.id 完全一致，布局引擎据此查表取网格比例。"
+    },
+    "name": {
+      "type": "string",
+      "description": "磁贴标题栏显示的名称"
+    },
+    "version": {
+      "type": "string",
+      "description": "插件版本号，遵循 semver"
+    },
+    "description": {
+      "type": "string",
+      "description": "一句话描述，用于插件市场卡片"
+    },
+    "category": {
+      "enum": ["synthesis", "analysis", "action", "portal", "custom"],
+      "description": "插件归类，决定其在插件市场中的分组"
+    },
+    "icon": {
+      "type": "string",
+      "description": "lucide 图标名（如 Zap / Database）。仅接受 src/widgets/manifests/icons.ts 白名单内的名称，未命中会回落到默认图标。"
+    },
+    "grid": {
+      "type": "object",
+      "description": "网格规格 —— 磁贴形状的唯一事实来源",
+      "required": ["defaultSize", "supportedSizes", "ratio"],
+      "additionalProperties": false,
+      "properties": {
+        "defaultSize": {
+          "enum": ["small", "medium", "large", "wide", "tall", "full"],
+          "description": "默认占列宽度档位（12 栅格基准）：small=2格 / medium=4格 / tall=4格 / large=6格 / wide=8格 / full=12格"
+        },
+        "supportedSizes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "允许用户切换的宽度档位集合",
+          "items": {
+            "enum": ["small", "medium", "large", "wide", "tall", "full"]
+          }
+        },
+        "ratio": {
+          "enum": ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"],
+          "description": "网格宽高比。磁贴高度恒等于 宽度 ÷ ratio，比例一经声明即不随任何条件漂移。"
+        },
+        "minSpan": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 12,
+          "description": "可选。允许求解器收窄的最小列跨度。缺省时沿用通用规则「最多收窄一档」；内容密集的插件可声明此值，表示宁可有空洞也不许压到这个宽度以下。"
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "description": "磁贴主题与动效（可选）",
+      "additionalProperties": false,
+      "properties": {
+        "accentColor": {
+          "type": "string",
+          "description": "磁贴身份点缀色（品牌/图标例外层，非框架色）"
+        },
+        "gradient": {
+          "type": "string",
+          "description": "背景渐变"
+        },
+        "accentBg": {
+          "type": "string",
+          "description": "强调浅色底"
+        },
+        "liveBadge": {
+          "type": ["string", "number"],
+          "description": "动态徽标 / 数字"
+        },
+        "flipAnimation": {
+          "enum": ["3d-flip", "slide", "fade"],
+          "description": "翻面动效"
+        }
+      }
+    }
+  }
+}

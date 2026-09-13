@@ -9,6 +9,7 @@ import { onRequest as handleForge } from "../functions/api/cards/forge.js";
 import { onRequest as handleAgent } from "../functions/api/agent.js";
 import { onRequest as handleAgentRun } from "../functions/api/agent/run.js";
 import { onRequest as handleAgentStream } from "../functions/api/agent/stream.js";
+import { onRequest as handleLayout } from "../functions/api/layout/plan.js";
 import type { PagesFunction } from "../functions/api/types.js";
 
 const routes: Record<string, PagesFunction> = {
@@ -22,7 +23,9 @@ const routes: Record<string, PagesFunction> = {
   "/api/agent/stream": handleAgentStream,
   "/api/agent/run": handleAgentRun,
   "/api/agent/synthesize": handleAgentRun,
-  "/api/agent": handleAgent
+  "/api/agent": handleAgent,
+  "/api/layout/plan": handleLayout,
+  "/api/agent/layout": handleLayout
 };
 
 /**

@@ -1,0 +1,14 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "followup",
+  "name": "延伸追问",
+  "version": "1.0.0",
+  "description": "Agent 智能推演下一步深度探索问题",
+  "category": "synthesis",
+  "icon": "Compass",
+  "grid": {
+    "defaultSize": "medium",
+    "supportedSizes": ["small", "medium", "large"],
+    "ratio": "4:5"
+  }
+}

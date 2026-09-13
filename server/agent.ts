@@ -396,7 +396,10 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     mindMapBranches: synthesis.mindMap?.children?.length || 0,
     followUpCount: synthesis.followUpQuestions?.length || 0,
     hasOfficial,
-    targetLanguage: targetLang.code
+    targetLanguage: targetLang.code,
+    // 内容密度信号：启停裁决据此判断"组件是否真的有东西可渲染"
+    takeawayCount: synthesis.keyTakeaways?.length || 0,
+    summaryLength: synthesis.summary?.length || 0
   });
 
   const getWidgetChineseName = (key: ResultWidgetKey): string => {
@@ -546,6 +549,68 @@ function calculateServerAdaptiveBinPacking(
   };
 }
 
+/**
+ * 组件上桌前的"内容数据闸门"输入信号。
+ */
+export interface WidgetDataSignals {
+  sourceCount: number;
+  takeawayCount: number;
+  summaryLength: number;
+  comparisonRows: number;
+  mindMapBranches: number;
+  followUpCount: number;
+  hasOfficial: boolean;
+  hasCustomCards: boolean;
+}
+
+/**
+ * 组件数据可用性闸门（编排层单一事实源）。
+ *
+ * 能力命中只能证明"这个组件与任务语义相关"，不能证明"它真的有东西可渲染"。
+ * 旧编排把两者混为一谈：规划 Agent 一旦命中 compare_table 就把对比矩阵强制上桌，
+ * 哪怕 comparisonTable 为空；takeaways 更是被写死恒启，即便模型没给要点。
+ * 结果就是用户看到一排空壳/重复磁贴 —— 这不是"选中了"，而是"选多了"。
+ * 这里把"数据是否就绪"独立成硬闸门，规划器与启停裁决共用同一份判定。
+ */
+export function isWidgetDataReady(key: ResultWidgetKey, signals: WidgetDataSignals): boolean {
+  switch (key) {
+    case "quick_answer":
+    case "ai_overview":
+      return signals.summaryLength > 0;
+    case "takeaways":
+      return signals.takeawayCount > 0;
+    case "sources":
+      return signals.sourceCount > 0;
+    case "comparison":
+      return signals.comparisonRows > 0;
+    case "mindmap":
+      return signals.mindMapBranches > 0;
+    case "followup":
+      return signals.followUpCount > 0;
+    case "official_portal":
+      return signals.hasOfficial;
+    case "custom_cards":
+      return signals.hasCustomCards;
+    // 分面研报要把摘要切成多个专题：摘要太短时它与速答完全同质
+    case "topic_digest":
+      return signals.summaryLength >= 800;
+    // 相关度分布：信源太少不构成"分布"，此时与信源库重复
+    case "analytics_trend":
+      return signals.sourceCount >= 4;
+    case "metrics_telemetry":
+    case "verification_checklist":
+    case "actions_toolbox":
+    case "fast_chat":
+      return signals.sourceCount > 0;
+    // 内部编排留痕与当前页链接恒有内容
+    case "agent_workflow":
+    case "mobile_qr":
+      return true;
+    default:
+      return true;
+  }
+}
+
 function inferWidgetActivationStrategy(params: {
   query: string;
   isComparisonQuery: boolean;
@@ -555,6 +620,10 @@ function inferWidgetActivationStrategy(params: {
   isQuickDefinitionQuery?: boolean;
   isCodeTutorialQuery?: boolean;
   isNewsTrendQuery?: boolean;
+  isTroubleshootingQuery?: boolean;
+  isDeepResearchQuery?: boolean;
+  /** 消费型短任务（天气/出行）：排除分析型组件，避免"今天"这类弱信号误触发 */
+  isConsumptionQuery?: boolean;
   hasOfficial: boolean;
   comparisonCount: number;
   mindMapBranches: number;
@@ -562,11 +631,22 @@ function inferWidgetActivationStrategy(params: {
   followUpCount: number;
   targetLanguage?: string;
   hasCustomCards?: boolean;
+  /** 真实内容密度：启停裁决必须以"有没有东西可渲染"为准 */
+  takeawayCount?: number;
+  summaryLength?: number;
 }): {
   enabledWidgets: ResultWidgetKey[];
   disabledWidgets: ResultWidgetKey[];
   widgetStatusMap: Record<ResultWidgetKey, any>;
   customWidgetSpans?: Partial<Record<ResultWidgetKey, number>>;
+  /** 硬闸门清单：即便被语义规划器命中也不得强行上桌的组件 */
+  hardSuppressed: ResultWidgetKey[];
+  /**
+   * 由任务证据（而非能力表）点亮的情境组件：
+   * 例如导图因确有 4 条拓扑分支而启动、对比矩阵因确有 3 行对比数据而启动。
+   * 这些组件不允许因为"能力表里恰好没有对应词条"就被规划结果挤掉。
+   */
+  contextualEnabled: ResultWidgetKey[];
 } {
   const {
     isComparisonQuery,
@@ -576,49 +656,84 @@ function inferWidgetActivationStrategy(params: {
     isQuickDefinitionQuery = false,
     isCodeTutorialQuery = false,
     isNewsTrendQuery = false,
+    isTroubleshootingQuery = false,
+    isDeepResearchQuery = false,
+    isConsumptionQuery = false,
     hasOfficial,
     comparisonCount,
     mindMapBranches,
     filteredResultsCount,
     followUpCount,
     targetLanguage,
-    hasCustomCards = true
+    hasCustomCards = true,
+    takeawayCount = 0,
+    summaryLength = 0
   } = params;
   const isEn = targetLanguage === "en";
 
-  // 1. 官方门户：仅当成功匹配并认证出官方站点时启动
-  const enableOfficial = hasOfficial;
+  // 内容数据闸门：能力命中只说明"语义相关"，不代表"有东西可渲染"。
+  // 两个条件必须同时成立组件才允许上桌，否则桌面会出现空壳磁贴。
+  const dataSignals: WidgetDataSignals = {
+    sourceCount: filteredResultsCount,
+    takeawayCount,
+    summaryLength,
+    comparisonRows: comparisonCount,
+    mindMapBranches,
+    followUpCount,
+    hasOfficial,
+    hasCustomCards
+  };
+  const dataReady = (key: ResultWidgetKey): boolean => isWidgetDataReady(key, dataSignals);
 
-  // 2. 对比矩阵：仅在多实体对比场景时启动
-  const enableComparison = (isComparisonQuery && comparisonCount > 0) || comparisonCount >= 2;
+  // 1. 官方门户：认证出官方站点且有数据时启动
+  const enableOfficial = dataReady("official_portal");
 
-  // 3. 知识架构导图：仅在层级体系丰富且非纯官方导航/简短定义/时事新闻时启动
-  const enableMindMap = (mindMapBranches >= 2 || isArchitectureQuery) && !isOfficialPortalQuery && !isQuickDefinitionQuery && !isNewsTrendQuery;
+  // 2. 对比矩阵：仅在多实体对比且确实产出对比行时启动
+  const enableComparison = comparisonCount > 0 && (isComparisonQuery || comparisonCount >= 2);
 
-  // 4. 核心即时回答：始终启动
-  const enableQuickAnswer = true;
+  // 3. 知识架构导图：仅在确有拓扑层级，且非纯官方导航/简短定义/时事新闻时启动
+  const enableMindMap = (mindMapBranches >= 2 || (isArchitectureQuery && mindMapBranches > 0)) && !isOfficialPortalQuery && !isQuickDefinitionQuery && !isNewsTrendQuery;
 
-  // 5. 核心速览：绝大多数查询均启动
-  const enableTakeaways = true;
+  // 4. 核心即时回答：有摘要正文才上桌
+  const enableQuickAnswer = dataReady("quick_answer");
 
-  // 6. 分面专题研报：非简短定义/纯导航时启动
-  const enableTopicDigest = !isQuickDefinitionQuery && !isOfficialPortalQuery;
+  // 5. 核心速览：有结论要点才上桌（空要点磁贴是纯粹的版面浪费）
+  const enableTakeaways = dataReady("takeaways");
+
+  // 6. 分面专题研报：需要足够长的摘要，短摘要时它与速答/研报完全同质
+  const enableTopicDigest = dataReady("topic_digest") && !isQuickDefinitionQuery && !isOfficialPortalQuery;
 
   // 7. 验证信源库：检索到有效外部结果即启动
-  const enableSources = filteredResultsCount > 0;
+  const enableSources = dataReady("sources");
 
   // 8. 延伸探索：生成了延伸探索建议即启动
-  const enableFollowup = followUpCount > 0;
+  const enableFollowup = dataReady("followup");
 
-  // 9. 移动互联：官方门户或研报时启动
+  // 9. 移动到手机：仅在官方门户/导航场景启动
   const enableMobileQR = isOfficialPortalQuery;
 
-  // 10. 事实核查清单：事实核查/时事/对比/深度研报时启动
-  const enableVerification = !isQuickDefinitionQuery && !isOfficialPortalQuery;
+  // 10. 事实核查：只在真正需要"核验 / 排障 / 选型 / 研究"的场景上桌 ——
+  //     它呈现的是信源热度与引擎覆盖度，泛化场景下与检索度量重复。
+  const enableVerification = dataReady("verification_checklist") &&
+    (isFactCheckQuery || isTroubleshootingQuery || isComparisonQuery || isDeepResearchQuery);
 
-  // 11. 时序分析与度量：时事热点或研报时重点启动，简明概念休眠
-  const enableAnalytics = !isQuickDefinitionQuery && !isCodeTutorialQuery && !isOfficialPortalQuery;
-  const enableMetrics = !isQuickDefinitionQuery;
+  // 11. 信源相关度分布：信源足够多且属于分析型任务才上桌，否则与信源库重复。
+  //     天气/出行属消费型短任务，不因"今天/最新"这类弱信号被拖进分析型组件。
+  const enableAnalytics = dataReady("analytics_trend") &&
+    !isConsumptionQuery &&
+    (isNewsTrendQuery || isFactCheckQuery || isComparisonQuery || isDeepResearchQuery);
+
+  // 12. 检索度量：有信源即度量
+  const enableMetrics = dataReady("metrics_telemetry");
+
+  // 13. Agent 决策留痕：属于内部编排审计，只在求真/研报场景展示，普通检索不暴露链路细节
+  const enableAgentWorkflow = isFactCheckQuery || isDeepResearchQuery;
+
+  // 14. 追问输入框：有可追问的研报内容才需要
+  const enableFastChat = dataReady("fast_chat");
+
+  // 15. 快捷工具箱：有信源才谈得上复制与导出
+  const enableToolbox = dataReady("actions_toolbox");
 
   const widgetStatusMap: Record<ResultWidgetKey, any> = {
     quick_answer: {
@@ -655,14 +770,14 @@ function inferWidgetActivationStrategy(params: {
     },
     actions_toolbox: {
       key: "actions_toolbox",
-      enabled: true,
+      enabled: enableToolbox,
       reason: isEn ? "Quick actions toolbox." : "快捷控制箱，支持一键复制、Markdown 导出与语音朗读。",
       autoDecidedByAgent: true
     },
     analytics_trend: {
       key: "analytics_trend",
       enabled: enableAnalytics,
-      reason: isEn ? "Analytics & trend sparkline." : "分析与趋势小组件，展示时序信源收敛曲线与置信指标。",
+      reason: isEn ? "Per-source relevance distribution." : "信源相关度分布，按检索重排分值展示各条入选信源的对口程度。",
       autoDecidedByAgent: true
     },
     verification_checklist: {
@@ -673,14 +788,14 @@ function inferWidgetActivationStrategy(params: {
     },
     fast_chat: {
       key: "fast_chat",
-      enabled: true,
-      reason: isEn ? "Interactive quick chat inquiry." : "智能追问与对话小组件，支持即时探索与多轮深度发问。",
+      enabled: enableFastChat,
+      reason: isEn ? "Interactive quick chat inquiry." : "智能追问与小组件，支持针对当前研报即时追问与多轮下钻。",
       autoDecidedByAgent: true
     },
     mobile_qr: {
       key: "mobile_qr",
       enabled: enableMobileQR,
-      reason: isEn ? "Mobile QR synchronization." : "移动端同步互联小组件，扫码即在手机端同步研报。",
+      reason: isEn ? "Copy current page link." : "复制本页链接小组件，便于在手机上继续查看当前结果。",
       autoDecidedByAgent: true
     },
     topic_digest: {
@@ -739,8 +854,10 @@ function inferWidgetActivationStrategy(params: {
     },
     agent_workflow: {
       key: "agent_workflow",
-      enabled: !isQuickDefinitionQuery,
-      reason: isEn ? "Agent reasoning audit steps." : "Agent 决策链路追踪与事实审计。",
+      enabled: enableAgentWorkflow,
+      reason: isEn
+        ? "Agent reasoning audit steps."
+        : "Agent 决策链路追踪与事实审计，仅在求真与深度研报场景展示。",
       autoDecidedByAgent: true
     },
     ai_overview: {
@@ -778,11 +895,51 @@ function inferWidgetActivationStrategy(params: {
     widgetStatusMap.sources.enabled = true;
   }
 
+  // ── 硬闸门清单：以下组件即便被语义规划器命中，也不允许强行上桌 ──
+  //   1) 数据未就绪 —— 上桌就是空壳；
+  //   2) 极简速查/官方导航意图 —— 用户要的是秒级答案与正版入口，不是把桌面塞满；
+  //   3) 内部编排留痕（agent_workflow）—— 仅在求真/研报场景展示。
+  //  其余被意图抑制的组件属于"软闸门"：语义规划器若确有依据，可以把它们提升上桌。
+  const hardSuppressed: ResultWidgetKey[] = [];
+  const markHard = (k: ResultWidgetKey) => {
+    if (!hardSuppressed.includes(k)) hardSuppressed.push(k);
+  };
+  (Object.keys(widgetStatusMap) as ResultWidgetKey[]).forEach((k) => {
+    if (!isWidgetDataReady(k, dataSignals)) markHard(k);
+  });
+  if (isQuickDefinitionQuery) {
+    // 极简速查：用户要的是秒级定义，官网门户/移动端互联/重分析组件一律退场
+    (["comparison", "mindmap", "analytics_trend", "verification_checklist", "topic_digest", "official_portal", "mobile_qr"] as ResultWidgetKey[])
+      .forEach(markHard);
+  }
+  if (isOfficialPortalQuery) {
+    // 官方导航：消除页面杂乱，只保留正版入口与核心解答（故不抑制 official_portal / mobile_qr）
+    (["comparison", "mindmap", "analytics_trend", "verification_checklist", "topic_digest"] as ResultWidgetKey[])
+      .forEach(markHard);
+  }
+  if (!enableAgentWorkflow) markHard("agent_workflow");
+
+  // 由任务证据（而非能力表）点亮的情境组件：规划结果不得把它们整块冲掉
+  const contextualEnabled = ([
+    "comparison",
+    "mindmap",
+    "official_portal",
+    "analytics_trend",
+    "verification_checklist",
+    "agent_workflow",
+    "mobile_qr",
+    "followup"
+  ] as ResultWidgetKey[]).filter(
+    (k) => Boolean(widgetStatusMap[k]?.enabled) && !hardSuppressed.includes(k) && isWidgetDataReady(k, dataSignals)
+  );
+
   return {
     enabledWidgets,
     disabledWidgets,
     widgetStatusMap,
-    customWidgetSpans: {} as Partial<Record<ResultWidgetKey, number>>
+    customWidgetSpans: {} as Partial<Record<ResultWidgetKey, number>>,
+    hardSuppressed,
+    contextualEnabled
   };
 }
 
@@ -798,8 +955,11 @@ export function determineAdaptiveLayout(params: {
   hasCustomCards?: boolean;
   actionPlan?: ActionPlan;
   widgetPlan?: WidgetPlan;
+  /** 内容密度信号：缺少时按"数据未就绪"处理，避免上桌空壳组件 */
+  takeawayCount?: number;
+  summaryLength?: number;
 }): AdaptiveLayoutStrategy {
-  const { query, plan, filteredResults, comparisonCount, mindMapBranches, followUpCount = 3, hasOfficial, targetLanguage, hasCustomCards = true, actionPlan, widgetPlan } = params;
+  const { query, plan, filteredResults, comparisonCount, mindMapBranches, followUpCount = 3, hasOfficial, targetLanguage, hasCustomCards = true, actionPlan, widgetPlan, takeawayCount = 0, summaryLength = 0 } = params;
   const isEn = targetLanguage === "en";
 
   const isInstallQuery =
@@ -811,6 +971,15 @@ export function determineAdaptiveLayout(params: {
   const isTravelQuery =
     /(旅游|攻略|游玩|景点|行程|自驾|住宿|美食|必去|门票|几日游|路线|\b(travel|itinerary|trip|tour|guide|vacation|spot|attractions)\b)/i.test(query);
 
+  const isWeatherQuery =
+    /(天气|气温|温度|降雨|下雨|降雪|空气质量|湿度|风力|台风|气象|\b(weather|temperature|forecast|aqi)\b)/i.test(query);
+
+  /**
+   * 消费型短任务（天气、出行）：属于"看一眼就走"的场景，
+   * 不该被 isNewsTrendQuery 里的"今天/最新"这类弱信号拖进分析型组件。
+   */
+  const isConsumptionQuery = isWeatherQuery || isTravelQuery;
+
   const isTroubleshootingQuery =
     /(报错|解决|修复|异常|解决办法|排查|崩溃|权限问题|踩坑|避坑|\b(error|fix|debug|troubleshoot|exception|failed|bug|issue|eacces|cors|denied)\b)/i.test(query);
 
@@ -821,9 +990,17 @@ export function determineAdaptiveLayout(params: {
   const isArchitectureQuery =
     /(架构|原理|底层|机制|体系|全景|知识图谱|思维导图|学习路线|生命周期|内部机制|工作原理|\b(architecture|internals|mechanism|how it works|roadmap|overview|pipeline|lifecycle|deep dive)\b)/i.test(query);
 
+  // 短查询 + 有官方结果 => 视为官网寻址（例如"微信""Chrome"这类裸实体词）。
+  // 必须排除短问句/短任务词：否则"什么是量子退火"(7 字)、"上海今天天气怎么样"(9 字)
+  // 这类查询会因为结果里恰好含官方域名被误判成导航任务，
+  // 桌面随即被「官方认证门户 + 移动到手机」占据，真正的研报组件被挤掉。
+  const isBareEntityQuery =
+    query.trim().length <= 15 &&
+    !/[?？]/.test(query) &&
+    !/(什么是|什么叫|怎么|如何|为什么|怎么样|多少|哪个|哪些|区别|对比|能不能|可以吗|吗$)/.test(query.trim());
   const isOfficialPortalQuery =
     /(官网|官方|主页|官方网站|正版|官方下载|官方文档|客户端下载|\b(official|portal|homepage|website|docs|github)\b)/i.test(query) ||
-    (hasOfficial && query.trim().length <= 15);
+    (hasOfficial && isBareEntityQuery);
 
   const isFactCheckQuery =
     /(真假|谣言|辟谣|核实|是真的吗|属实|假消息|骗局|真实性|是不是真的|被抓|去世了吗|真的假的|\b(fact check|true or false|hoax|rumor|is it true|fake news|debunk|myth)\b)/i.test(query);
@@ -841,6 +1018,18 @@ export function determineAdaptiveLayout(params: {
   const isDeepResearchQuery =
     /(研报|报告|白皮书|现状|发展趋势|市场份额|产业链|前景|未来|调研|商业计划|\b(research|analysis|industry|whitepaper|market|forecast|survey)\b)/i.test(query);
 
+  // 内容数据闸门信号：启停裁决与后续"规划结果对账"共用同一份判定口径
+  const layoutDataSignals: WidgetDataSignals = {
+    sourceCount: filteredResults.length,
+    takeawayCount,
+    summaryLength,
+    comparisonRows: comparisonCount,
+    mindMapBranches,
+    followUpCount,
+    hasOfficial,
+    hasCustomCards
+  };
+
   // 1. Agent 自主推断组件启动与禁用方案
   const activation = inferWidgetActivationStrategy({
     query,
@@ -851,12 +1040,18 @@ export function determineAdaptiveLayout(params: {
     isQuickDefinitionQuery,
     isCodeTutorialQuery,
     isNewsTrendQuery,
+    isTroubleshootingQuery,
+    isDeepResearchQuery,
+    isConsumptionQuery,
     hasOfficial,
     comparisonCount,
     mindMapBranches,
     filteredResultsCount: filteredResults.length,
     followUpCount,
-    targetLanguage
+    targetLanguage,
+    hasCustomCards,
+    takeawayCount,
+    summaryLength
   });
 
   // 2. 意图判断与基础组件优先级定义
@@ -1123,20 +1318,61 @@ export function determineAdaptiveLayout(params: {
 
     if (widgetPlan.widgets && widgetPlan.widgets.length > 0) {
       const plannedKeys: ResultWidgetKey[] = widgetPlan.widgetOrder || widgetPlan.widgets.map((w: any) => typeof w === "string" ? w : w.type);
-      baseOrder = plannedKeys;
-      preferredEmphasized = plannedKeys[0];
-      // 确保 WidgetPlan 中规划的组件全量激活，并将 Agent 决策的尺寸同步到排版中
+      // 关键词意图给出的阅读序，保留为"情境组件"的插入基准
+      const keywordOrder: ResultWidgetKey[] = [...baseOrder];
+
+      // 职责边界：数据 + 硬闸门决定"谁有资格上桌"，能力规划决定"怎么排、排多大"。
+      // 旧实现让规划结果无条件强启，于是命中 security_audit 就能把「事实核查」塞进
+      // "什么是量子退火"这类速查任务，命中 compare_table 就能让空对比矩阵占据版面。
+      const admissible = plannedKeys.filter(
+        (k) => isWidgetDataReady(k, layoutDataSignals) && !activation.hardSuppressed.includes(k)
+      );
+      const suppressed = plannedKeys.filter((k) => !admissible.includes(k));
+
+      // 情境组件并集：由任务证据点亮（例如"确有 4 条拓扑分支"）但能力表没有对应词条的组件，
+      // 不能被规划结果整块冲掉 —— 否则"产业链发展趋势研报"会因为能力表里缺 mindmap_tree
+      // 而丢掉本该出现的知识导图。插入位置沿用该任务意图的阅读序。
+      const extras = keywordOrder.filter(
+        (k) => !admissible.includes(k) && activation.contextualEnabled.includes(k)
+      );
+      const mergedOrder = [...admissible, ...extras];
+
+      if (mergedOrder.length > 0) {
+        baseOrder = mergedOrder;
+        preferredEmphasized = mergedOrder[0];
+      }
+      // 仍未产出阅读序时，保留关键词意图给出的顺序，交由下游兜底逻辑处理
+
       if (!activation.customWidgetSpans) {
         activation.customWidgetSpans = {};
       }
       widgetPlan.widgets.forEach((item: any) => {
         const key: ResultWidgetKey = typeof item === "string" ? item : item.type;
-        if (activation.widgetStatusMap[key]) {
-          activation.widgetStatusMap[key].enabled = true;
-          if (!activation.enabledWidgets.includes(key)) {
-            activation.enabledWidgets.push(key);
+        if (!activation.widgetStatusMap[key]) return;
+
+        if (!admissible.includes(key)) {
+          const dataReady = isWidgetDataReady(key, layoutDataSignals);
+          if (activation.widgetStatusMap[key].enabled) {
+            activation.widgetStatusMap[key].enabled = false;
+            activation.enabledWidgets = activation.enabledWidgets.filter((k) => k !== key);
+            if (!activation.disabledWidgets.includes(key)) activation.disabledWidgets.push(key);
           }
+          activation.widgetStatusMap[key].reason = dataReady
+            ? (isEn
+              ? "Capability matched, but this task is a minimal quick-lookup / navigation intent; slept this round."
+              : "能力已命中，但当前任务为极简速查/官方导航场景，本轮主动休眠。")
+            : (isEn
+              ? "Capability matched but no content was produced this round; auto-slept to keep the desk clean."
+              : "能力已命中但本轮未产出对应内容，自动休眠以免占用版面。");
+          return;
         }
+
+        // 通过硬闸门的规划结果才允许激活
+        activation.widgetStatusMap[key].enabled = true;
+        if (!activation.enabledWidgets.includes(key)) {
+          activation.enabledWidgets.push(key);
+        }
+
         if (typeof item === "object" && item.size) {
           // WidgetPlannedSize 已与 TileSize 统一为同一套磁贴语义，这里映射到
           // 自适应网格 (bento) 使用的 4/6/8/12 列跨度。
@@ -1149,13 +1385,44 @@ export function determineAdaptiveLayout(params: {
           activation.customWidgetSpans![key] = span;
         }
       });
+
+      if (suppressed.length > 0) {
+        console.info(
+          `[WidgetLayout] 编排对账休眠 ${suppressed.length} 个组件（数据未就绪或极简意图抑制）: ${suppressed.join(", ")}`
+        );
+      }
     }
   }
 
-  // 3. 关键：过滤出当前真正启用的组件顺序（保留丰富有价值的组件生态，不强行截断）
+  // 3. 过滤出当前真正启用的组件顺序，并执行"少而准"的上桌预算：
+  //    数据闸门保证每个上桌组件都有内容，这里再按阅读序截断，
+  //    避免桌面被一串弱相关/同质磁贴铺满（信源库与相关度分布、速览与分面专题、度量与事实核查）。
   const activeOrder = baseOrder.filter(k => activation.enabledWidgets.includes(k));
   if (activeOrder.length === 0) {
-    activeOrder.push("quick_answer", "takeaways", "sources", "actions_toolbox", "fast_chat", "followup", "metrics_telemetry");
+    const minimal = (["quick_answer", "takeaways", "sources", "actions_toolbox", "fast_chat", "followup", "metrics_telemetry"] as ResultWidgetKey[])
+      .filter(k => isWidgetDataReady(k, layoutDataSignals));
+    activeOrder.push(...(minimal.length > 0
+      ? minimal
+      : (["quick_answer", "takeaways", "sources", "actions_toolbox", "fast_chat", "followup", "metrics_telemetry"] as ResultWidgetKey[])));
+  }
+
+  const MAX_ACTIVE_WIDGETS = 9;
+  if (activeOrder.length > MAX_ACTIVE_WIDGETS) {
+    const kept = activeOrder.slice(0, MAX_ACTIVE_WIDGETS);
+    // 信源是可信度底座：若被截断，用 sources 换掉末位弱相关组件，而不是整块丢弃
+    if (!kept.includes("sources") && activeOrder.includes("sources")) {
+      kept[kept.length - 1] = "sources";
+    }
+    activeOrder.forEach((k) => {
+      if (kept.includes(k)) return;
+      if (activation.widgetStatusMap[k]) {
+        activation.widgetStatusMap[k].enabled = false;
+        activation.widgetStatusMap[k].reason = isEn
+          ? "Ranked below the reading-flow budget; auto-slept this round."
+          : "相关度排序靠后，本轮让位于更契合的组件。";
+      }
+    });
+    activeOrder.splice(0, activeOrder.length, ...kept);
   }
 
   // 4. 确保核心视觉组件在启用的组件中

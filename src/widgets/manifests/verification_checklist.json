@@ -1,0 +1,14 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "verification_checklist",
+  "name": "事实核查清单",
+  "version": "1.0.0",
+  "description": "多源交叉求证，核验关键事实与防伪审计",
+  "category": "analysis",
+  "icon": "CheckCircle2",
+  "grid": {
+    "defaultSize": "large",
+    "supportedSizes": ["medium", "large", "wide"],
+    "ratio": "1:1"
+  }
+}

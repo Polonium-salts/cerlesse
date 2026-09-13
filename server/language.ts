@@ -14,6 +14,38 @@ export const SUPPORTED_LANGUAGES: Record<string, { name: string; localName: stri
 };
 
 /**
+ * 内部语言码 → SearXNG 认的 locale。
+ *
+ * 为什么单独抽出来：`SUPPORTED_LANGUAGES` 里早就声明了 `searxngCode`（zh → zh-CN），
+ * 但**从未被使用过** —— 检索侧一直把 `detectedLanguage.code` 这个两字母码直接塞进
+ * SearXNG 的 `language` 参数。SearXNG 的 locale 表以 `xx-YY` 为主，两字母码是否命中
+ * 取决于实例版本与引擎映射，约束力时有时无，语言过滤因此不稳定（该被过滤的中文农场
+ * 有时漏进来，该拿到的英文文档有时被挡掉）。这里统一按声明的映射输出。
+ */
+export function toSearxngLanguage(code: string | undefined): string | undefined {
+  if (!code) return undefined;
+  const trimmed = code.trim();
+  if (!trimmed || trimmed === "auto") return undefined;
+  return SUPPORTED_LANGUAGES[trimmed]?.searxngCode || trimmed;
+}
+
+/**
+ * Accept-Language 请求头。
+ *
+ * 为什么要按「主语言子标签」匹配：调用方传进来的可能是 `zh`，也可能是 `zh-CN`
+ * （`?lang=` 参数直传、跨语言路由显式传 `en`）。旧实现只做 `=== "en"` 全等比较，
+ * 于是 `en-US` 会掉进默认分支拿到 `zh-CN` —— 请求头说中文、检索式是英文，
+ * 返回的自然是中文结果，跨语言路由等于白跑。
+ */
+export function acceptLanguageFor(code: string | undefined): string | undefined {
+  const raw = (code || "").trim();
+  if (!raw || raw === "auto") return undefined;
+  const primary = raw.toLowerCase().split(/[-_]/)[0];
+  const preferred = SUPPORTED_LANGUAGES[primary]?.searxngCode || raw;
+  return `${preferred},${primary};q=0.9,en;q=0.8`;
+}
+
+/**
  * Detect language of query using unicode script analysis and lexical features
  */
 export function detectQueryLanguage(text: string): DetectedLanguage {

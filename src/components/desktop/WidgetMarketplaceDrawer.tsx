@@ -16,6 +16,9 @@ import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetModule, WidgetCategoryType } from "../../widgets/sdk/types.js";
 import { TileSize } from "../../lib/tileLayoutEngine.js";
 import { CustomCardData } from "../../types.js";
+import { Button } from "../ui/button.js";
+import { Badge } from "../ui/badge.js";
+import { Input } from "../ui/input.js";
 
 interface WidgetMarketplaceDrawerProps {
   isOpen: boolean;
@@ -116,59 +119,59 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 26, stiffness: 280 }}
-            className="relative w-full max-w-md h-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border-l border-zinc-200/80 dark:border-zinc-800/80 shadow-2xl flex flex-col z-10"
+            className="relative w-full max-w-md h-full bg-card/95 backdrop-blur-2xl border-l border-border shadow-2xl flex flex-col z-10"
           >
             {/* 抽屉头部 */}
-            <div className="p-5 border-b border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between">
+            <div className="p-5 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
+                <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold">
                   <Store className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                  <h3 className="font-bold text-sm text-foreground">
                     小组件商店 / 磁贴库
                   </h3>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-muted-foreground">
                     自由探索官方小组件与 AI 专属磁贴
                   </p>
                 </div>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={onClose}
-                className="p-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                className="text-muted-foreground"
               >
-                <X className="w-5 h-5" />
-              </button>
+                <X />
+              </Button>
             </div>
 
             {/* 搜索与分类导航 */}
-            <div className="p-4 space-y-3 border-b border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div className="p-4 space-y-3 border-b border-border bg-muted/40">
               {/* 搜索栏 */}
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-400" />
-                <input
+                <Search className="size-4 absolute left-3 top-2.5 text-muted-foreground" />
+                <Input
                   type="text"
                   placeholder="搜索小组件名称或描述..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-800 dark:text-zinc-200 placeholder-zinc-400"
+                  className="pl-9 text-xs bg-background"
                 />
               </div>
 
               {/* 分类胶囊标签 */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
                 {CATEGORIES.map((cat) => (
-                  <button
+                  <Button
                     key={cat.id}
+                    variant={selectedCategory === cat.id ? "default" : "outline"}
+                    size="xs"
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium shrink-0 transition-all cursor-pointer ${
-                      selectedCategory === cat.id
-                        ? "bg-blue-600 text-white shadow-2xs font-semibold"
-                        : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 border border-zinc-200/60 dark:border-zinc-700/60"
-                    }`}
+                    className="shrink-0"
                   >
                     {cat.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -176,13 +179,13 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
             {/* 小组件列表 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {filteredModules.length === 0 ? (
-                <div className="py-12 text-center text-xs text-zinc-400">
+                <div className="py-12 text-center text-xs text-muted-foreground">
                   没有找到符合条件的小组件
                 </div>
               ) : (
                 filteredModules.map((module) => {
                   const modId = String(module.id);
-                  const isOnDesktop = activeIdSet.has(modId) 
+                  const isOnDesktop = activeIdSet.has(modId)
                     || (modId.startsWith("custom_card__") && activeIdSet.has("custom_cards"));
                   const chosenSize = previewSizes[modId] || (module.defaultSize as TileSize) || "medium";
 
@@ -191,26 +194,26 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
                   return (
                     <div
                       key={modId}
-                      className="p-3.5 rounded-2xl bg-white dark:bg-zinc-850/80 border border-zinc-200/80 dark:border-zinc-750/80 shadow-2xs hover:shadow-sm transition-all flex flex-col gap-2.5"
+                      className="p-3.5 rounded-xl bg-card border border-border shadow-sm transition-all flex flex-col gap-2.5"
                     >
                       <div className="flex items-start justify-between gap-2.5">
                         <div className="flex items-start gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200/40 dark:border-blue-900/40">
+                          <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0 border border-border">
                             <IconComp className="w-4 h-4" />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">
+                              <span className="font-semibold text-xs text-foreground truncate">
                                 {module.name}
                               </span>
                               {module.category === "custom" && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                                <Badge variant="outline" className="text-xs font-bold">
                                   AI专属
-                                </span>
+                                </Badge>
                               )}
-                              <span className="text-[10px] text-zinc-400">v{module.version}</span>
+                              <span className="text-xs text-muted-foreground">v{module.version}</span>
                             </div>
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2 mt-0.5 leading-relaxed">
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-relaxed">
                               {module.description || "全景桌面交互小组件"}
                             </p>
                           </div>
@@ -219,43 +222,42 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
                         {/* 上架/下架操作按钮 */}
                         <div className="shrink-0">
                           {isOnDesktop ? (
-                            <button
+                            <Button
+                              variant="outline"
+                              size="xs"
                               onClick={() => onRemoveTile(modId)}
-                              className="px-2.5 py-1 rounded-xl text-xs font-medium bg-zinc-100 hover:bg-rose-50 text-zinc-600 hover:text-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-950/40 dark:text-zinc-300 dark:hover:text-rose-400 border border-zinc-200/60 dark:border-zinc-700/60 transition-colors flex items-center gap-1 cursor-pointer"
                               title="从桌面卸载此磁贴"
                             >
-                              <Check className="w-3 h-3 text-emerald-500" />
+                              <Check />
                               <span>已添加</span>
-                            </button>
+                            </Button>
                           ) : (
-                            <button
+                            <Button
+                              size="xs"
                               onClick={() => onAddTile(modId, chosenSize)}
-                              className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
                               title="添加到当前桌面"
                             >
-                              <Plus className="w-3 h-3" />
+                              <Plus />
                               <span>添加</span>
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
 
                       {/* 磁贴尺寸选择器 */}
-                      <div className="flex items-center justify-between text-[10px] pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80 text-zinc-400">
+                      <div className="flex items-center justify-between text-xs pt-1.5 border-t border-border text-muted-foreground">
                         <span>支持尺寸规格:</span>
                         <div className="flex items-center gap-1">
                           {(module.supportedSizes || ["small", "medium", "large", "full"]).map((s) => (
-                            <button
+                            <Button
                               key={s}
+                              variant={chosenSize === s ? "default" : "outline"}
+                              size="xs"
                               onClick={() => setPreviewSizes(prev => ({ ...prev, [modId]: s as TileSize }))}
-                              className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
-                                chosenSize === s
-                                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 font-bold"
-                                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                              }`}
+                              className="font-mono px-1.5"
                             >
                               {s === "small" ? "2x2" : s === "medium" ? "4x2" : s === "wide" ? "6x2" : s === "large" ? "4x4" : "全宽"}
-                            </button>
+                            </Button>
                           ))}
                         </div>
                       </div>
@@ -266,17 +268,17 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
             </div>
 
             {/* 抽屉底部快捷触发区 */}
-            <div className="p-4 border-t border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-900/70 flex items-center justify-between gap-3">
-              <button
+            <div className="p-4 border-t border-border bg-muted/40 flex items-center justify-between gap-3">
+              <Button
                 onClick={() => {
                   onOpenForgeModal?.();
                   onClose();
                 }}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                className="w-full"
               >
-                <Wand2 className="w-3.5 h-3.5" />
+                <Wand2 />
                 <span>AI 动态锻造全新独有小组件</span>
-              </button>
+              </Button>
             </div>
           </motion.div>
         </div>
