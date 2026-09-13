@@ -139,6 +139,7 @@ export const CANONICAL_CAPABILITIES = [
   // ── 资源素材 ──
   "resource_search",
   "resource_preview",
+  "image_gallery",
   "favorite",
   "tags_filter",
   "author_credit",
@@ -254,6 +255,10 @@ export const CAPABILITY_ALIASES: Record<string, CanonicalCapability> = {
 
   // 3. 原型名误用为能力名的泄漏值
   tool_discovery: "tool_cards",
+  photo_gallery: "image_gallery",
+  image_preview: "image_gallery",
+  image_wall: "image_gallery",
+  thumbnail_gallery: "image_gallery",
   travel_itinerary: "itinerary_timeline",
   parameter_matrix: "parameter_matrix",
   action_checklist: "checklist",
@@ -438,6 +443,22 @@ export const OFFICIAL_WIDGET_PROFILES: Record<string, WidgetPracticalityMeta> = 
     dataRequirements: ["权威有效 URL", "站点名称与功能摘要"],
     selectionHeuristics: "当搜索词涉及品牌、软件名、在线平台或寻找入口直达时实用性最高，帮用户零阻碍直达目标主页。",
     triggerKeywords: ["官网", "官方网站", "入口", "登录", "下载", "主页", "文档", "平台"]
+  },
+  image_gallery: {
+    id: "image_gallery",
+    name: "相关图片",
+    category: "analysis",
+    tags: ["相关图片", "图片墙", "视觉素材", "缩略图", "图集", "媒体预览", "配图参考"],
+    functionality: "提取全网检索结果中的图片缩略图与研报配图，以自适应网格墙呈现，支持点击放大预览、图文对照与一键跳转图片原始出处",
+    bestFor: [
+      "查询对象具有明确可视形态：人物、地点、动植物、产品外观、界面截图、艺术作品",
+      "需要图片素材、配图灵感或实物外观确认的场景",
+      "百科介绍类检索希望直观看到实物、场景与效果图"
+    ],
+    dataRequirements: ["检索结果含可公开访问的图片缩略图或研报内嵌配图", "图片与查询主题相关且可正常加载"],
+    selectionHeuristics: "当查询对象具备明确视觉形态（实物/人物/地点/界面/图表）且信源含图片时实用性最高；纯抽象概念推演、代码报错排查、无任何图片信源的任务不推荐。",
+    triggerKeywords: ["图片", "照片", "图集", "壁纸", "素材", "外观", "长什么样", "图片搜索"],
+    antiPatterns: ["纯抽象概念解释、术语定义与代码报错排查", "检索结果中不含任何可用图片信源的长文研报"]
   }
 };
 

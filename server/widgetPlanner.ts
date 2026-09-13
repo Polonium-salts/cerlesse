@@ -258,6 +258,18 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     flexible: true,
     isActionOriented: false
   },
+  image_gallery: {
+    type: "image_gallery",
+    capabilities: ["image_gallery", "resource_preview", "resource_search"],
+    tags: OFFICIAL_WIDGET_PROFILES.image_gallery?.tags || ["相关图片", "图片墙", "视觉素材", "缩略图", "图集"],
+    description: OFFICIAL_WIDGET_PROFILES.image_gallery?.functionality || "聚合检索结果中的相关图片，以自适应网格墙呈现并支持放大预览与图源溯源",
+    selectionHeuristics: OFFICIAL_WIDGET_PROFILES.image_gallery?.selectionHeuristics || "查询对象具备明确视觉形态且信源含图片时实用性最高",
+    basePriority: 74,
+    // 与 src/widgets/manifests/image_gallery.json 的 grid.width 保持一致（75% 主宽，9 格）
+    width: 75,
+    flexible: true,
+    isActionOriented: false
+  },
   sources: {
     type: "sources",
     capabilities: ["evidence_chain", "citation_retrieval", "literature_archive", "literature_sources"],

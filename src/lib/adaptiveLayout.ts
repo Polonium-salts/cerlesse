@@ -161,6 +161,28 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["deep_research", "quick_definition", "travel", "comparison", "balanced"],
     isActionOriented: false
   },
+  image_gallery: {
+    capabilities: ["image_gallery", "resource_preview"],
+    // 刻意不按意图设限：只要信源确实带图（或用户就是在找图片），图库对任何意图都是有用的
+    // —— 安装教程里的界面截图、故障排查里的报错截图同样值得看图。
+    // 真正的过滤器是 WIDGET_REGISTRY.image_gallery.requiresData，而不是意图白名单。
+    intentFit: [
+      "comparison",
+      "architecture",
+      "official_portal",
+      "code_tutorial",
+      "fact_check",
+      "news_trend",
+      "quick_definition",
+      "deep_research",
+      "install",
+      "tool_discovery",
+      "travel",
+      "troubleshooting",
+      "balanced"
+    ],
+    isActionOriented: false
+  },
   sources: {
     capabilities: ["evidence_chain", "citation_retrieval", "literature_archive"],
     intentFit: ["fact_check", "deep_research", "balanced", "official_portal", "install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "news_trend", "quick_definition", "architecture"],
@@ -242,6 +264,18 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     basePriority: 9,
     category: "primary",
     requiresData: (s) => s.takeawayCount > 0
+  },
+  image_gallery: {
+    id: "image_gallery",
+    label: "相关图片",
+    iconName: "Images",
+    width: 75,
+    minWidth: 25,
+    basePriority: 7,
+    category: "secondary",
+    // 硬门槛：要么信源确实带图，要么用户就是在找图片（此时空态会给出图片搜索入口）。
+    // 两者都不满足就直接出局，绝不在无关任务上留下空壳图片墙。
+    requiresData: (s) => (s.imageCount ?? 0) > 0 || s.imageIntent === true
   },
   comparison: {
     id: "comparison",
@@ -397,7 +431,7 @@ const ANCHOR_WIDGET_KEYS: ResultWidgetKey[] = ["related_links", "ai_answer"];
  * 未登记为模块的 key（comparison / mindmap / sources …）即使被能力规划器提及，
  * 也不会进入启用集 —— 启用无法渲染的组件只会浪费栅格。
  */
-export const AUTO_SELECTABLE_WIDGET_KEYS: ResultWidgetKey[] = ["takeaways"];
+export const AUTO_SELECTABLE_WIDGET_KEYS: ResultWidgetKey[] = ["takeaways", "image_gallery"];
 
 /**
  * 语义意图 → 展示标签（排版决策单的对外说明文案）。
@@ -665,6 +699,10 @@ export interface ContentSignals {
   codeBlockCount?: number;
   tableRowCount?: number;
   customCardCount?: number;
+  /** 信源中带缩略图的结果数 —— 相关图片组件的数据就绪信号 */
+  imageCount?: number;
+  /** 查询本身是否在找图片：无缩略图时仍允许以「图片搜索入口」形态上桌 */
+  imageIntent?: boolean;
 }
 
 // ==========================================
@@ -757,6 +795,18 @@ export function createLayoutPlan(params: {
 }
 
 /**
+ * 「用户就是在找图片」的判据（中英双语）。
+ *
+ * 这不是意图分类，只是相关图片组件的上桌许可之一：命中它时即便检索信源没带缩略图，
+ * 也会放行该组件，由它的空态给出「去图片搜索」的行动入口。
+ *
+ * 导出是为了让服务端「要不要额外跑一次图片检索」复用同一判据（见 server/agent.ts）——
+ * 取图条件与上桌条件共用一份正则，才能保证「取了图就一定会渲染」，
+ * 不会出现白跑一次网络往返却因判据不一致而组件不上的情况。
+ */
+export const IMAGE_INTENT_PATTERN = /(图片|照片|图集|图库|壁纸|图片素材|长什么样|外观图|photo|image|picture|gallery|wallpaper)/i;
+
+/**
  * Maps LayoutPlan into complete AdaptiveLayoutStrategy
  */
 export function determineClientWidgetActivation(params: {
@@ -774,6 +824,8 @@ export function determineClientWidgetActivation(params: {
   summaryLength?: number;
   hasOfficial?: boolean;
   hasCustomCards?: boolean;
+  imageCount?: number;
+  imageIntent?: boolean;
 }): AdaptiveLayoutStrategy {
   const { result, query = "", targetLanguage } = params;
   const q = query || result?.query || "";
@@ -791,7 +843,10 @@ export function determineClientWidgetActivation(params: {
     mindMapBranches: params.mindMapBranches ?? (result?.mindMap?.children?.length || 0),
     followUpCount: params.followUpCount ?? (result?.followUpQuestions || []).length,
     hasOfficial: params.hasOfficial ?? sources.some((r) => r.isOfficial),
-    customCardCount: params.hasCustomCards ? 1 : (result?.customCards || []).length
+    customCardCount: params.hasCustomCards ? 1 : (result?.customCards || []).length,
+    // 图片数据就绪信号：信源里真的带缩略图，或用户本就在找图片
+    imageCount: params.imageCount ?? sources.filter((r) => Boolean(r.thumbnail)).length,
+    imageIntent: params.imageIntent ?? IMAGE_INTENT_PATTERN.test(q)
   };
 
   const plannedKeys = (params.widgetPlan?.widgets || [])

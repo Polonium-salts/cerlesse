@@ -1,13 +1,14 @@
-import { searchSearxng } from "./searxng.js";
+import { searchSearxng, searchSearxngImages } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, AVAILABLE_FREE_MODELS, normalizeModelId } from "./openrouter.js";
 import { forgeMultipleDynamicWidgets, detectMultipleArchetypes } from "./cardForge.js";
 import { planWidgetStrategy } from "./widgetPlanner.js";
 import { planWidgetLayout, WIDGET_LAYOUT_AGENT_NAME } from "./layoutAgent.js";
 import { searchAndRankOnce } from "./retrievalAgent.js";
-import { determineClientWidgetActivation } from "../src/lib/adaptiveLayout.js";
+import { determineClientWidgetActivation, IMAGE_INTENT_PATTERN } from "../src/lib/adaptiveLayout.js";
 import {
   AgentPlan,
   AgentStep,
+  SearchImage,
   SearchResult,
   SearchSynthesisResult,
   DetectedLanguage,
@@ -49,6 +50,23 @@ export interface AgentRunOptions {
  *  5. 场景定制独有业务卡片构建 (Custom Cards)
  *  6. 12 栅格自适应智能排版 (Widget Layout)
  */
+
+/**
+ * 本次任务是否值得额外再跑一次图片检索。
+ *
+ * 判据刻意与「相关图片」组件的上桌条件一一对齐（见 adaptiveLayout 的 imageIntent / imageCount）：
+ *   1. 查询本身就在找图片（图片 / 照片 / 图集 / 长什么样 …）；
+ *   2. 已重排出的信源里已带若干缩略图 —— 说明这确实是个有画面可看的话题。
+ *
+ * 两者都不满足时直接跳过。这不是省一次请求那么简单：图片检索对几乎任何查询都能返回一堆
+ * 图，若无条件开跑，该组件就会在纯文本任务上被「有图」这一事实永久点亮，
+ * 「绝不出现空壳与无关磁贴」的硬门槛也就形同虚设。
+ */
+function shouldFetchRelatedImages(query: string, results: SearchResult[]): boolean {
+  if (IMAGE_INTENT_PATTERN.test(query)) return true;
+  return results.filter((r) => Boolean(r.thumbnail)).length >= 3;
+}
+
 export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSynthesisResult> {
   const startTime = Date.now();
   const query = options.query.trim();
@@ -186,6 +204,23 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     "completed",
     filteredResults.slice(0, 5).map(r => `[${r.isOfficial ? "官方" : "权威"}] ${r.title}`)
   );
+
+  // --- Step 2.5: SearXNG 图片检索（与后续 Agent 链并行，不占关键路径）---
+  //
+  // 刻意在这里就发起、而不是等排版相位前才发起：图片的产出只被「相关图片」组件消费，
+  // 与组件规划、研报合成都无任何依赖，因此让它在后台跑完，与两次大模型调用完全重叠 ——
+  // 用户最终看到的延迟增量接近于零。
+  //
+  // 取图判据复用组件的上桌判据（IMAGE_INTENT_PATTERN），保证「取了图就一定会渲染」，
+  // 不会白付一次网络往返却因判据不一致而组件不上桌。
+  const relatedImagesPromise: Promise<SearchImage[]> = shouldFetchRelatedImages(query, filteredResults)
+    ? searchSearxngImages(query, {
+        customUrl: options.customSearxngUrl,
+        language: targetLang.code,
+        env: options.env,
+        limit: 12
+      }).catch(() => [] as SearchImage[])
+    : Promise.resolve([] as SearchImage[]);
 
   // --- Step 3: 基于 Skills 与小组件标签库进行小组件选型 ---
   updateStep(
@@ -325,6 +360,10 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     "running"
   );
 
+  // 在此收拢并行开跑的图片检索：排版相位要用它判断「图片数据是否就绪」，
+  // 而在此之前它对任何人都不产生价值 —— 组件规划与研报合成从不等它。
+  const relatedImages = await relatedImagesPromise;
+
   const signals = {
     summaryLength: (synthesisRes.summary || "").length,
     takeawayCount: (synthesisRes.keyTakeaways || []).length,
@@ -333,7 +372,10 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     mindMapBranches: synthesisRes.mindMap?.children?.length || 0,
     followUpCount: (synthesisRes.followUpQuestions || []).length,
     hasOfficial: filteredResults.some(r => r.isOfficial),
-    customCardCount: customCards.length
+    customCardCount: customCards.length,
+    // 图片数据就绪信号：图片检索产出 + 信源自带缩略图。
+    // 必须显式下发 —— 排版 Agent 只看得到 filteredResults，拿不到检索回来的图。
+    imageCount: relatedImages.length + filteredResults.filter((r) => Boolean(r.thumbnail)).length
   };
 
   let layoutStrategy: AdaptiveLayoutStrategy;
@@ -402,6 +444,7 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     plan,
     steps,
     filteredResults,
+    relatedImages,
     rawResultCount: totalCandidates || filteredResults.length,
     summary: synthesisRes.summary,
     keyTakeaways: synthesisRes.keyTakeaways || [],

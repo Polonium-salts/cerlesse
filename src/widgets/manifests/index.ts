@@ -4,6 +4,7 @@ import type { WidgetCategoryType, TileThemeConfig, WidgetAgentPromptHint } from 
 import relatedLinks from "./related_links.json";
 import aiAnswer from "./ai_answer.json";
 import takeaways from "./takeaways.json";
+import imageGallery from "./image_gallery.json";
 
 /**
  * 小组件插件清单聚合层 (Widget Manifest Catalog)
@@ -48,7 +49,8 @@ function asManifest(raw: unknown): WidgetManifest {
 export const WIDGET_MANIFESTS: WidgetManifest[] = [
   aiAnswer,
   relatedLinks,
-  takeaways
+  takeaways,
+  imageGallery
 ].map(asManifest);
 
 /** id → 清单 索引 */

@@ -86,6 +86,8 @@ export interface WidgetLayoutAgentOptions {
     summaryLength?: number;
     /** 是否已锻造出独有卡片：custom_cards 的数据就绪条件 */
     hasCustomCards?: boolean;
+    /** 可展示的图片数（图片检索产出 + 信源缩略图）：image_gallery 的数据就绪条件 */
+    imageCount?: number;
   };
 }
 
@@ -283,7 +285,9 @@ export async function planWidgetLayout(
     // 内容密度信号一路透传：启停裁决必须以真实产出为准，否则会出现空壳磁贴
     takeawayCount,
     summaryLength,
-    hasCustomCards: options.signals?.hasCustomCards
+    hasCustomCards: options.signals?.hasCustomCards,
+    // 图片就绪信号同理透传：排版 Agent 看不到 relatedImages，只能由调用方告知
+    imageCount: options.signals?.imageCount
   });
 
   // 2.1 阅读主序：以基线启用集为基准，确保组件一个都不丢

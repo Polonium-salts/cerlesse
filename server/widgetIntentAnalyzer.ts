@@ -37,9 +37,10 @@ export const INTENT_CAPABILITIES_MAP: Record<string, CanonicalCapability[]> = {
     "clothing_advice",
     "location_map"
   ],
-  // 素材：预览 + 下载 + 收藏 + 标签筛选 + 作者署名 + 授权 + 分辨率规格
+  // 素材：预览 + 图片墙 + 下载 + 收藏 + 标签筛选 + 作者署名 + 授权 + 分辨率规格
   resource_search: [
     "resource_preview",
+    "image_gallery",
     "download",
     "favorite",
     "tags_filter",
@@ -204,8 +205,10 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
   }
 
   // 4. 资源素材搜索 (Resource Search)
-  if (/(素材|视频素材|音频|壁纸|icon|图标|免版税|模型|3d模型|字体|模版|模板)/i.test(cleanQ)) {
-    const entity = cleanQ.replace(/(素材|搜索|高清|无水印|免费|商用|下载)/gi, "").trim();
+  //    图片类查询（图片/照片/图集/长什么样）同样归入资源素材域：
+  //    它们需要的核心能力是「把散落在各信源里的图聚合起来看」，即 image_gallery。
+  if (/(素材|视频素材|音频|壁纸|图片|照片|图集|图库|icon|图标|免版税|模型|3d模型|字体|模版|模板|长什么样|外观图)/i.test(cleanQ)) {
+    const entity = cleanQ.replace(/(素材|搜索|高清|无水印|免费|商用|下载|图片|照片|图集|图库|长什么样|外观图)/gi, "").trim();
     return {
       intent: "resource_search",
       intents: ["resource_search", "preview", "download", "favorite"],
@@ -338,7 +341,7 @@ ${formatAgentWidgetGuidancePrompt()}
 
 【可选 intent 类型】：
 - "software_download": 软件/工具/游戏下载、安装包、客户端 (例如: "下载 Photoshop", "VSCode安装", "Blender最新版")
-- "resource_search": 资源、音视频素材、字体、壁纸、模板搜索 (例如: "B站剪辑素材", "科技PPT模板")
+- "resource_search": 资源、图片照片、音视频素材、字体、壁纸、模板搜索 (例如: "B站剪辑素材", "科技PPT模板", "故宫雪景图片")
 - "study_tutorial": 学习、编程入门、教程、速成指南 (例如: "学习 Python", "Docker入门教程")
 - "github_project": GitHub 开源项目、代码仓库 (例如: "GitHub热门项目", "vue源码仓库")
 - "weather": 城市天气、气象、温湿度、降水 (例如: "上海天气", "北京周末会下雨吗")

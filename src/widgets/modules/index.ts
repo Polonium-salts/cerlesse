@@ -2,6 +2,7 @@ import { WidgetModule } from "../sdk/types.js";
 import { aiAnswerModule } from "./aiAnswer.js";
 import { relatedLinksModule } from "./relatedLinks.js";
 import { takeawaysModule } from "./takeaways.js";
+import { imageGalleryModule } from "./imageGallery.js";
 
 /**
  * 小组件模块目录 (Widget Module Catalog)
@@ -9,12 +10,14 @@ import { takeawaysModule } from "./takeaways.js";
 export {
   aiAnswerModule,
   relatedLinksModule,
-  takeawaysModule
+  takeawaysModule,
+  imageGalleryModule
 };
 
 /** 全部小组件模块清单 */
 export const OFFICIAL_WIDGET_MODULES: WidgetModule[] = [
   aiAnswerModule,
   relatedLinksModule,
-  takeawaysModule
+  takeawaysModule,
+  imageGalleryModule
 ];

@@ -18,6 +18,31 @@ export interface SearchResult {
   displayDomain?: string;
 }
 
+/**
+ * SearXNG 图片检索（categories=images）返回的单张图片。
+ *
+ * 与 SearchResult 是两个不同维度，不能混为一谈：SearchResult 描述「一个网页」，
+ * SearchImage 描述「一张图 + 它挂在哪个网页上」。相关图片组件消费的是后者 ——
+ * 图片检索的返回体里 url 指向图片所在页面，真正的图在 img_src / thumbnail_src，
+ * 硬塞进 SearchResult 会把「图片地址」和「出处地址」压成同一个字段。
+ */
+export interface SearchImage {
+  id: string;
+  /** 可直接加载的原图地址（放大预览用） */
+  imageUrl: string;
+  /** 更省流量的缩略图地址；缺省时回落到 imageUrl */
+  thumbnailUrl?: string;
+  title: string;
+  /** 图片所在原始网页，用于溯源跳转 */
+  pageUrl?: string;
+  /** 图片来源站点 / 图库名 */
+  source?: string;
+  /** 出处的域名（角标展示用） */
+  domain?: string;
+  /** 原始分辨率，如 "1920x1080" */
+  resolution?: string;
+}
+
 export interface ComparisonDimension {
   dimension: string; // e.g. "技术路线与核心原理", "应用场景", "优劣势分析", "发展现状与生态"
   summary: string;
@@ -179,13 +204,15 @@ export type ResultWidgetKey =
 
 /**
  * 可参与自动选型的小组件全集（前端注册中心已登记的模块 id）。
- * related_links / ai_answer 是恒启用的阅读流锚点；takeaways 由 Agent
- * 依据搜索意图与内容密度自主启停。此清单同时是排版 Agent 的组件白名单来源。
+ * related_links / ai_answer 是恒启用的阅读流锚点；takeaways 与 image_gallery
+ * 由 Agent 依据搜索意图与内容密度自主启停（image_gallery 还要求信源含缩略图）。
+ * 此清单同时是排版 Agent 的组件白名单来源。
  */
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "related_links",
   "ai_answer",
-  "takeaways"
+  "takeaways",
+  "image_gallery"
 ];
 
 export interface WidgetStatusDetail {
@@ -599,6 +626,12 @@ export interface SearchSynthesisResult {
   plan: AgentPlan;
   steps: AgentStep[];
   filteredResults: SearchResult[];
+  /**
+   * SearXNG 图片检索（categories=images）的产出，供「相关图片」组件消费。
+   * 仅在本次任务值得配图时才会被填充（见 server/agent.ts 的取图判据），
+   * 因此它为空既可能是「没搜到图」，也可能是「本就不需要图」。
+   */
+  relatedImages?: SearchImage[];
   rawResultCount: number;
   summary: string; // Markdown summary with inline citations
   keyTakeaways: string[];

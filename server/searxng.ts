@@ -1,4 +1,4 @@
-import { SearchResult } from "../src/types.js";
+import { SearchResult, SearchImage } from "../src/types.js";
 import { normalizeUrlKey } from "./retrievalRanker.js";
 import { acceptLanguageFor, toSearxngLanguage } from "./language.js";
 
@@ -228,13 +228,23 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
 }
 
 /**
- * Single instance SearXNG query
+ * SearXNG JSON 查询的公共取数层。
+ *
+ * 抽出来的唯一理由是 categories 必须可切换（general / images）：两处的请求参数、
+ * 请求头、超时与「故障实例记账」口径必须完全一致，各写一份必然会漂移 ——
+ * 图片检索若漏掉 markInstanceDead，坏实例会一直留在池子里被反复命中。
  */
-async function searchSingleSearxng(instance: string, query: string, langCode?: string): Promise<SearchResult[]> {
+async function fetchSearxngResults(
+  instance: string,
+  query: string,
+  categories: string,
+  langCode?: string,
+  timeoutMs = 1800
+): Promise<any[] | null> {
   const url = new URL(`${instance}/search`);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
-  url.searchParams.set("categories", "general");
+  url.searchParams.set("categories", categories);
   // 语言过滤是「结果精准」的一道硬闸门：跨语言路由用 en 下发才能真的拿到英文权威源，
   // 其余路由用查询语言过滤才能挡住不对语种的内容农场。统一走 toSearxngLanguage 映射，
   // 不再把 `zh` 这种两字母码裸传给 SearXNG（见 language.ts 的说明）。
@@ -254,7 +264,7 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
   const acceptLang = acceptLanguageFor(langCode);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 1800);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url.toString(), {
@@ -271,42 +281,202 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
       if (res.status === 403 || res.status === 429 || res.status >= 500) {
         markInstanceDead(instance);
       }
-      return [];
+      return null;
     }
     const data = await res.json().catch(() => null);
     if (!data || !Array.isArray(data.results)) {
       markInstanceDead(instance);
-      return [];
+      return null;
     }
 
-    const mapped: SearchResult[] = [];
-    for (const item of data.results) {
-      if (!item.url || !item.url.startsWith("http")) continue;
-      let hostname = "";
-      try {
-        hostname = new URL(item.url).hostname;
-      } catch {
-        hostname = item.url;
-      }
-
-      mapped.push({
-        id: `sx-${Math.random().toString(36).substring(2, 9)}`,
-        title: sanitizeSnippet(item.title || "无标题"),
-        url: item.url,
-        snippet: sanitizeSnippet(item.content || item.snippet || item.parsed_url?.[1] || ""),
-        engine: item.engine || item.engines?.[0] || "SearXNG",
-        category: item.category || "general",
-        publishedDate: item.publishedDate || item.pubdate,
-        thumbnail: item.thumbnail,
-        displayDomain: hostname
-      });
-      if (mapped.length >= 15) break;
-    }
-    return mapped;
+    return data.results;
   } catch {
     clearTimeout(timeoutId);
-    return [];
+    return null;
   }
+}
+
+/**
+ * 单实例网页检索：把 SearXNG 的 general 结果映射为 SearchResult
+ */
+async function searchSingleSearxng(instance: string, query: string, langCode?: string): Promise<SearchResult[]> {
+  const items = await fetchSearxngResults(instance, query, "general", langCode);
+  if (!items) return [];
+
+  const mapped: SearchResult[] = [];
+  for (const item of items) {
+    if (!item.url || !item.url.startsWith("http")) continue;
+    let hostname = "";
+    try {
+      hostname = new URL(item.url).hostname;
+    } catch {
+      hostname = item.url;
+    }
+
+    mapped.push({
+      id: `sx-${Math.random().toString(36).substring(2, 9)}`,
+      title: sanitizeSnippet(item.title || "无标题"),
+      url: item.url,
+      snippet: sanitizeSnippet(item.content || item.snippet || item.parsed_url?.[1] || ""),
+      engine: item.engine || item.engines?.[0] || "SearXNG",
+      category: item.category || "general",
+      publishedDate: item.publishedDate || item.pubdate,
+      thumbnail: item.thumbnail,
+      displayDomain: hostname
+    });
+    if (mapped.length >= 15) break;
+  }
+  return mapped;
+}
+
+/** 只接受 http(s) 的绝对地址：各上游引擎偶发返回相对路径或空壳 data: */
+function pickHttpUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : undefined;
+}
+
+/** 取域名用于角标展示，失败返回 undefined（绝不抛错） */
+function hostOf(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 图片检索的单实例超时。
+ * 刻意远大于网页检索的 1800ms：images 类目的响应体量级完全不同 ——
+ * 实测单次返回可达近百条（每条还带长 URL 与多个尺寸字段），
+ * 沿用网页检索的超时会稳定地把能用的实例也判成超时，最终一张图都拿不到。
+ */
+const IMAGE_FETCH_TIMEOUT_MS = 4500;
+
+/**
+ * 图片检索的整体预算。
+ * 图片只是配图，绝不能反过来拖住已经跑完的检索主链路：超时就放弃配图，
+ * 宁可让「相关图片」组件退回空态，也不让整页为用户多等。
+ */
+const IMAGE_SEARCH_BUDGET_MS = 5000;
+
+/**
+ * 图片检索（SearXNG categories=images）。
+ *
+ * 与网页检索的差别不只是 category：返回体描述的是「一张图」而不是「一个页面」——
+ * 图在 img_src / thumbnail_src，而 url 指向图片所在的网页。因此映射成 SearchImage
+ * （图 + 出处）而不是硬塞进 SearchResult，两者的语义维度本就不同。
+ *
+ * 上游对图源可用性不做任何保证（防盗链、缩略图失效都极常见），所以这里只做
+ * 「必须是 http(s) 绝对地址」这一最低校验，剩下的交给前端按图加载失败逐个剔除 ——
+ * 在这里判活需要逐张发 HEAD 请求，代价远高于让浏览器顺手报个 onError。
+ */
+export async function searchSearxngImages(
+  query: string,
+  options: {
+    customUrl?: string;
+    language?: string;
+    env?: Record<string, string | undefined>;
+    limit?: number;
+  } = {}
+): Promise<SearchImage[]> {
+  const limit = options.limit && options.limit > 0 ? options.limit : 12;
+
+  const validCustomUrl = options.customUrl &&
+    typeof options.customUrl === "string" &&
+    options.customUrl.startsWith("http") &&
+    options.customUrl !== "undefined" &&
+    options.customUrl !== "null"
+    ? options.customUrl.trim()
+    : undefined;
+
+  const rawEnvUrl = options.env?.SEARXNG_URL ||
+    (typeof process !== "undefined" ? process.env?.SEARXNG_URL : undefined);
+  const validEnvUrl = rawEnvUrl && !isInstanceDead(rawEnvUrl) ? rawEnvUrl : undefined;
+
+  // 与网页检索共用同一套实例池与故障记账，但只为凑图打前 3 个实例。
+  const { pool, fresh } = currentInstancePool();
+  if (!fresh) warmInstancePool();
+
+  const allInstances = Array.from(new Set([
+    ...(validCustomUrl ? [validCustomUrl] : []),
+    ...(validEnvUrl ? [validEnvUrl] : []),
+    ...pool
+  ]));
+
+  const candidates = allInstances.slice(0, 3);
+
+  /**
+   * 首个非空即采纳，而不是像网页检索那样全量合并。
+   *
+   * 理由与网页检索恰好相反：那里合并是为了「多引擎共识」这个重排信号，广度本身就是分。
+   * 这里合并只有坏处 —— 图片类目单个实例的产出（实测可达近百条）已是所需量的近十倍，
+   * 再等第二、第三个实例只会把延迟交给最慢的那一个，而多出来的图最后仍会被上限截掉。
+   */
+  const items = await new Promise<any[] | null>((resolve) => {
+    let pending = candidates.length;
+    let done = false;
+    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (value: any[] | null) => {
+      if (done) return;
+      done = true;
+      if (budgetTimer) clearTimeout(budgetTimer);
+      resolve(value);
+    };
+
+    budgetTimer = setTimeout(() => finish(null), IMAGE_SEARCH_BUDGET_MS);
+
+    if (pending === 0) {
+      finish(null);
+      return;
+    }
+
+    for (const inst of candidates) {
+      fetchSearxngResults(inst, query, "images", options.language, IMAGE_FETCH_TIMEOUT_MS)
+        .then((res) => {
+          if (res && res.length > 0) finish(res);
+          else if (--pending === 0) finish(null);
+        })
+        .catch(() => {
+          if (--pending === 0) finish(null);
+        });
+    }
+  });
+
+  if (!items) return [];
+
+  const images: SearchImage[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (images.length >= limit) break;
+
+    // 原图优先，没有原图就退回缩略图 —— 有图可看永远好过没有
+    const imageUrl = pickHttpUrl(item.img_src) || pickHttpUrl(item.thumbnail_src);
+    if (!imageUrl || seen.has(imageUrl)) continue;
+    seen.add(imageUrl);
+
+    const pageUrl = pickHttpUrl(item.url);
+    const domain = hostOf(pageUrl) || hostOf(imageUrl);
+
+    images.push({
+      id: `img-${Math.random().toString(36).substring(2, 9)}`,
+      imageUrl,
+      // 缩略图字段名各引擎不统一（thumbnail_src / thumbnail），逐个兜底后回落原图
+      thumbnailUrl: pickHttpUrl(item.thumbnail_src) || pickHttpUrl(item.thumbnail) || imageUrl,
+      title: sanitizeSnippet(item.title || "") || (domain ? `${domain} 图片` : "相关图片"),
+      pageUrl,
+      source: item.source || item.engine || "SearXNG Images",
+      domain,
+      resolution: typeof item.resolution === "string" && item.resolution.trim() !== ""
+        ? item.resolution.trim()
+        : undefined
+    });
+  }
+
+  return images;
 }
 
 /**
