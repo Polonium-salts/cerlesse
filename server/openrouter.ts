@@ -1,13 +1,14 @@
 import { SearchResult, ComparisonDimension, MindMapNode, SearchSynthesisResult, AgentPlan, OpenRouterModel, DetectedLanguage } from "../src/types.js";
 
 /**
- * 全面基于 OpenRouter 免费 AI 路由池的可用模型规范
+ * 全面基于 OpenRouter 官方免费模型路由集合的规范定义
+ * 官方合集主页：https://openrouter.ai/collections/free-models
  */
 export const AVAILABLE_FREE_MODELS: OpenRouterModel[] = [
   {
     id: "openrouter/free",
-    name: "OpenRouter Free Router (智能免费 AI 路由 · 推荐)",
-    description: "通过 OpenRouter 官方免费路由器，全自动在 Qwen 72B、Llama 3.3 70B 等免费顶尖模型间智能均衡调度",
+    name: "OpenRouter 免费模型路由 (Free Router · 官方推荐)",
+    description: "通过 OpenRouter 官方免费路由器 (https://openrouter.ai/collections/free-models)，全自动在 Qwen 72B、Llama 3.3 70B 等可用免费大模型间智能负载与自动均衡调度",
     contextLength: "128k",
     pricing: "Free",
     isRecommended: true
@@ -15,50 +16,58 @@ export const AVAILABLE_FREE_MODELS: OpenRouterModel[] = [
   {
     id: "meta-llama/llama-3.3-70b-instruct:free",
     name: "Llama 3.3 70B Instruct (Free)",
-    description: "Meta 旗舰 70B 开源大模型，多源深度综合研报与逻辑推演能力极强",
+    description: "Meta 旗舰 70B 开源大模型，多源深度综合研报与逻辑推演能力极强 (Free Models Collection)",
     contextLength: "128k",
     pricing: "Free"
   },
   {
     id: "qwen/qwen-2.5-72b-instruct:free",
     name: "Qwen 2.5 72B Instruct (Free)",
-    description: "阿里通义千问 72B 开源版，中文长文本理解与结构化组件生成顶尖",
+    description: "阿里通义千问 72B 开源版，中文长文本理解与结构化组件生成顶尖 (Free Models Collection)",
     contextLength: "128k",
     pricing: "Free"
   },
   {
     id: "google/gemini-2.0-flash-exp:free",
     name: "Gemini 2.0 Flash Exp (Free via OpenRouter)",
-    description: "通过 OpenRouter 路由的 Google 次世代极速实验模型，兼顾响应与推理",
+    description: "通过 OpenRouter 免费集合路由的 Google 次世代极速实验模型 (Free Models Collection)",
     contextLength: "1M",
     pricing: "Free"
   },
   {
-    id: "google/gemma-4-31b-it:free",
-    name: "Google Gemma 4 31B (Free via OpenRouter)",
-    description: "Google 开源轻量高效大模型，实时信息处理效率高",
+    id: "mistralai/mistral-small-24b-instruct-2501:free",
+    name: "Mistral Small 24B (Free)",
+    description: "Mistral 高效开源模型，专长于精准结构化 JSON 输出与要点提取 (Free Models Collection)",
     contextLength: "32k",
     pricing: "Free"
   },
   {
-    id: "minimax/minimax-m3:free",
-    name: "MiniMax M3 (Free via OpenRouter)",
-    description: "高响应速度多语言模型，适合长文本提炼与概要总结",
+    id: "deepseek/deepseek-r1:free",
+    name: "DeepSeek R1 (Free via OpenRouter)",
+    description: "深度思考强化学习模型，适合复杂数理与多源长程推理 (Free Models Collection)",
     contextLength: "64k",
     pricing: "Free"
   }
 ];
 
+/**
+ * 严格归一化模型标识：
+ * 保证所有 AI 任务只使用 OpenRouter 免费模型路由 (openrouter/free) 或官方免费集合模型 (https://openrouter.ai/collections/free-models)
+ */
 export function normalizeModelId(requestedModel?: string): string {
   if (!requestedModel || requestedModel.trim() === "") {
     return "openrouter/free";
   }
   const trimmed = requestedModel.trim();
-  // 若请求为旧版或专有模型，自动统一路由至 openrouter/free
-  if (trimmed.startsWith("gemini-") || trimmed.includes("deepseek/deepseek-r1:free") || trimmed.includes("MY_GEMINI")) {
+  // 严格限定仅使用 OpenRouter 免费模型路由 (openrouter/free) 或其官方免费集合中的免费模型 (:free)
+  if (trimmed === "openrouter/free") {
     return "openrouter/free";
   }
-  return trimmed;
+  if (trimmed.endsWith(":free") && !trimmed.startsWith("gemini-") && !trimmed.includes("MY_GEMINI")) {
+    return trimmed;
+  }
+  // 其余任何请求（包含旧版模型、付费模型、其他专有商业模型）一律严格归一化并路由到 openrouter/free 免费模型路由
+  return "openrouter/free";
 }
 
 export function resolveOpenRouterApiKey(explicitKey?: string, env?: Record<string, string | undefined>): string | undefined {
@@ -79,6 +88,13 @@ export function resolveOpenRouterApiKey(explicitKey?: string, env?: Record<strin
 }
 
 /**
+ * 维护每个 API Key 的限流熔断状态缓存
+ * 当 OpenRouter 返回 429（如每日免费额度上限）时，记录熔断截止时间，
+ * 避免频繁向已受限的 Key 重复发出无效网络请求，并快速平滑切换至本地算法研报引擎
+ */
+const keyRateLimitedUntil = new Map<string, number>();
+
+/**
  * 通用 OpenRouter Chat 驱动函数，供整个 Multi-Agent 团队调用
  */
 export async function callOpenRouterChat(options: {
@@ -94,6 +110,14 @@ export async function callOpenRouterChat(options: {
   const apiKey = resolveOpenRouterApiKey(options.apiKey, options.env);
   if (!apiKey || apiKey.trim() === "") return null;
 
+  const keyTrimmed = apiKey.trim();
+
+  // 如果该 API Key 当前处于限流熔断期中，直接返回 null 快速降级至本地高并发算法引擎，避免无效等待与 429 报错
+  const cooldownUntil = keyRateLimitedUntil.get(keyTrimmed);
+  if (cooldownUntil && Date.now() < cooldownUntil) {
+    return null;
+  }
+
   const model = normalizeModelId(options.model);
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || 2500;
@@ -104,7 +128,7 @@ export async function callOpenRouterChat(options: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey.trim()}`,
+        "Authorization": `Bearer ${keyTrimmed}`,
         "HTTP-Referer": "https://cerlesse.ai",
         "X-Title": "Cerlesse AI Agent"
       },
@@ -122,7 +146,26 @@ export async function callOpenRouterChat(options: {
     clearTimeout(timeoutId);
 
     if (!res.ok) {
-      console.warn(`OpenRouter Free Router error (${res.status}) for ${model}:`, resText.slice(0, 150));
+      // 捕获 429 速率限制或 402/401 认证状态，启动保护性熔断
+      if (res.status === 429 || res.status === 402) {
+        let resetMs = Date.now() + 15 * 60 * 1000; // 默认熔断冷却 15 分钟
+        try {
+          const parsedErr = JSON.parse(resText);
+          const headerReset = parsedErr?.metadata?.headers?.["X-RateLimit-Reset"];
+          if (headerReset) {
+            const parsedResetNum = parseInt(headerReset, 10);
+            if (!isNaN(parsedResetNum) && parsedResetNum > Date.now()) {
+              resetMs = parsedResetNum;
+            }
+          }
+        } catch {
+          // ignore json parse error
+        }
+        keyRateLimitedUntil.set(keyTrimmed, resetMs);
+        console.info(`[OpenRouter RateLimit] Model ${model} daily free tier quota reached (${res.status}). Circuit breaker active; smoothly switching to instant algorithmic synthesis.`);
+      } else {
+        console.info(`[OpenRouter Status ${res.status}] ${model}: ${resText.slice(0, 100)}`);
+      }
       return null;
     }
 

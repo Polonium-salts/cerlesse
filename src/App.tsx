@@ -7,31 +7,13 @@ import React, { useState, useEffect } from "react";
 import { Header } from "./components/Header.js";
 import { GoogleLogo } from "./components/GoogleLogo.js";
 import { SearchBar } from "./components/SearchBar.js";
-import { AIOverviewWidget } from "./widgets/components/AIOverviewWidget.js";
-import { KeyTakeawaysWidget } from "./widgets/components/KeyTakeawaysWidget.js";
-import { OfficialPortalWidget } from "./widgets/components/OfficialPortalWidget.js";
-import { MindMapWidget } from "./widgets/components/MindMapWidget.js";
-import { ComparisonMatrixWidget } from "./widgets/components/ComparisonMatrixWidget.js";
-import { SourcesListWidget } from "./widgets/components/SourcesListWidget.js";
-import { FollowUpWidget } from "./widgets/components/FollowUpWidget.js";
-import { MetricsTelemetryWidget } from "./widgets/components/MetricsTelemetryWidget.js";
-import { QuickActionsToolboxWidget } from "./widgets/components/QuickActionsToolboxWidget.js";
-import { ActionPlanWidget } from "./widgets/components/ActionPlanWidget.js";
-import { QuickAnswerWidget } from "./widgets/components/QuickAnswerWidget.js";
-import { TopicDigestWidget } from "./widgets/components/TopicDigestWidget.js";
-import { AgentAuditWidget } from "./widgets/components/AgentAuditWidget.js";
-import { AnalyticsTrendWidget } from "./widgets/components/AnalyticsTrendWidget.js";
-import { VerificationChecklistWidget } from "./widgets/components/VerificationChecklistWidget.js";
-import { FastChatWidget } from "./widgets/components/FastChatWidget.js";
-import { MobileQRConnectWidget } from "./widgets/components/MobileQRConnectWidget.js";
+import { RelatedLinksWidget } from "./widgets/components/RelatedLinksWidget.js";
 import { AgentProgressStream } from "./components/AgentProgressStream.js";
 import { AgentOrchestrationLoader } from "./components/AgentOrchestrationLoader.js";
 import { SearchHistoryDrawer } from "./components/SearchHistoryDrawer.js";
 import { TileDesktopView } from "./components/desktop/TileDesktopView.js";
 import { WidgetMarketplaceDrawer } from "./components/desktop/WidgetMarketplaceDrawer.js";
 import { CockpitWorkspace } from "./components/CockpitWorkspace.js";
-import { UniqueCardWidget } from "./widgets/components/UniqueCardWidget.js";
-import { UniqueCardForgeModal } from "./components/UniqueCardForgeModal.js";
 import { Alert, AlertDescription } from "./components/ui/alert.js";
 import { Button } from "./components/ui/button.js";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs.js";
@@ -101,8 +83,12 @@ export default function App() {
       const savedRaw = localStorage.getItem("ai_search_settings");
       if (!savedRaw) return DEFAULT_SETTINGS;
       const parsed = JSON.parse(savedRaw);
-      // Auto-migrate deprecated deepseek free slug to valid default
-      if (parsed.selectedModel === "deepseek/deepseek-r1:free") {
+      // Auto-migrate any non-free or legacy models to openrouter/free
+      if (
+        !parsed.selectedModel ||
+        parsed.selectedModel === "deepseek/deepseek-r1:free" ||
+        (!parsed.selectedModel.endsWith(":free") && parsed.selectedModel !== "openrouter/free")
+      ) {
         parsed.selectedModel = "openrouter/free";
       }
       return { ...DEFAULT_SETTINGS, ...parsed };
@@ -124,9 +110,8 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [activeResult, setActiveResult] = useState<SearchSynthesisResult | null>(null);
-  const [agentTeam, setAgentTeam] = useState<AgentTeamReport | null>(null);
   // 路由驱动页面：每个页面拥有独立的 URL 目录
-  // / 首页 · /search 全景网格 · /mindmap 思维导图 · /comparison 对比矩阵 · /sources 已验证信源 · /reasoning AgentTeam 协作
+  // / 首页 · /search 全景网格 · /mindmap 思维导图 · /comparison 对比矩阵 · /sources 已验证信源 · /reasoning Agent 思考流
   const route = useRoute();
   const activeTab: RouteTab = route.tab ?? "bento";
 
@@ -186,9 +171,6 @@ export default function App() {
     return deduplicated;
   };
 
-  const [isForgeModalOpen, setIsForgeModalOpen] = useState(false);
-  const [preselectedSourceIds, setPreselectedSourceIds] = useState<string[]>([]);
-
   useEffect(() => {
     try {
       localStorage.setItem("cerlesse_custom_cards", JSON.stringify(customCards));
@@ -196,15 +178,6 @@ export default function App() {
       console.error("Failed to persist custom cards:", e);
     }
   }, [customCards]);
-
-  const handleOpenForgeModal = (sourceIds?: string[]) => {
-    setPreselectedSourceIds(sourceIds || []);
-    setIsForgeModalOpen(true);
-  };
-
-  const handleCardCreated = (newCard: CustomCardData) => {
-    setCustomCards(prev => mergeCustomCards(prev, [newCard]));
-  };
 
   const handleUpdateCard = (updated: CustomCardData) => {
     setCustomCards(prev => prev.map(c => c.id === updated.id ? updated : c));
@@ -221,7 +194,7 @@ export default function App() {
   // Interaction Mode: default to "bento" (iOS & Android 4-column Modular Desktop Grid of widgets)
   const [interactionMode, setInteractionMode] = useState<"cockpit" | "bento">(() => {
     const saved = localStorage.getItem("search_interaction_mode");
-    return saved === "cockpit" ? "bento" : (saved || "bento");
+    return (saved === "cockpit" || saved === "bento") ? saved : "bento";
   });
 
   const handleToggleInteractionMode = (mode: "cockpit" | "bento") => {
@@ -300,18 +273,13 @@ export default function App() {
     if (!activeResult) return getStrategyForPreset("balanced");
 
     const baseRec = activeResult.layoutStrategy || computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
-    const activeEnabled = customEnabledWidgets || baseRec.enabledWidgets || ALL_RESULT_WIDGET_KEYS;
+    const activeEnabled = (customEnabledWidgets || baseRec.enabledWidgets || ALL_RESULT_WIDGET_KEYS)
+      .filter((k) => WidgetRegistry.has(k));
 
     const targetOrder: ResultWidgetKey[] = customWidgetOrder || baseRec.componentOrder;
     // Filter down to enabled widgets only for the visual layout
-    const visibleOrder: ResultWidgetKey[] = targetOrder.filter((k) => activeEnabled.includes(k));
-    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? [...visibleOrder] : [...resolveDynamicCapabilityWidgets(baseRec.intentType)];
-
-    const hasCards = (customCards && customCards.length > 0) || (activeResult.customCards && activeResult.customCards.length > 0);
-    if (hasCards && !safeVisibleOrder.includes("custom_cards")) {
-      const insertIdx = safeVisibleOrder.indexOf("quick_answer") !== -1 ? safeVisibleOrder.indexOf("quick_answer") + 1 : 1;
-      safeVisibleOrder.splice(insertIdx, 0, "custom_cards");
-    }
+    const visibleOrder: ResultWidgetKey[] = targetOrder.filter((k) => activeEnabled.includes(k) && WidgetRegistry.has(k));
+    const safeVisibleOrder: ResultWidgetKey[] = visibleOrder.length > 0 ? [...visibleOrder] : ["related_links"];
 
     const emphasized: ResultWidgetKey = safeVisibleOrder.includes(baseRec.emphasizedWidget)
       ? baseRec.emphasizedWidget
@@ -462,7 +430,6 @@ export default function App() {
   const handleResetSession = () => {
     setActiveResult(null);
     setAgentSteps([]);
-    setAgentTeam(null);
     setCurrentQuery("");
     setErrorMessage(null);
     navigate(null, "", { replace: false });
@@ -479,7 +446,6 @@ export default function App() {
     setIsLoading(true);
     setErrorMessage(null);
     setAgentSteps([]);
-    setAgentTeam(null);
     setActiveResult(null);
 
     // 结果始终落在当前页面目录下并携带查询词，保证每个页面 URL 可分享
@@ -524,9 +490,6 @@ export default function App() {
         const result: SearchSynthesisResult = await res.json();
         setActiveResult(result);
         setAgentSteps(result.steps || []);
-        if (result.agentTeam) {
-          setAgentTeam(result.agentTeam);
-        }
         if (result.customCards && result.customCards.length > 0) {
           setCustomCards(prev => mergeCustomCards(prev, result.customCards!));
         }
@@ -588,18 +551,6 @@ export default function App() {
         }
       });
 
-      // Handle real-time AgentTeam collaborative matrix updates
-      eventSource.addEventListener("team_update", (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.agentTeam) {
-            setAgentTeam(data.agentTeam);
-          }
-        } catch (e) {
-          console.warn("Failed to parse SSE team update", e);
-        }
-      });
-
       // Handle successful synthesis completion directly from stream data
       eventSource.addEventListener("complete", (event: MessageEvent) => {
         clearTimeout(watchdogTimer);
@@ -612,9 +563,6 @@ export default function App() {
             hasCompleted = true;
             setActiveResult(result);
             setAgentSteps(result.steps || []);
-            if (result.agentTeam) {
-              setAgentTeam(result.agentTeam);
-            }
             if (result.customCards && result.customCards.length > 0) {
               setCustomCards(prev => mergeCustomCards(prev, result.customCards!));
             }
@@ -813,8 +761,6 @@ export default function App() {
         ...(widgetModule.actions || {}),
         openMindMap: () => goToPage("mindmap"),
         openComparison: () => goToPage("comparison"),
-        openForgeModal: (sourceIds?: string[]) => handleOpenForgeModal(sourceIds),
-        forgeCardFromSource: (sourceId: string) => handleOpenForgeModal([sourceId]),
         reSearch: () => executeSearch(activeResult.query, settings.enableDeepSearch),
         viewDeepAnalysis: () => goToPage("sources"),
         viewDetails: () => goToPage("reasoning")
@@ -851,10 +797,18 @@ export default function App() {
         isLoading={isLoading}
         isWideCanvas={isWideCanvas}
         onToggleCanvasWidth={handleToggleCanvasWidth}
+        onOpenWidgetGrid={() => {
+          if (isHomeView) {
+            setIsMarketplaceOpen(true);
+          } else {
+            handleToggleInteractionMode("bento");
+            goToPage("bento");
+          }
+        }}
+        isGridActive={!isHomeView && activeTab === "bento" && interactionMode === "bento"}
       />
 
-      {/* 结果页顶部导航：单一分段控件 + 一句元信息 + 两个操作按钮。
-          原先每个标签里还挂着 1-6 快捷键提示与加速比药丸，信息噪声大于信息本身，已删除。 */}
+      {/* 结果页顶部导航：单一分段控件 + 一句元信息 + 两个操作按钮 */}
       {!isHomeView && (
         <div className="border-b border-border bg-background/70 backdrop-blur-xl sticky top-16 z-30">
           <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-2.5 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar transition-all duration-200`}>
@@ -864,9 +818,9 @@ export default function App() {
               className="shrink-0"
             >
               <TabsList>
-                <TabsTrigger value="bento">
-                  <LayoutGrid />
-                  全景网格
+                <TabsTrigger value="bento" className="flex items-center gap-1.5 font-medium">
+                  <LayoutGrid className="size-3.5" />
+                  <span>小组件网格</span>
                 </TabsTrigger>
                 <TabsTrigger value="mindmap">
                   <GitFork />
@@ -882,7 +836,7 @@ export default function App() {
                 </TabsTrigger>
                 <TabsTrigger value="reasoning">
                   <Workflow />
-                  AgentTeam 协作
+                  Agent 思考流
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -897,14 +851,6 @@ export default function App() {
                   {activeResult.filteredResults.length} 条核心信源
                 </span>
               )}
-              <Button
-                size="sm"
-                onClick={() => handleOpenForgeModal()}
-                title="根据搜索结果创建独有卡片组件"
-              >
-                <Sparkles />
-                创建独有卡片
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -938,6 +884,21 @@ export default function App() {
                 isHomeView={true}
               />
             </div>
+
+            {/* 首页小组件中心快捷入口 */}
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsMarketplaceOpen(true)}
+                className="rounded-full h-8 px-3.5 gap-1.5 border-border/80 bg-background/60 hover:bg-muted/80 backdrop-blur-md shadow-xs transition-all hover:scale-105"
+                title="浏览所有搜索引擎小组件 (Live Tile 磁贴矩阵与插件系统)"
+              >
+                <LayoutGrid className="size-3.5 text-primary" />
+                <span className="font-medium text-foreground">显示搜索引擎小组件网格库</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono font-semibold">12 磁贴</span>
+              </Button>
+            </div>
           </div>
         )}
 
@@ -965,13 +926,13 @@ export default function App() {
               </Alert>
             )}
 
-            {/* Agent 专属编排加载动画：检索进行中以轨道编排隐喻呈现协作，结果就绪后自动让位于研报 */}
+            {/* 极简搜索加载状态：检索进行中呈现纯粹简洁微动效，结果就绪后平滑展开研报 */}
             {(isLoading || (agentSteps.length > 0 && !activeResult)) && (
-              <div className="flex-1 flex items-stretch justify-center">
+              <div className="flex-1 flex items-center justify-center min-h-[40vh]">
                 <AgentOrchestrationLoader
                   steps={agentSteps}
                   query={currentQuery}
-                  team={agentTeam || activeResult?.agentTeam}
+                  isStreaming={isLoading}
                 />
               </div>
             )}
@@ -1002,7 +963,6 @@ export default function App() {
                         customCards={customCards}
                         onUpdateCard={handleUpdateCard}
                         onDeleteCard={handleDeleteCard}
-                        onOpenForgeModal={handleOpenForgeModal}
                       />
                     ) : (
                       /* Mode B: 动态 Live Tile 12 栅格磁贴桌面系统 (iOS 毛玻璃拟物 + Windows Phone Live Tile) */
@@ -1016,7 +976,6 @@ export default function App() {
                           isWideCanvas={isWideCanvas}
                           onOpenMarketplace={() => setIsMarketplaceOpen(true)}
                           onExecuteSearch={(q, deep) => executeSearch(q, deep)}
-                          onOpenForgeModal={(sourceIds) => handleOpenForgeModal(sourceIds)}
                           onNavigateTab={(tab) => goToPage(tab)}
                           onUpdateCard={handleUpdateCard}
                           onDeleteCard={handleDeleteCard}
@@ -1026,34 +985,13 @@ export default function App() {
                   </div>
                 )}
 
-                {/* 2. TAB: FULLSCREEN INTERACTIVE MIND MAP */}
-                {activeTab === "mindmap" && (
+                {/* 2. TAB: RELATED LINKS */}
+                {(activeTab === "mindmap" || activeTab === "comparison" || activeTab === "sources") && (
                   <div className="w-full">
-                    <MindMapWidget
-                      rootNode={activeResult.mindMap}
+                    <RelatedLinksWidget
+                      result={activeResult}
                       query={activeResult.query}
-                      isDark={darkMode}
-                    />
-                  </div>
-                )}
-
-                {/* 3. TAB: FULL COMPARISON MATRIX */}
-                {activeTab === "comparison" && (
-                  <div className="w-full">
-                    <ComparisonMatrixWidget
-                      comparisonTable={activeResult.comparisonTable}
-                      query={activeResult.query}
-                    />
-                  </div>
-                )}
-
-                {/* 4. TAB: FULL FILTERED SOURCES */}
-                {activeTab === "sources" && (
-                  <div className="w-full">
-                    <SourcesListWidget
-                      results={activeResult.filteredResults}
-                      rawResultCount={activeResult.rawResultCount}
-                      onOpenForgeModal={() => handleOpenForgeModal()}
+                      onExecuteSearch={(q, deep) => executeSearch(q, deep)}
                     />
                   </div>
                 )}
@@ -1066,7 +1004,6 @@ export default function App() {
                       query={activeResult.query}
                       isComplete={true}
                       executionTimeMs={activeResult.executionTimeMs}
-                      agentTeam={activeResult.agentTeam || agentTeam}
                     />
                   </div>
                 )}
@@ -1092,18 +1029,6 @@ export default function App() {
         }}
         onClear={handleClearHistory}
       />
-
-      {/* Unique Card Forge Modal */}
-      {activeResult && (
-        <UniqueCardForgeModal
-          isOpen={isForgeModalOpen}
-          onClose={() => setIsForgeModalOpen(false)}
-          query={activeResult.query}
-          results={activeResult.filteredResults}
-          onCardCreated={handleCardCreated}
-          preselectedResultIds={preselectedSourceIds}
-        />
-      )}
 
       {/* Widget Marketplace Drawer (小组件商店 / 磁贴中心) */}
       <WidgetMarketplaceDrawer
@@ -1137,7 +1062,6 @@ export default function App() {
             return current.filter((k) => String(k) !== id);
           });
         }}
-        onOpenForgeModal={() => handleOpenForgeModal()}
       />
 
       {/* 页脚：一行元信息，无装饰 */}

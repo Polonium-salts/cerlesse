@@ -119,6 +119,14 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+
+  --radius-xs: calc(var(--radius) - 6px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
 }
 
 @layer base {
@@ -148,7 +156,7 @@
     --border: 0 0% 90%;
     --input: 0 0% 90%;
     --ring: 0 0% 3.9%;
-    --radius: 0.75rem;
+    --radius: 0.625rem;
   }
 
   .dark {
@@ -231,85 +239,45 @@ body {
 }
 
 /* ==========================================================================
-   AgentTeam 编排加载动画（专属）
-   由 AgentOrchestrationLoader 使用：同心环旋转 + 核心呼吸 + 卫星节点激活
+   极简搜索加载动画
    ========================================================================== */
-@keyframes agent-orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-@keyframes agent-orbit-reverse {
-  from { transform: rotate(360deg); }
-  to { transform: rotate(0deg); }
-}
-@keyframes agent-core-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-@keyframes agent-halo {
-  0% { transform: scale(0.66); opacity: 0.5; }
-  75% { transform: scale(1.35); opacity: 0; }
-  100% { transform: scale(1.35); opacity: 0; }
-}
-@keyframes agent-node-in {
-  0% { transform: translate(-50%, -50%) scale(0.55); opacity: 0; }
-  60% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-}
-@keyframes agent-dash-flow {
-  to { stroke-dashoffset: -16; }
-}
-@keyframes agent-sheen {
-  0% { transform: translateX(-120%); }
+@keyframes minimal-indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
   100% { transform: translateX(260%); }
 }
-@keyframes agent-fade-up {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes agent-dot-blink {
-  0%, 100% { opacity: 0.25; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1); }
+
+@keyframes minimal-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 0.95; transform: scale(1.05); }
 }
 
-.agent-orbit { animation: agent-orbit 8s linear infinite; }
-.agent-orbit-slow { animation: agent-orbit 26s linear infinite; }
-.agent-orbit-reverse { animation: agent-orbit-reverse 16s linear infinite; }
-.agent-core { animation: agent-core-breathe 2.8s ease-in-out infinite; }
-.agent-halo { animation: agent-halo 2.8s ease-out infinite; }
-.agent-node-in { animation: agent-node-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.agent-spoke { stroke-dasharray: 2 4; animation: agent-dash-flow 0.9s linear infinite; }
-.agent-fade-up { animation: agent-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.agent-dot { animation: agent-dot-blink 1.4s ease-in-out infinite; }
-
-.agent-sheen-host { position: relative; overflow: hidden; }
-.agent-sheen-host::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 45%;
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.65), transparent);
-  animation: agent-sheen 1.8s ease-in-out infinite;
+.minimal-indeterminate {
+  animation: minimal-indeterminate 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
-.dark .agent-sheen-host::after {
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+
+.minimal-breathe {
+  animation: minimal-breathe 1.8s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   极简搜索加载动画
+   由 AgentOrchestrationLoader 使用：纤细流光微动条与淡入动效
+   ========================================================================== */
+@keyframes minimal-indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(50%); }
+  100% { transform: translateX(250%); }
+}
+
+.animate-indeterminate {
+  animation: minimal-indeterminate 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-orbit,
-  .agent-orbit-slow,
-  .agent-orbit-reverse,
-  .agent-core,
-  .agent-halo,
-  .agent-node-in,
-  .agent-spoke,
-  .agent-fade-up,
-  .agent-dot,
-  .agent-sheen-host::after {
+  .animate-indeterminate {
     animation: none !important;
   }
-  .agent-halo { opacity: 0; }
 }
 
 /* ==========================================================================

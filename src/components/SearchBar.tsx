@@ -10,14 +10,6 @@ interface SearchBarProps {
   isHomeView?: boolean;
 }
 
-const QUICK_TASKS = [
-  { label: "🛠️ 在线 PDF 转换免安装工具", query: "pdf 转 word 在线免安装工具" },
-  { label: "💻 Docker 安装教程与国内镜像", query: "docker 安装教程与国内镜像源配置" },
-  { label: "✈️ 成都三日游精选路线与避坑", query: "成都三日游路线攻略与避坑指南" },
-  { label: "⚠️ npm install 报错 EACCES 解决", query: "npm install 报错 EACCES 权限问题解决办法" },
-  { label: "⚖️ DeepSeek R1 对比 Claude 3.5", query: "DeepSeek R1 vs Claude 3.5 Sonnet 模型对比" }
-];
-
 export const SearchBar: React.FC<SearchBarProps> = ({
   onSearch,
   isLoading,
@@ -42,7 +34,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return (
       <form
         onSubmit={handleSubmit}
-        className="w-full flex items-center h-10 px-3 rounded-md border border-border bg-muted/50 focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/30 transition-all"
+        className="w-full flex items-center h-10 px-3.5 rounded-full border border-border bg-muted/50 focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/30 transition-all"
       >
         <Search className="size-4 text-muted-foreground shrink-0 mr-2.5" />
 
@@ -62,6 +54,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             size="icon-sm"
             onClick={() => setQuery("")}
             title="清空"
+            className="rounded-full"
           >
             <X />
           </Button>
@@ -72,6 +65,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           size="icon-sm"
           disabled={!query.trim() || isLoading}
           title="执行搜索"
+          className="rounded-full"
         >
           {isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
         </Button>
@@ -84,9 +78,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
       <form
         onSubmit={handleSubmit}
-        className="w-full rounded-xl border border-border bg-card shadow-sm p-2 flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-ring/30"
+        className="w-full rounded-full border border-border bg-card shadow-sm p-2 pl-4 sm:pl-5 flex items-center gap-2.5 transition-all focus-within:ring-2 focus-within:ring-ring/30"
       >
-        <Search className="size-5 text-muted-foreground shrink-0 ml-2" />
+        <Search className="size-5 text-muted-foreground shrink-0 ml-1" />
 
         <input
           type="text"
@@ -105,12 +99,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             size="icon-sm"
             onClick={() => setQuery("")}
             title="清空"
+            className="rounded-full"
           >
             <X />
           </Button>
         )}
 
-        <Button type="submit" size="lg" disabled={!query.trim() || isLoading}>
+        <Button
+          type="submit"
+          size="lg"
+          disabled={!query.trim() || isLoading}
+          className="rounded-full px-6"
+        >
           {isLoading ? (
             <>
               <Loader2 className="animate-spin" />
@@ -134,7 +134,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <TabsList>
           <TabsTrigger value="deep">
             <Sparkles />
-            深度 Agent（导图+对比）
+            深度 Agent
           </TabsTrigger>
           <TabsTrigger value="fast">
             <Zap />
@@ -142,27 +142,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </TabsTrigger>
         </TabsList>
       </Tabs>
-
-      {/* 快速体验：把一句话需求直接送进检索 */}
-      <div className="mt-8 w-full flex flex-col items-center gap-3">
-        <p className="text-xs text-muted-foreground">快速体验智能自适应任务布局</p>
-        <div className="flex flex-wrap items-center justify-center gap-2 max-w-xl">
-          {QUICK_TASKS.map((item) => (
-            <Button
-              key={item.query}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setQuery(item.query);
-                onSearch(item.query, deepSearch);
-              }}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };

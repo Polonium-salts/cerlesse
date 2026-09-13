@@ -23,6 +23,8 @@ export type WidgetModuleMeta = Pick<
   | "version"
   | "description"
   | "category"
+  | "tags"
+  | "agentHint"
   | "icon"
   | "defaultSize"
   | "supportedSizes"
@@ -37,6 +39,8 @@ export function manifestToModuleMeta(manifest: WidgetManifest): WidgetModuleMeta
     version: manifest.version,
     description: manifest.description,
     category: manifest.category,
+    tags: manifest.tags,
+    agentHint: manifest.agentHint,
     icon: resolveManifestIcon(manifest.icon),
     // 尺寸档位的唯一事实来源就是清单的 grid 段
     defaultSize: manifest.grid.defaultSize,

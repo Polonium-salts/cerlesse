@@ -1,0 +1,51 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "ai_answer",
+  "name": "AI 智能回答",
+  "version": "1.0.0",
+  "description": "基于全网检索信源的 AI 智能深度综合回答、结论要点与追问拓展",
+  "category": "synthesis",
+  "tags": [
+    "AI回答",
+    "全网总结",
+    "深度要点",
+    "问答",
+    "结论",
+    "知识综合",
+    "多信源提炼"
+  ],
+  "agentHint": {
+    "functionality": "基于全网多路检索信源进行深度综合与推理，输出格式化 Markdown 深度回答、核心结论速览与智能拓展追问",
+    "bestFor": [
+      "开放性探索与复杂知识问答",
+      "深度技术原理解析与长篇调研研报",
+      "需要直接给出明确结论与要点摘要的场景"
+    ],
+    "dataRequirements": [
+      "全网综合检索信源",
+      "多段落文本摘要"
+    ],
+    "selectionHeuristics": "当用户查询属于知识探索、综合分析或需要一揽子研报结论时，实用性最高（应优先作为核心大卡置顶呈现）。",
+    "triggerKeywords": [
+      "是什么",
+      "为什么",
+      "如何",
+      "总结",
+      "分析",
+      "原理",
+      "介绍",
+      "概况"
+    ]
+  },
+  "icon": "Sparkles",
+  "grid": {
+    "defaultSize": "large",
+    "supportedSizes": ["medium", "large", "wide", "full"],
+    "ratio": "4:3",
+    "minSpan": 4
+  },
+  "theme": {
+    "accentColor": "#6366f1",
+    "flipAnimation": "3d-flip"
+  }
+}

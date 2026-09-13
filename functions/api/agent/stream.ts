@@ -1,5 +1,5 @@
 import { PagesFunction, errorResponse } from "../types.js";
-import { runAgentTeam } from "../../../server/agentTeam.js";
+import { runSearchAgent } from "../../../server/agent.js";
 
 function cleanParam(val?: any): string | undefined {
   if (!val || typeof val !== "string") return undefined;
@@ -45,12 +45,12 @@ export const onRequest: PagesFunction = async (context) => {
     safeWrite(": keepalive\n\n");
   }, 3000);
 
-  // 异步流式调度 AgentTeam 专职智能体协作组
+  // 异步流式调度智能搜索 Agent
   (async () => {
     try {
-      await sendEvent("status", { message: "EdgeOne AgentTeam 智能体协同调度中..." });
+      await sendEvent("status", { message: "智能搜索 Agent 正在检索与分析中..." });
 
-      const result = await runAgentTeam({
+      const result = await runSearchAgent({
         query: query.trim(),
         model,
         openRouterApiKey: apiKey,
@@ -60,16 +60,13 @@ export const onRequest: PagesFunction = async (context) => {
         env: context.env,
         onStepProgress: (currentStep, allSteps) => {
           sendEvent("step", { currentStep, allSteps });
-        },
-        onTeamProgress: (agentTeam) => {
-          sendEvent("team_update", { agentTeam });
         }
       });
 
       await sendEvent("complete", result);
     } catch (error: any) {
-      console.error("EdgeOne AgentTeam stream error:", error);
-      await sendEvent("error", { message: error.message || "AgentTeam 协作执行过程发生异常" });
+      console.error("EdgeOne search agent stream error:", error);
+      await sendEvent("error", { message: error.message || "搜索 Agent 执行过程发生异常" });
     } finally {
       clearInterval(keepAliveTimer);
       isClosed = true;

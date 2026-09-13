@@ -18,7 +18,7 @@ import {
 } from "../src/types.js";
 import { WidgetSchema, WidgetSchemaNode } from "../src/widgets/sdk/types.js";
 import { synthesizeToolActions } from "./toolRegistry.js";
-import { resolveOpenRouterApiKey } from "./openrouter.js";
+import { resolveOpenRouterApiKey, callOpenRouterChat } from "./openrouter.js";
 
 export interface ForgeCardOptions {
   query: string;
@@ -314,40 +314,16 @@ ${sourcesContext}
 必须输出严格合法的 JSON 对象，包含:
 title (15字以内简短精炼), subtitle, category: "action", archetype: "${suggestedArchetype}", themeColor: "${themeColor}", iconName, metrics: [{ label, value, subtext, trend }], actions: [{ type: "open_url"|"copy", label, url, command }], sections: [{ title, items: [{ title, description, tag, tagColor, sourceTitle, sourceUrl }] }], takeawayFootnote, 以及专属的 ${suggestedArchetype === "action_checklist" ? "checklistData" : suggestedArchetype === "parameter_matrix" ? "matrixData" : suggestedArchetype === "download_hub" ? "downloadHubData" : suggestedArchetype === "timeline" ? "timelineData" : suggestedArchetype === "tool_discovery" ? "toolDiscoveryData" : suggestedArchetype === "pros_cons" ? "prosConsData" : "verdictData"} 数据模型。内容必须真实有洞察，绝不使用套话。`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2500);
-
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:3000",
-        "X-Title": "Cerlesse Search"
-      },
-      body: JSON.stringify({
-        model: "openrouter/free",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 1500,
-        response_format: { type: "json_object" }
-      }),
-      signal: controller.signal
+    const content = await callOpenRouterChat({
+      messages: [{ role: "user", content: prompt }],
+      model: "openrouter/free",
+      apiKey,
+      responseFormatJson: true,
+      timeoutMs: 2500,
+      temperature: 0.2,
+      maxTokens: 1500
     });
-
-    const resText = await res.text();
-    clearTimeout(timeoutId);
-    if (!res.ok || !resText) return null;
-
-    let data: any;
-    try {
-      data = JSON.parse(resText);
-    } catch {
-      return null;
-    }
-
-    const content = data.choices?.[0]?.message?.content?.trim();
     if (!content) return null;
 
     const cleaned = content.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
@@ -390,8 +366,6 @@ title (15字以内简短精炼), subtitle, category: "action", archetype: "${sug
     }
   } catch {
     // Graceful fallback
-  } finally {
-    clearTimeout(timeoutId);
   }
 
   return null;

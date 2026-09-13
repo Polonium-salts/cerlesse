@@ -1,5 +1,5 @@
 import { PagesFunction, jsonResponse, errorResponse } from "./types.js";
-import { runAgentTeam } from "../../server/agentTeam.js";
+import { runSearchAgent } from "../../server/agent.js";
 
 function cleanParam(val?: any): string | undefined {
   if (!val || typeof val !== "string") return undefined;
@@ -26,7 +26,7 @@ export const onRequest: PagesFunction = async (context) => {
       return errorResponse("缺少搜索关键词", 400);
     }
 
-    const result = await runAgentTeam({
+    const result = await runSearchAgent({
       query: query.trim(),
       model: cleanParam(model),
       openRouterApiKey: cleanParam(apiKey),
@@ -39,6 +39,6 @@ export const onRequest: PagesFunction = async (context) => {
     return jsonResponse(result);
   } catch (error: any) {
     console.error("Edge agent error:", error);
-    return errorResponse(error.message || "执行 Agent 协作失败", 500);
+    return errorResponse(error.message || "执行搜索 Agent 失败", 500);
   }
 };

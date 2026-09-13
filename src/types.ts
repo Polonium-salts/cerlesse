@@ -171,42 +171,14 @@ export type LayoutIntentType =
   | "balanced";         // 均衡综合布局
 
 export type ResultWidgetKey = 
-  | "quick_answer"
-  | "official_portal"
-  | "takeaways"
-  | "metrics_telemetry"
-  | "actions_toolbox"
-  | "analytics_trend"
-  | "verification_checklist"
-  | "fast_chat"
-  | "mobile_qr"
-  | "topic_digest"
-  | "mindmap"
-  | "sources"
-  | "followup"
-  | "comparison"
-  | "agent_workflow"
-  | "ai_overview"
-  | "custom_cards";
+  | "ai_answer"
+  | "related_links"
+  | "custom_cards"
+  | string;
 
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
-  "quick_answer",
-  "official_portal",
-  "takeaways",
-  "metrics_telemetry",
-  "actions_toolbox",
-  "analytics_trend",
-  "verification_checklist",
-  "fast_chat",
-  "mobile_qr",
-  "topic_digest",
-  "mindmap",
-  "sources",
-  "followup",
-  "comparison",
-  "agent_workflow",
-  "ai_overview",
-  "custom_cards"
+  "ai_answer",
+  "related_links"
 ];
 
 export interface WidgetStatusDetail {
@@ -299,6 +271,28 @@ export interface WidgetIntentAnalysis {
   confidence?: number;
 }
 
+export interface BlueprintComponent {
+  capability: string;
+  type: string;
+  data: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface WidgetBlueprint {
+  blueprintId: string;
+  title: string;
+  subtitle?: string;
+  entity?: string;
+  intent: string;
+  goal?: string;
+  layout?: string;
+  size?: WidgetPlannedSize;
+  themeColor?: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
+  components: BlueprintComponent[];
+  matchedWidgetIds?: string[];
+  [key: string]: any;
+}
+
 export interface WidgetPlan {
   intent: QueryIntent;
   userGoal: string;
@@ -308,6 +302,7 @@ export interface WidgetPlan {
   widgetOrder?: ResultWidgetKey[]; // Flattened sequence of widget keys for direct consumption
   /** 第一阶段的语义分析结果，供排版相位对账与审计 */
   intentAnalysis?: WidgetIntentAnalysis;
+  blueprint?: WidgetBlueprint;
   primaryActions: WidgetAction[]; // Standardized executable actions
   widgetCustomizations?: {
     cardTitle?: string;

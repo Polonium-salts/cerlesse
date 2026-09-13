@@ -2,7 +2,6 @@ import React from "react";
 import { WidgetModule, ResultWidgetKey } from "./sdk/types.js";
 import { safeInstantiateWidgetModule } from "./sdk/sandbox.js";
 import { CustomCardData } from "../types.js";
-import { UniqueCardWidget } from "./components/UniqueCardWidget.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 
 /**
@@ -156,18 +155,14 @@ class WidgetRegistryClass {
       supportedSizes: ["small", "medium", "large", "full"],
       schema: card.archetype === "schema" ? card.schema : undefined,
       render: (ctx) => {
-        if (card.archetype === "schema" && card.schema) {
+        if (card.schema) {
           return <WidgetSchemaRenderer schema={card.schema} context={ctx} />;
         }
         return (
-          <UniqueCardWidget
-            card={card}
-            onUpdateCard={handlers?.onUpdateCard}
-            onDeleteCard={handlers?.onDeleteCard}
-            isCompact={ctx.isCompact}
-            size={ctx.size}
-            onResize={ctx.onResize}
-          />
+          <div className="p-4 rounded-xl border border-border bg-card">
+            <h4 className="font-semibold text-foreground text-sm">{card.title}</h4>
+            {card.subtitle && <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>}
+          </div>
         );
       }
     };

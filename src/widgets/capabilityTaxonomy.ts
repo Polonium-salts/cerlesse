@@ -387,3 +387,192 @@ export const INTENT_GOAL_LABELS: Record<string, string> = {
   concept_explanation: "理解概念定义与核心原理",
   general_knowledge: "综合掌握主题核心要点"
 };
+
+// =========================================================================
+// 小组件与业务原型标签体系与 Agent 提示词配置库 (Widget Tag & Agent Prompt Catalog)
+// 为每个小组件分配精准语义标签、功能描述、数据要求与实用性评价准则
+// =========================================================================
+
+export interface WidgetPracticalityMeta {
+  id: string;
+  name: string;
+  category: "synthesis" | "analysis" | "action" | "portal" | "custom";
+  tags: string[];
+  functionality: string;
+  bestFor: string[];
+  dataRequirements: string[];
+  selectionHeuristics: string;
+  triggerKeywords?: string[];
+  antiPatterns?: string[];
+}
+
+/**
+ * 官方小组件标签与实用性画像库
+ */
+export const OFFICIAL_WIDGET_PROFILES: Record<string, WidgetPracticalityMeta> = {
+  ai_answer: {
+    id: "ai_answer",
+    name: "AI 智能回答",
+    category: "synthesis",
+    tags: ["AI回答", "全网总结", "深度要点", "问答", "结论", "知识综合", "多信源提炼"],
+    functionality: "基于全网检索多路信源进行深度综合与推理，输出格式化 Markdown 回答、核心决策结论速览与智能拓展追问",
+    bestFor: [
+      "开放性探索与复杂知识问答",
+      "深度技术原理解析与长篇调研研报",
+      "需要直接给出明确结论与要点摘要的场景"
+    ],
+    dataRequirements: ["全网综合检索信源", "文本摘要"],
+    selectionHeuristics: "当用户查询属于知识探索、综合分析或需要一揽子研报结论时，实用性最高（应优先作为核心大卡置顶全宽呈现）。",
+    triggerKeywords: ["是什么", "为什么", "如何", "总结", "分析", "原理", "介绍", "概况"]
+  },
+  related_links: {
+    id: "related_links",
+    name: "官网跳转",
+    category: "portal",
+    tags: ["官方入口", "官网直达", "多链接", "权威信源", "导航", "外部跳转", "防钓鱼"],
+    functionality: "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道与站点说明",
+    bestFor: [
+      "查询包含明确产品、品牌、机构或知名软件/网站名称",
+      "寻找正版下载源、官方服务入口、登录后台或开发文档",
+      "帮助用户快速识别官方直链并防范仿冒/钓鱼站点"
+    ],
+    dataRequirements: ["权威有效 URL", "站点名称与功能摘要"],
+    selectionHeuristics: "当搜索词涉及品牌、软件名、在线平台或寻找入口直达时实用性最高，帮用户零阻碍直达目标主页。",
+    triggerKeywords: ["官网", "官方网站", "入口", "登录", "下载", "主页", "文档", "平台"]
+  }
+};
+
+/**
+ * 业务原型 (Archetypes) 标签与实用性画像库
+ */
+export const ARCHETYPE_PROFILES: Record<string, WidgetPracticalityMeta> = {
+  download_hub: {
+    id: "download_hub",
+    name: "软件下载 / 版本枢纽",
+    category: "action",
+    tags: ["软件下载", "版本发布", "系统要求", "客户端", "正版安装", "安装包", "二进制包", "跨平台"],
+    functionality: "结构化聚合多平台安装包 (Windows/macOS/Linux/移动端)、最新 Release 版本号、环境要求与安全 Hash 校验",
+    bestFor: ["软件下载、安装包获取、客户端升级、最新版本发布查询"],
+    dataRequirements: ["版本号", "平台支持列表", "下载直链或安装指令"],
+    selectionHeuristics: "当搜索词包含工具/软件获取意图时实用性最高，帮助用户一步直达正版下载。",
+    triggerKeywords: ["下载", "安装包", "client", "客户端", "release", "最新版", "installer"]
+  },
+  action_checklist: {
+    id: "action_checklist",
+    name: "实战清单 / 步骤指引",
+    category: "action",
+    tags: ["操作步骤", "排查清单", "配置指南", "实操避坑", "环境核对", "命令排错", "步骤条", "交互式勾选"],
+    functionality: "提供带状态勾选框的分步骤操作指南、前置条件核对清单与故障排错诊断流程",
+    bestFor: ["How-to 教程、配置步骤、故障排查、环境安装前置检查、流程审批清单"],
+    dataRequirements: ["清晰的步骤项", "操作指导说明或命令"],
+    selectionHeuristics: "当用户提出具体操作方法或排查报错时实用性最高，支持用户交互式核对进度。",
+    triggerKeywords: ["步骤", "教程", "怎么配", "排查", "报错解决", "指南", "清单", "checklist"]
+  },
+  tool_discovery: {
+    id: "tool_discovery",
+    name: "工具神器发现",
+    category: "action",
+    tags: ["在线工具", "神器推荐", "免安装", "在线体验", "价格方案", "效率工具", "工具箱", "替代方案"],
+    functionality: "聚合多款同类实用工具/在线服务卡片，包含工具简介、特性标签、免费/付费定价与一键试用按钮",
+    bestFor: ["寻找某个功能在线工具、替代软件推荐、效率神器盘点"],
+    dataRequirements: ["工具名称列表", "核心功能描述", "体验或官网链接"],
+    selectionHeuristics: "当用户寻找'有什么好用的XX工具/替代品'时实用性最高。",
+    triggerKeywords: ["工具", "在线", "推荐", "转换器", "免安装", "神器", "替代品"]
+  },
+  pros_cons: {
+    id: "pros_cons",
+    name: "优缺点 / 利弊权衡",
+    category: "analysis",
+    tags: ["优缺点", "利弊权衡", "优劣对比", "客观评价", "避坑指南", "决策参考", "中立测评"],
+    functionality: "双栏分色对比核心优势 (Pros) 与局限不足 (Cons)，提供客观中立的避坑与选型参考",
+    bestFor: ["产品体验评价、框架/语言选型、买前调研、利弊分析"],
+    dataRequirements: ["明确的优势点与不足点"],
+    selectionHeuristics: "用户犹豫不决或探寻某事物好坏时实用性最高。",
+    triggerKeywords: ["优缺点", "利弊", "好用吗", "值得买吗", "缺点", "优势", "评价"]
+  },
+  verdict_summary: {
+    id: "verdict_summary",
+    name: "选型裁决 / 推荐结论",
+    category: "analysis",
+    tags: ["最终裁决", "场景选型", "推荐建议", "购买指南", "专家结论", "终极PK", "决策大脑"],
+    functionality: "给出针对不同场景（如预算有限、企业级、初学者）的权威推荐结论与决策建议",
+    bestFor: ["A和B选哪个、谁更好用、购买建议、最终决策"],
+    dataRequirements: ["分场景推荐建议", "权威裁决说明"],
+    selectionHeuristics: "用户直接发问'哪个好/买哪个'时实用性最高。",
+    triggerKeywords: ["选哪个", "买哪个", "推荐哪个", "谁更好", "pk", "裁决"]
+  },
+  parameter_matrix: {
+    id: "parameter_matrix",
+    name: "参数矩阵 / 规格对比",
+    category: "analysis",
+    tags: ["参数表格", "规格对比", "性能基准", "指标矩阵", "横向对比", "数据表格", "维度打分"],
+    functionality: "结构化二维多维对比表格，逐项对齐核心参数、技术指标、配置规格与测试基准",
+    bestFor: ["多产品/型号/技术规格参数横向比对、配置表查询"],
+    dataRequirements: ["横向对比项", "关键参数指标"],
+    selectionHeuristics: "用户对比多个型号或技术参数时实用性最高。",
+    triggerKeywords: ["参数", "配置对比", "规格", "基准测试", "benchmark", "对比表"]
+  },
+  timeline: {
+    id: "timeline",
+    name: "时间线 / 版本沿革",
+    category: "analysis",
+    tags: ["发展历程", "版本历史", "演进路线", "大事件", "路线图", "历史沿革", "时间轴"],
+    functionality: "时间轴垂直串联历史版本、关键发布节点、演进里程碑或未来规划路线图",
+    bestFor: ["技术发展历史、产品演进路线、大事件回顾、发版历程"],
+    dataRequirements: ["时间节点", "事件标题与描述"],
+    selectionHeuristics: "查询历史、发展史或演进过程时实用性最高。",
+    triggerKeywords: ["发展史", "历史", "时间线", "演进", "历程", "版本历史", "路线图"]
+  },
+  travel_itinerary: {
+    id: "travel_itinerary",
+    name: "行程规划 / 攻略助手",
+    category: "action",
+    tags: ["旅游攻略", "行程路线", "景点规划", "出行门票", "预算清单", "路线指南", "打卡地图"],
+    functionality: "分天数规划游玩路线、景点地图、门票建议与出行预算明细",
+    bestFor: ["旅游攻略、几日游路线、景点推荐、出行预算"],
+    dataRequirements: ["天数或地点规划", "交通住宿景点信息"],
+    selectionHeuristics: "用户查询旅游行程与出行规划时实用性最高。",
+    triggerKeywords: ["旅游攻略", "行程", "路线", "自驾", "几日游", "门票", "景点"]
+  },
+  quote_dossier: {
+    id: "quote_dossier",
+    name: "观点汇编 / 名家言论",
+    category: "analysis",
+    tags: ["名家观点", "权威言论", "多方评语", "引文档案", "争议讨论", "舆论风向"],
+    functionality: "汇集行业专家、名家观点与多方争议言论引用，标注文献出处与人物背景",
+    bestFor: ["人物评价、行业争论、专家访谈、权威引用查询"],
+    dataRequirements: ["名言/观点内容", "发言人/作者", "出处信源"],
+    selectionHeuristics: "用户探寻业界观点与多方争议时实用性最高。",
+    triggerKeywords: ["名言", "观点", "评价", "言论", "争议", "怎么看"]
+  }
+};
+
+/**
+ * 格式化输出给 LLM Agent 的小组件与标签提示词指导 (Prompt Guidance Section)
+ */
+export function formatAgentWidgetGuidancePrompt(): string {
+  const officialSection = Object.values(OFFICIAL_WIDGET_PROFILES)
+    .map(p => `• [官方组件] ${p.name} (id: "${p.id}"):
+    - 标签: [${p.tags.join(", ")}]
+    - 核心功能: ${p.functionality}
+    - 最适合场景: ${p.bestFor.join("; ")}
+    - 实用性准则: ${p.selectionHeuristics}`)
+    .join("\n");
+
+  const archetypeSection = Object.values(ARCHETYPE_PROFILES)
+    .map(p => `• [业务卡片] ${p.name} (archetype: "${p.id}"):
+    - 标签: [${p.tags.join(", ")}]
+    - 核心功能: ${p.functionality}
+    - 最适合场景: ${p.bestFor.join("; ")}
+    - 实用性准则: ${p.selectionHeuristics}`)
+    .join("\n");
+
+  return `### 小组件与业务卡片标签库及实用性选型准则 (Widget & Archetype Selection Guide)
+请结合用户的检索词、意图与信源数据特征，对比下列组件的标签、功能与实用性准则，优先选取能最大化解决用户核心问题、信息密度最高、最实用的组件集合：
+
+${officialSection}
+
+${archetypeSection}
+`;
+}
+

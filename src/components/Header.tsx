@@ -2,7 +2,7 @@ import React from "react";
 import { GoogleLogo } from "./GoogleLogo.js";
 import { SearchBar } from "./SearchBar.js";
 import { Button } from "./ui/button.js";
-import { Sun, Moon, History, Maximize2, Minimize2 } from "lucide-react";
+import { Sun, Moon, History, Maximize2, Minimize2, LayoutGrid } from "lucide-react";
 
 interface HeaderProps {
   darkMode: boolean;
@@ -19,6 +19,8 @@ interface HeaderProps {
   onSelectTab?: (tab: "summary" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
   isWideCanvas?: boolean;
   onToggleCanvasWidth?: () => void;
+  onOpenWidgetGrid?: () => void;
+  isGridActive?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,11 +36,13 @@ export const Header: React.FC<HeaderProps> = ({
   onSearch,
   isLoading = false,
   isWideCanvas = true,
-  onToggleCanvasWidth
+  onToggleCanvasWidth,
+  onOpenWidgetGrid,
+  isGridActive = false
 }) => {
   const modelShortName = selectedModel === "openrouter/free"
-    ? "Auto Free"
-    : (selectedModel.split("/").pop()?.replace(":free", "") || "Auto Free");
+    ? "OpenRouter 免费路由"
+    : (selectedModel.split("/").pop()?.replace(":free", "") || "OpenRouter 免费路由");
 
   return (
     <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-xl border-b border-border transition-colors">
@@ -65,15 +69,31 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Right: 快速操作。图标靠 lucide 默认 currentColor 跟随按钮前景色，
-            不再有滑动 knob、双色日月与状态点。 */}
+        {/* Right: 快速操作。图标靠 lucide 默认 currentColor 跟随按钮前景色 */}
         <div className="flex items-center gap-2">
-          <span
-            className="hidden md:inline text-xs text-muted-foreground truncate max-w-[160px] select-none"
-            title={`当前推理模型：${modelShortName}（免费额度）`}
+          {onOpenWidgetGrid && (
+            <Button
+              variant={isGridActive ? "default" : "outline"}
+              size="sm"
+              onClick={onOpenWidgetGrid}
+              className="h-8 gap-1.5 text-xs font-medium"
+              title="显示搜索引擎小组件网格 (Live Tile 12 栅格全景视图)"
+            >
+              <LayoutGrid className="size-3.5" />
+              <span className="hidden sm:inline">小组件网格</span>
+            </Button>
+          )}
+
+          <a
+            href="https://openrouter.ai/collections/free-models"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted border border-border/60 rounded-full transition-colors truncate max-w-[200px]"
+            title={`当前 AI 大模型 API 来源：OpenRouter 免费模型路由 (${selectedModel})\n点击查看 OpenRouter 官方免费模型集 (https://openrouter.ai/collections/free-models)`}
           >
-            {modelShortName}
-          </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="truncate">{modelShortName}</span>
+          </a>
 
           {onToggleCanvasWidth && (
             <Button

@@ -1,0 +1,51 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "related_links",
+  "name": "官网跳转",
+  "version": "1.0.0",
+  "description": "官网跳转直达，包含网站名称、跳转按钮与简介",
+  "category": "portal",
+  "tags": [
+    "官方入口",
+    "官网直达",
+    "多链接",
+    "权威信源",
+    "导航",
+    "外部跳转",
+    "防钓鱼"
+  ],
+  "agentHint": {
+    "functionality": "智能识别并提取检索结果中的权威官方网站、产品主页与开发文档入口，提供卡片式快速跳转通道",
+    "bestFor": [
+      "查询包含明确产品、品牌、机构或网站名称",
+      "寻找正版下载源、官方服务入口、登录后台或权威文档",
+      "帮助用户快速识别官方直链并防范钓鱼仿冒网站"
+    ],
+    "dataRequirements": [
+      "检索结果中包含权威有效 URL",
+      "站点名称与简短功能描述"
+    ],
+    "selectionHeuristics": "当搜索词涉及品牌、软件名、在线平台或寻找入口直达时实用性最高，可帮助用户零障碍一键直达目标站点。",
+    "triggerKeywords": [
+      "官网",
+      "官方网站",
+      "入口",
+      "登录",
+      "下载",
+      "主页",
+      "文档",
+      "平台"
+    ]
+  },
+  "icon": "ExternalLink",
+  "grid": {
+    "defaultSize": "medium",
+    "supportedSizes": ["small", "medium", "large", "wide", "full"],
+    "ratio": "4:3",
+    "minSpan": 4
+  },
+  "theme": {
+    "accentColor": "#0ea5e9",
+    "flipAnimation": "3d-flip"
+  }
+}

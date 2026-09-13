@@ -366,7 +366,6 @@ export const WidgetSchemaRenderer: React.FC<SchemaRendererProps> = ({ schema, co
     <IOSWidget
       title={schema.name}
       subtitle={schema.description}
-      badge={<Badge variant="secondary">AI 动态模组</Badge>}
       size={context.size}
       onResize={context.onResize}
     >

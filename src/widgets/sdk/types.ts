@@ -9,6 +9,25 @@ export type { WidgetPlannedSize, ResultWidgetKey };
 export type WidgetCategoryType = "synthesis" | "analysis" | "action" | "portal" | "custom";
 
 /**
+ * Agent 提示词与实用性配置契约 (Widget Agent Prompt Hint & Practicality Profile)
+ * 供 LLM Agent 结合用户搜索词、意图与信源数据特征，智能研判并选取实用性最高的组件
+ */
+export interface WidgetAgentPromptHint {
+  /** 核心功能与呈现形式概述 */
+  functionality: string;
+  /** 最适用的检索意图与场景描述 */
+  bestFor: string[];
+  /** 要求检索结果或底层数据具备的特征（例如包含版本号、官方网址、步骤列表、对比维度等） */
+  dataRequirements?: string[];
+  /** Agent 选取该组件的实用性启发式准则 (Practicality Heuristics) */
+  selectionHeuristics: string;
+  /** 推荐的触发关键词或意图标签 */
+  triggerKeywords?: string[];
+  /** 不推荐选取的反模式或互斥场景 */
+  antiPatterns?: string[];
+}
+
+/**
  * 结构化声明式组件树节点 (Declarative Component Tree Nodes)
  * Agent 输出纯 JSON，杜绝 AI 输出不可控 HTML/JSX 带来的 XSS 隐患与样式污染
  */
@@ -233,6 +252,10 @@ export interface WidgetModule<TData = any> {
   version: string;
   description?: string;
   category?: WidgetCategoryType;
+  /** 语义与功能标签列表 (Tags)，如 ["AI回答", "全网总结", "深度要点"]，供 Agent 结合检索内容智能选取 */
+  tags?: string[];
+  /** Agent 实用性提示词与底层属性定义 */
+  agentHint?: WidgetAgentPromptHint;
   icon?: React.ComponentType<{ className?: string }> | string;
   
   // 尺寸契约：一律使用「磁贴宽度档位 TileSize」口径 ——

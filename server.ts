@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { runAgentTeam } from "./server/agentTeam.js";
+import { runSearchAgent } from "./server/agent.js";
 import { AVAILABLE_FREE_MODELS } from "./server/openrouter.js";
 import { searchAndRankOnce } from "./server/retrievalAgent.js";
 import { SUPPORTED_LANGUAGES } from "./server/language.js";
@@ -36,8 +36,6 @@ app.get("/api/config", (req, res) => {
 });
 
 // 搜索端点：与主链路（/api/agent/*）共用同一套「检索 + 相关性重排」口径。
-// 旧实现直接返回 searchSearxng 的原始拼接结果（无排序、无归一化去重、无垃圾剔除），
-// 与主链路的结果质量脱节 —— 同一个查询换个端点就换一套质量，这本身就是"不精准"。
 app.get("/api/search", async (req, res) => {
   try {
     const q = req.query.q as string;
@@ -106,9 +104,9 @@ app.get("/api/agent/stream", async (req, res) => {
   });
 
   try {
-    sendEvent("status", { message: "AgentTeam 多智能体协作组已就绪，正在并发调度..." });
+    sendEvent("status", { message: "智能搜索 Agent 已启动，正在执行检索分析与小组件规划..." });
 
-    const result = await runAgentTeam({
+    const result = await runSearchAgent({
       query: query.trim(),
       model,
       openRouterApiKey: apiKey,
@@ -117,16 +115,13 @@ app.get("/api/agent/stream", async (req, res) => {
       enableDeepSearch,
       onStepProgress: (currentStep, allSteps) => {
         sendEvent("step", { currentStep, allSteps });
-      },
-      onTeamProgress: (agentTeam) => {
-        sendEvent("team_update", { agentTeam });
       }
     });
 
     sendEvent("complete", result);
   } catch (error: any) {
-    console.error("AgentTeam error in SSE:", error);
-    sendEvent("error", { message: error.message || "AgentTeam 协作执行过程发生异常" });
+    console.error("Search Agent error in SSE:", error);
+    sendEvent("error", { message: error.message || "搜索 Agent 执行过程发生异常" });
   } finally {
     clearInterval(keepAliveInterval);
     if (!res.writableEnded) {
@@ -143,7 +138,7 @@ app.post(["/api/agent/run", "/api/agent/synthesize"], async (req, res) => {
       return res.status(400).json({ error: "缺少搜索关键词" });
     }
 
-    const result = await runAgentTeam({
+    const result = await runSearchAgent({
       query: query.trim(),
       model: cleanParam(model),
       openRouterApiKey: cleanParam(apiKey),

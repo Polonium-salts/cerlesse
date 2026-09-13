@@ -294,7 +294,12 @@ export async function planWidgetLayout(
     ...baseStrategy.componentOrder.filter((k) => enabledKeys.includes(k)),
     ...enabledKeys.filter((k) => !baseStrategy.componentOrder.includes(k))
   ];
-  const safeOrder = baseOrder.length > 0 ? baseOrder : [...enabledKeys];
+  let safeOrder = baseOrder.length > 0 ? baseOrder : [...enabledKeys];
+
+  // 默认保持官网跳转组件在最上方
+  if (safeOrder.includes("related_links")) {
+    safeOrder = ["related_links", ...safeOrder.filter((k) => k !== "related_links")];
+  }
 
   // 2.2 跨度求解：优先采纳小组件构建 Agent 的真实尺寸意图，其次回落基线栅格
   const plannedSpans: Partial<Record<ResultWidgetKey, number>> = {};
@@ -315,15 +320,22 @@ export async function planWidgetLayout(
       baseStrategy.customWidgetSpans?.[key] ??
       baseStrategy.gridConfig?.[key]?.colSpanLg ??
       SIZE_TO_SPAN[String(widgetPlan?.widgets?.find((w: any) => (typeof w === "string" ? w : w?.type) === key)?.size)] ??
-      6;
+      (key === "related_links" ? 6 : key === "ai_answer" ? 6 : 6);
     spans[key] = normalizeWidgetSpan(preferred);
   }
 
-  let emphasized: ResultWidgetKey = enabledKeys.includes(baseStrategy.emphasizedWidget)
-    ? baseStrategy.emphasizedWidget
-    : safeOrder[0];
-  // 焦点组件必须足够醒目，否则 12 栅格桌面会出现"群龙无首"
-  spans[emphasized] = (spans[emphasized] ?? 6) >= 8 ? 12 : 8;
+  // 确保 related_links 与 ai_answer 跨度均为 6（各占半宽），在 12 栅格中并排或自适应呈现
+  if (spans.related_links !== undefined && spans.related_links > 6) {
+    spans.related_links = 6;
+  }
+  if (spans.ai_answer !== undefined && spans.ai_answer > 6) {
+    spans.ai_answer = 6;
+  }
+
+  let emphasized: ResultWidgetKey = safeOrder.includes("related_links")
+    ? "related_links"
+    : (enabledKeys.includes(baseStrategy.emphasizedWidget) ? baseStrategy.emphasizedWidget : safeOrder[0]);
+  spans[emphasized] = 6;
 
   // ---------------------------------------------------------------
   // 相位 3：大模型语义精修（可降级，不影响正确性）

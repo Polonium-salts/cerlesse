@@ -103,26 +103,26 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
       id={id}
       onClick={onClick}
       className={cn(
-        // shadcn/ui Card 语汇：rounded-xl + bg-card + ring-1 ring-foreground/10，无色相、无重投影
-        "group/card relative flex flex-col overflow-hidden rounded-xl bg-card text-card-foreground text-sm ring-1 ring-foreground/10 transition-shadow",
-        onClick && "cursor-pointer hover:ring-foreground/20",
+        // shadcn/ui Card 语汇：加大圆角 rounded-2xl md:rounded-3xl + bg-card + border border-border/80 + shadow-xs 纯单色现代感
+        "group/card relative flex flex-col overflow-hidden rounded-2xl md:rounded-3xl border border-border/80 bg-card text-card-foreground text-sm shadow-xs transition-all duration-200",
+        onClick && "cursor-pointer hover:border-foreground/20 hover:shadow-sm",
         className
       )}
     >
       {hasHeader && (
         <div
           className={cn(
-            "flex items-center justify-between gap-3 px-4 pt-4 pb-3",
-            isSmall && "px-3 pt-3 pb-2",
+            "flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5 border-b border-border/40 sm:px-5 sm:pt-4 sm:pb-3",
+            isSmall && "px-3 pt-2.5 pb-2",
             headerClassName
           )}
         >
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             {icon && (
               <span className={cn(
-                // shadcn 卡片标题不带图标底盒：裸图标、弱化为 muted-foreground
-                "flex items-center justify-center shrink-0 text-muted-foreground",
-                isSmall ? "w-3.5 h-3.5" : "w-4 h-4"
+                // shadcn 小组件预设图标盒：微圆角 bg-muted + 细微边框 + text-muted-foreground
+                "flex items-center justify-center shrink-0 rounded-xl bg-muted/70 text-muted-foreground border border-border/40 transition-colors group-hover/card:text-foreground",
+                isSmall ? "size-6 [&_svg]:size-3.5" : "size-7 [&_svg]:size-4"
               )}>
                 {icon}
               </span>
@@ -131,7 +131,7 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 {title && (
                   <h3 className={cn(
-                    "font-semibold leading-none tracking-tight truncate",
+                    "font-semibold leading-none tracking-tight text-foreground truncate",
                     isSmall ? "text-xs" : "text-sm"
                   )}>
                     {title}
@@ -164,8 +164,8 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
           // 底部渐隐只是最后兜底：正常路径下磁贴会先被撑到刚好容纳。
           // 内容区一律禁止滚动，装不下的部分宁可增高磁贴，也不缩小字号。
           "relative flex flex-1 min-h-0 flex-col overflow-hidden",
-          !noPadding && (isSmall ? "px-3 pb-3" : "px-4 pb-4"),
-          hasHeader && !noPadding && (isSmall ? "pt-0.5" : "pt-0"),
+          !noPadding && (isSmall ? "px-3 pb-3" : "px-4 pb-4 sm:px-5 sm:pb-5"),
+          hasHeader && !noPadding && (isSmall ? "pt-2" : "pt-3.5"),
           contentClassName
         )}
       >

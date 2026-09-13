@@ -30,6 +30,48 @@
       "enum": ["synthesis", "analysis", "action", "portal", "custom"],
       "description": "插件归类，决定其在插件市场中的分组"
     },
+    "tags": {
+      "type": "array",
+      "description": "语义与功能标签列表（如 [\"AI回答\", \"全网总结\", \"深度要点\"]），供 Agent 结合检索内容智能选取",
+      "items": {
+        "type": "string"
+      }
+    },
+    "agentHint": {
+      "type": "object",
+      "description": "底层属性与 Agent 提示词契约，定义小组件的功能、最适用场景、信源数据要求与实用性评价准则",
+      "required": ["functionality", "bestFor", "selectionHeuristics"],
+      "properties": {
+        "functionality": {
+          "type": "string",
+          "description": "核心功能与呈现形式概述"
+        },
+        "bestFor": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "最适用的检索意图与场景描述"
+        },
+        "dataRequirements": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "要求检索结果或底层数据具备的特征"
+        },
+        "selectionHeuristics": {
+          "type": "string",
+          "description": "Agent 选取该组件的实用性启发式准则"
+        },
+        "triggerKeywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "推荐触发关键词"
+        },
+        "antiPatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "不推荐选取的反模式或互斥场景"
+        }
+      }
+    },
     "icon": {
       "type": "string",
       "description": "lucide 图标名（如 Zap / Database）。仅接受 src/widgets/manifests/icons.ts 白名单内的名称，未命中会回落到默认图标。"

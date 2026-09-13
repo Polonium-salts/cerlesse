@@ -71,7 +71,6 @@ interface TileDesktopViewProps {
   isWideCanvas?: boolean;
   onOpenMarketplace: () => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onOpenForgeModal?: (sourceIds?: string[]) => void;
   onNavigateTab?: (tab: "bento" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
   onUpdateCard?: (updated: CustomCardData) => void;
   onDeleteCard?: (id: string) => void;
@@ -85,7 +84,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   activeResult,
   onOpenMarketplace,
   onExecuteSearch,
-  onOpenForgeModal,
   onNavigateTab,
   onUpdateCard,
   onDeleteCard
@@ -195,11 +193,9 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
           ? [...strategy.componentOrder] 
           : resolveDynamicCapabilityWidgets(strategy.intentType || "balanced"));
     const list = rawList.filter(Boolean);
-    if (customCards && customCards.length > 0 && !list.includes("custom_cards")) {
-      list.unshift("custom_cards");
-    }
-    return list;
-  }, [enabledWidgets, strategy.componentOrder, strategy.intentType, customCards]);
+    // 过滤掉未在注册中心登记的小组件（暂未加载的直接不加载）
+    return list.filter((k) => Boolean(resolveWidgetModule(String(k))));
+  }, [enabledWidgets, strategy.componentOrder, registryRevision]);
 
   // 2. 小组件排版 Agent 排版决策：磁贴宽度与视觉焦点一律以 Agent 决策单为准
   //    （排版 Agent 是"如何摆放"的唯一权威；用户手动调整优先级更高，见下方三级尺寸优先级）
@@ -254,8 +250,13 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       const keyStr = String(key);
       // 注：weather / stock 为历史遗留 ID，不在 ResultWidgetKey 联合类型内，故按字符串比较
       const module = resolveWidgetModule(keyStr);
+      // 暂未加载或未注册的小组件直接不加载
+      if (!module) continue;
       const isEmphasized = key === agentFocusKey || key === strategy.layoutPlan?.featured;
       let priority = (planned?.priority ?? 50) + (isEmphasized ? 50 : 0);
+      if (keyStr === "related_links") {
+        priority += 200; // 官网跳转组件默认保持在最上方
+      }
 
       // 尺寸四级优先级：
       //   用户自定义 > 小组件排版 Agent 栅格跨度 > 小组件自身固有宽度 > Planner 规划尺寸 > 兜底
@@ -314,9 +315,12 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       tileElRefs.current.forEach((el, id) => {
         const span = spanById.get(id);
         if (!span) return;
-        // 内容宿主带 overflow:hidden，其 scrollHeight 超出 clientHeight 的像素量
-        // 就是"内容还差多少没装下"；磁贴加高同样的量即恰好容纳。
-        const host = el.querySelector<HTMLElement>("[data-ios-content-host]");
+        // 内容宿主：优先匹配 data-ios-content-host，支持各类容器精准测量超出量
+        const host =
+          el.querySelector<HTMLElement>("[data-ios-content-host]") ||
+          el.querySelector<HTMLElement>("[data-tile-content-host]") ||
+          el.querySelector<HTMLElement>(".overflow-y-auto") ||
+          (el.querySelector<HTMLElement>(":scope > div > div") as HTMLElement | null);
         if (!host) return;
         const shortfall = host.scrollHeight - host.clientHeight;
         if (shortfall <= 2) return;
@@ -339,7 +343,14 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     return () => {
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [layoutSolution, contentMetrics, activeResult.query]);
+  }, [
+    layoutSolution,
+    contentMetrics,
+    activeResult.query,
+    activeResult.filteredResults,
+    activeResult.filteredResults?.length,
+    activeResult.executionTimeMs
+  ]);
 
   // 处理尺寸切换
   const handleResizeTile = (id: string, nextSize: TileSize) => {
@@ -402,27 +413,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     // 官方或已注册模块
     const widgetModule = resolveWidgetModule(item.id);
     if (!widgetModule) {
-      return (
-        <div
-          key={`${item.id}-${registryRevision}`}
-          className="p-4 rounded-xl bg-muted/40 border border-dashed border-border text-xs text-muted-foreground flex flex-col gap-2"
-        >
-          <span className="font-semibold text-foreground">
-            小组件「{getWidgetLabel(item.id as ResultWidgetKey)}」暂未加载
-          </span>
-          <span className="text-xs leading-relaxed">
-            模块 [{item.id}] 尚未登记到小组件注册中心，通常是该组件的模块文件导入失败所致。
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRecoverWidget}
-            className="self-start"
-          >
-            重新补全小组件
-          </Button>
-        </div>
-      );
+      // 暂未加载的小组件直接不加载
+      return null;
     }
 
     // 注入上下文操作
@@ -432,8 +424,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         ...(widgetModule.actions || {}),
         openMindMap: () => onNavigateTab?.("mindmap"),
         openComparison: () => onNavigateTab?.("comparison"),
-        openForgeModal: (sourceIds?: string[]) => onOpenForgeModal?.(sourceIds),
-        forgeCardFromSource: (sourceId: string) => onOpenForgeModal?.([sourceId]),
         reSearch: () => onExecuteSearch?.(activeResult.query, true)
       }
     };
@@ -588,15 +578,15 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
                   height: `${item.pixelHeight}px`,
                   alignSelf: "start"
                 }}
-                className="relative group flex flex-col min-w-0 overflow-hidden transition-all rounded-xl"
+                className="relative group flex flex-col min-w-0 overflow-hidden transition-all rounded-2xl md:rounded-3xl"
               >
-                {/* 磁贴卸载把手：比例与宽度均为组件固有属性，不提供任何调节入口 */}
+                {/* 磁贴卸载把手：右上角悬浮显现，避免遮挡标题与图标 */}
                 <Button
                   variant="ghost"
                   size="icon-xs"
                   onClick={(e) => { e.stopPropagation(); handleRemoveTile(item.id); }}
                   title="从桌面卸载此磁贴"
-                  className="absolute top-2.5 left-2.5 z-20 bg-card border border-border text-muted-foreground hover:text-destructive"
+                  className="absolute top-2.5 right-2.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-destructive rounded-xl shadow-xs"
                 >
                   <Trash2 />
                 </Button>

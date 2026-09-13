@@ -8,7 +8,6 @@ import {
   Check,
   Search,
   Layers,
-  Wand2,
   Trash2,
   Maximize2
 } from "lucide-react";
@@ -27,7 +26,6 @@ interface WidgetMarketplaceDrawerProps {
   customCards?: CustomCardData[];
   onAddTile: (id: string, size?: TileSize) => void;
   onRemoveTile: (id: string) => void;
-  onOpenForgeModal?: () => void;
 }
 
 const CATEGORIES: Array<{ id: string; label: string }> = [
@@ -35,8 +33,7 @@ const CATEGORIES: Array<{ id: string; label: string }> = [
   { id: "synthesis", label: "综合提炼" },
   { id: "analysis", label: "深入分析" },
   { id: "action", label: "快捷行动" },
-  { id: "portal", label: "权威存证" },
-  { id: "custom", label: "AI 专属定制" }
+  { id: "portal", label: "权威存证" }
 ];
 
 export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = ({
@@ -45,8 +42,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
   activeTileIds,
   customCards = [],
   onAddTile,
-  onRemoveTile,
-  onOpenForgeModal
+  onRemoveTile
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -265,20 +261,6 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
                   );
                 })
               )}
-            </div>
-
-            {/* 抽屉底部快捷触发区 */}
-            <div className="p-4 border-t border-border bg-muted/40 flex items-center justify-between gap-3">
-              <Button
-                onClick={() => {
-                  onOpenForgeModal?.();
-                  onClose();
-                }}
-                className="w-full"
-              >
-                <Wand2 />
-                <span>AI 动态锻造全新独有小组件</span>
-              </Button>
             </div>
           </motion.div>
         </div>

@@ -212,6 +212,24 @@ export interface WidgetDefinition {
 }
 
 export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
+  related_links: {
+    id: "related_links",
+    label: "相关多链接跳转",
+    iconName: "Compass",
+    defaultWidth: "half",
+    minColSpan: 6,
+    basePriority: 10,
+    category: "primary"
+  },
+  ai_answer: {
+    id: "ai_answer",
+    label: "AI 智能回答",
+    iconName: "Sparkles",
+    defaultWidth: "half",
+    minColSpan: 6,
+    basePriority: 9,
+    category: "primary"
+  },
   quick_answer: {
     id: "quick_answer",
     label: "即时答案速递",
@@ -378,36 +396,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
  * Dynamic Capability Resolver based on Task Intent (Intent -> Capability -> Widgets)
  * Eliminates static hardcoded fallback templates.
  */
-export function resolveDynamicCapabilityWidgets(intent: LayoutIntentType): ResultWidgetKey[] {
-  switch (intent) {
-    case "install":
-      return ["custom_cards", "actions_toolbox", "official_portal", "verification_checklist", "sources"];
-    case "tool_discovery":
-      return ["custom_cards", "comparison", "official_portal", "actions_toolbox", "sources"];
-    case "travel":
-      return ["custom_cards", "takeaways", "official_portal", "actions_toolbox", "sources"];
-    case "troubleshooting":
-      return ["actions_toolbox", "verification_checklist", "custom_cards", "sources"];
-    case "comparison":
-      return ["comparison", "custom_cards", "takeaways", "sources"];
-    case "architecture":
-      return ["mindmap", "custom_cards", "takeaways", "sources"];
-    case "official_portal":
-      return ["official_portal", "actions_toolbox", "custom_cards", "sources"];
-    case "code_tutorial":
-      return ["actions_toolbox", "custom_cards", "topic_digest", "sources"];
-    case "fact_check":
-      return ["verification_checklist", "custom_cards", "sources", "analytics_trend"];
-    case "news_trend":
-      return ["analytics_trend", "sources", "takeaways", "verification_checklist"];
-    case "quick_definition":
-      return ["quick_answer", "takeaways", "custom_cards", "sources"];
-    case "deep_research":
-      return ["takeaways", "mindmap", "custom_cards", "topic_digest", "sources"];
-    case "balanced":
-    default:
-      return ["quick_answer", "custom_cards", "takeaways", "sources", "actions_toolbox"];
-  }
+export function resolveDynamicCapabilityWidgets(_intent?: LayoutIntentType): ResultWidgetKey[] {
+  return ["related_links", "ai_answer"];
 }
 
 /**
@@ -419,37 +409,10 @@ export function auditLayoutGuardrail(intent: LayoutIntentType, enabledWidgets: R
   remediatedWidgets: ResultWidgetKey[];
   violations: string[];
 } {
-  const violations: string[] = [];
-  const currentSet = new Set(enabledWidgets);
-
-  const isActionIntent = ["install", "tool_discovery", "travel", "troubleshooting", "code_tutorial"].includes(intent);
-  const hasActionWidget = enabledWidgets.some((k) => WIDGET_CAPABILITY_REGISTRY[k]?.isActionOriented);
-
-  if (isActionIntent && !hasActionWidget) {
-    violations.push(`Intent [${intent}] requires interactive/action capabilities but none were found.`);
-    currentSet.add("custom_cards");
-    currentSet.add("actions_toolbox");
-  }
-
-  if (intent === "install" && !currentSet.has("actions_toolbox") && !currentSet.has("custom_cards")) {
-    violations.push("Install intent missing action_toolbox or custom_cards capability.");
-    currentSet.add("actions_toolbox");
-  }
-
-  if (intent === "tool_discovery" && !currentSet.has("custom_cards") && !currentSet.has("comparison")) {
-    violations.push("Tool discovery intent missing custom_cards or comparison capability.");
-    currentSet.add("custom_cards");
-  }
-
-  if (intent === "travel" && !currentSet.has("custom_cards") && !currentSet.has("takeaways")) {
-    violations.push("Travel intent missing custom_cards or takeaways capability.");
-    currentSet.add("custom_cards");
-  }
-
   return {
-    passed: violations.length === 0,
-    remediatedWidgets: Array.from(currentSet),
-    violations
+    passed: true,
+    remediatedWidgets: enabledWidgets,
+    violations: []
   };
 }
 
@@ -711,420 +674,22 @@ export function createLayoutPlan(params: {
   signals: ContentSignals;
   targetLanguage?: string;
 }): LayoutPlan {
-  const { intent, signals, targetLanguage } = params;
+  const { intent, targetLanguage } = params;
   const isEn = targetLanguage === "en";
 
-  const intentLabels: Record<LayoutIntentType, { zh: string; en: string }> = {
-    install: { zh: "安装部署与下载优先", en: "Installation & Download Hub" },
-    tool_discovery: { zh: "实用工具与在线体验优先", en: "Tool Discovery & Utility" },
-    travel: { zh: "旅游攻略与行程路线优先", en: "Travel Guide & Itinerary" },
-    troubleshooting: { zh: "报错排查与故障修复优先", en: "Troubleshooting & Fix" },
-    comparison: { zh: "多维对比矩阵优先", en: "Comparison Matrix Priority" },
-    architecture: { zh: "知识架构导图优先", en: "Knowledge Architecture Priority" },
-    official_portal: { zh: "官方认证门户优先", en: "Official Portal Priority" },
-    fact_check: { zh: "事实核查与存证优先", en: "Fact Check & Verification" },
-    code_tutorial: { zh: "代码与实操教程优先", en: "Code Tutorial & Actions" },
-    news_trend: { zh: "时事资讯与趋势优先", en: "News & Trend Analysis" },
-    quick_definition: { zh: "简明速答与概念速查", en: "Quick Definition & Answer" },
-    deep_research: { zh: "深度综合研报优先", en: "Deep Research Report" },
-    balanced: { zh: "标准清晰阅读流", en: "Clean Reading Flow" }
-  };
-
-  const intentLabel = isEn ? (intentLabels[intent]?.en || "Adaptive Search Layout") : (intentLabels[intent]?.zh || "智能自适应布局");
-
-  // Determine standard candidate reading order per intent
-  let rawOrder: ResultWidgetKey[] = [];
-  let featuredWidget: ResultWidgetKey = "quick_answer";
-  const widths: Partial<Record<ResultWidgetKey, WidgetSemanticWidth>> = {};
-
-  switch (intent) {
-    case "install":
-      featuredWidget = "actions_toolbox";
-      rawOrder = [
-        "custom_cards",
-        "actions_toolbox",
-        "official_portal",
-        "verification_checklist",
-        "quick_answer",
-        "takeaways",
-        "sources",
-        "fast_chat",
-        "mobile_qr",
-        "followup"
-      ];
-      widths.custom_cards = "full";
-      widths.actions_toolbox = "full";
-      widths.official_portal = "half";
-      widths.verification_checklist = "half";
-      widths.quick_answer = "full";
-      widths.takeaways = "half";
-      widths.sources = "full";
-      widths.fast_chat = "half";
-      widths.mobile_qr = "compact";
-      widths.followup = "half";
-      break;
-
-    case "tool_discovery":
-      featuredWidget = "custom_cards";
-      rawOrder = [
-        "custom_cards",
-        "comparison",
-        "official_portal",
-        "actions_toolbox",
-        "quick_answer",
-        "takeaways",
-        "sources",
-        "fast_chat",
-        "followup"
-      ];
-      widths.custom_cards = "full";
-      widths.comparison = "full";
-      widths.official_portal = "half";
-      widths.actions_toolbox = "half";
-      widths.quick_answer = "full";
-      widths.takeaways = "wide";
-      widths.sources = "full";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      break;
-
-    case "travel":
-      featuredWidget = "custom_cards";
-      rawOrder = [
-        "custom_cards",
-        "takeaways",
-        "official_portal",
-        "actions_toolbox",
-        "quick_answer",
-        "sources",
-        "mobile_qr",
-        "fast_chat",
-        "followup"
-      ];
-      widths.custom_cards = "full";
-      widths.takeaways = "wide";
-      widths.official_portal = "half";
-      widths.actions_toolbox = "half";
-      widths.quick_answer = "full";
-      widths.sources = "full";
-      widths.mobile_qr = "compact";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      break;
-
-    case "troubleshooting":
-      featuredWidget = "actions_toolbox";
-      rawOrder = [
-        "actions_toolbox",
-        "verification_checklist",
-        "custom_cards",
-        "quick_answer",
-        "takeaways",
-        "sources",
-        "fast_chat",
-        "followup"
-      ];
-      widths.actions_toolbox = "full";
-      widths.verification_checklist = "wide";
-      widths.custom_cards = "full";
-      widths.quick_answer = "full";
-      widths.takeaways = "half";
-      widths.sources = "full";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      break;
-
-    case "comparison":
-      featuredWidget = "comparison";
-      rawOrder = [
-        "comparison",
-        "custom_cards",
-        "quick_answer",
-        "takeaways",
-        "sources",
-        "actions_toolbox",
-        "fast_chat",
-        "topic_digest",
-        "verification_checklist",
-        "analytics_trend",
-        "followup",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.comparison = "full";
-      widths.custom_cards = "full";
-      widths.quick_answer = "full";
-      widths.takeaways = "wide";
-      widths.sources = "full";
-      widths.actions_toolbox = "half";
-      widths.fast_chat = "half";
-      widths.topic_digest = "half";
-      widths.verification_checklist = "half";
-      widths.analytics_trend = "half";
-      widths.followup = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-
-    case "architecture":
-      featuredWidget = "mindmap";
-      rawOrder = [
-        "mindmap",
-        "custom_cards",
-        "quick_answer",
-        "takeaways",
-        "sources",
-        "actions_toolbox",
-        "fast_chat",
-        "topic_digest",
-        "followup",
-        "analytics_trend",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.mindmap = "full";
-      widths.custom_cards = "full";
-      widths.quick_answer = "full";
-      widths.takeaways = "wide";
-      widths.sources = "full";
-      widths.actions_toolbox = "half";
-      widths.fast_chat = "half";
-      widths.topic_digest = "half";
-      widths.followup = "half";
-      widths.analytics_trend = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-
-    case "official_portal":
-      featuredWidget = "official_portal";
-      rawOrder = [
-        "official_portal",
-        "actions_toolbox",
-        "custom_cards",
-        "quick_answer",
-        "takeaways",
-        "sources",
-        "mobile_qr",
-        "fast_chat",
-        "followup",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.official_portal = "full";
-      widths.actions_toolbox = "half";
-      widths.custom_cards = "full";
-      widths.quick_answer = "full";
-      widths.takeaways = "wide";
-      widths.sources = "full";
-      widths.mobile_qr = "compact";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-
-    case "fact_check":
-      featuredWidget = "verification_checklist";
-      rawOrder = [
-        "verification_checklist",
-        "quick_answer",
-        "custom_cards",
-        "takeaways",
-        "sources",
-        "analytics_trend",
-        "metrics_telemetry",
-        "actions_toolbox",
-        "fast_chat",
-        "followup",
-        "agent_workflow"
-      ];
-      widths.verification_checklist = "wide";
-      widths.quick_answer = "full";
-      widths.custom_cards = "full";
-      widths.takeaways = "half";
-      widths.sources = "full";
-      widths.analytics_trend = "half";
-      widths.metrics_telemetry = "compact";
-      widths.actions_toolbox = "half";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      widths.agent_workflow = "half";
-      break;
-
-    case "code_tutorial":
-      featuredWidget = "actions_toolbox";
-      rawOrder = [
-        "actions_toolbox",
-        "custom_cards",
-        "quick_answer",
-        "takeaways",
-        "topic_digest",
-        "sources",
-        "fast_chat",
-        "verification_checklist",
-        "followup",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.actions_toolbox = "full";
-      widths.custom_cards = "full";
-      widths.quick_answer = "full";
-      widths.takeaways = "half";
-      widths.topic_digest = "half";
-      widths.sources = "full";
-      widths.fast_chat = "half";
-      widths.verification_checklist = "half";
-      widths.followup = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-
-    case "news_trend":
-      featuredWidget = "analytics_trend";
-      rawOrder = [
-        "analytics_trend",
-        "quick_answer",
-        "custom_cards",
-        "takeaways",
-        "sources",
-        "verification_checklist",
-        "actions_toolbox",
-        "fast_chat",
-        "topic_digest",
-        "followup",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.analytics_trend = "half";
-      widths.quick_answer = "full";
-      widths.custom_cards = "full";
-      widths.takeaways = "half";
-      widths.sources = "full";
-      widths.verification_checklist = "half";
-      widths.actions_toolbox = "half";
-      widths.fast_chat = "half";
-      widths.topic_digest = "half";
-      widths.followup = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-
-    case "quick_definition":
-      featuredWidget = "quick_answer";
-      rawOrder = [
-        "quick_answer",
-        "takeaways",
-        "custom_cards",
-        "sources",
-        "actions_toolbox",
-        "fast_chat",
-        "followup"
-      ];
-      widths.quick_answer = "full";
-      widths.takeaways = "wide";
-      widths.custom_cards = "full";
-      widths.sources = "full";
-      widths.actions_toolbox = "half";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      break;
-
-    case "deep_research":
-      featuredWidget = "takeaways";
-      rawOrder = [
-        "takeaways",
-        "mindmap",
-        "custom_cards",
-        "quick_answer",
-        "topic_digest",
-        "sources",
-        "actions_toolbox",
-        "analytics_trend",
-        "verification_checklist",
-        "fast_chat",
-        "followup",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.takeaways = "full";
-      widths.mindmap = "full";
-      widths.custom_cards = "full";
-      widths.quick_answer = "full";
-      widths.topic_digest = "half";
-      widths.sources = "full";
-      widths.actions_toolbox = "half";
-      widths.analytics_trend = "half";
-      widths.verification_checklist = "half";
-      widths.fast_chat = "half";
-      widths.followup = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-
-    case "balanced":
-    default:
-      featuredWidget = "quick_answer";
-      rawOrder = [
-        "quick_answer",
-        "custom_cards",
-        "takeaways",
-        "sources",
-        "actions_toolbox",
-        "fast_chat",
-        "topic_digest",
-        "followup",
-        "analytics_trend",
-        "verification_checklist",
-        "metrics_telemetry",
-        "agent_workflow"
-      ];
-      widths.quick_answer = "full";
-      widths.custom_cards = "full";
-      widths.takeaways = "wide";
-      widths.sources = "full";
-      widths.actions_toolbox = "half";
-      widths.fast_chat = "half";
-      widths.topic_digest = "half";
-      widths.followup = "half";
-      widths.analytics_trend = "half";
-      widths.verification_checklist = "half";
-      widths.metrics_telemetry = "compact";
-      widths.agent_workflow = "half";
-      break;
-  }
-
-  // Filter out ONLY widgets that have unsatisfied data requirements
-  const enabledKeys = rawOrder.filter((k) => {
-    const reg = WIDGET_REGISTRY[k];
-    if (!reg) return false;
-    if (reg.requiresData && !reg.requiresData(signals)) {
-      return false;
-    }
-    return true;
-  });
-
-  // Safe Fallback: Ensure critical base widgets are always present
-  if (!enabledKeys.includes("quick_answer")) enabledKeys.push("quick_answer");
-  if (!enabledKeys.includes("sources") && signals.sourceCount > 0) enabledKeys.push("sources");
-  if (!enabledKeys.includes("takeaways") && signals.takeawayCount > 0) enabledKeys.splice(1, 0, "takeaways");
-
-  // Capability-driven fallback resolution based on intent
-  const finalEnabled = enabledKeys.length > 0 ? enabledKeys : resolveDynamicCapabilityWidgets(intent);
-
-  const budget = getDynamicBudget(intent);
+  const intentLabel = isEn ? "Official Portal Jump" : "官网跳转直达";
 
   return {
     intent,
     intentLabel,
-    order: finalEnabled,
-    enabled: finalEnabled,
-    featured: featuredWidget,
-    width: widths,
+    order: ["related_links", "ai_answer"],
+    enabled: ["related_links", "ai_answer"],
+    featured: "related_links",
+    width: { related_links: "half", ai_answer: "half" },
     budget: {
-      maxPrimary: budget.maxPrimarySections,
-      maxSecondary: budget.maxSecondarySections,
-      totalActive: finalEnabled.length
+      maxPrimary: 2,
+      maxSecondary: 0,
+      totalActive: 2
     }
   };
 }

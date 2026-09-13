@@ -3,6 +3,7 @@ import { callOpenRouterChat, resolveOpenRouterApiKey } from "./openrouter.js";
 import {
   CAPABILITY_PROMPT_ENUM,
   normalizeCapabilities,
+  formatAgentWidgetGuidancePrompt,
   type CanonicalCapability
 } from "../src/widgets/capabilityTaxonomy.js";
 
@@ -331,7 +332,9 @@ export async function analyzeWidgetIntent(options: {
 
   try {
     const systemPrompt = `你是一个精准的桌面小组件意图分析专家 (Widget Intent Analyzer)。
-根据用户的搜索词和初步检索摘要，分析用户的终极需求类型、核心实体目标以及完成该任务需要的功能组件能力。
+根据用户的搜索词和初步检索摘要，分析用户的终极需求类型、核心实体目标以及完成该任务需要的功能组件能力与最佳小组件组合。
+
+${formatAgentWidgetGuidancePrompt()}
 
 【可选 intent 类型】：
 - "software_download": 软件/工具/游戏下载、安装包、客户端 (例如: "下载 Photoshop", "VSCode安装", "Blender最新版")
@@ -352,7 +355,7 @@ export async function analyzeWidgetIntent(options: {
   "entity": string (核心主体名，如 "Photoshop", "Blender", "VSCode", "上海", "Python"),
   "goal": string (用户终极目标，如 "download", "query_weather", "study", "compare"),
   "needs": string[] (用户所需原子需求，取值同上，最多 4 项),
-  "requiredCapabilities": string[] (从下方能力枚举中挑选 4~6 项与该任务最相关的能力),
+  "requiredCapabilities": string[] (结合组件标签库与实用性选型准则，挑选 4~6 项最实用、契合度最高的能力),
   "suggestedLayout": "composite_card" | "tile_cluster" | "single",
   "confidence": number (0.0 - 1.0)
 }
