@@ -248,7 +248,6 @@ export const CAPABILITY_ALIASES: Record<string, CanonicalCapability> = {
   expert_consensus: "expert_opinion",
   data_table: "compare_table",
   trend_chart: "trend_signals",
-  quick_answer: "direct_answer",
   direct_answers: "direct_answer",
   summary: "summary_points",
   sources: "literature_sources",

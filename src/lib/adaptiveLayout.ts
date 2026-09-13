@@ -5,12 +5,18 @@ import {
   SearchSynthesisResult,
   WidgetGridPlacement,
   WidgetStatusDetail,
-  WidgetSemanticWidth,
+  WidgetPlan,
   LayoutPlan,
   LayoutBudget,
   AutoFillGapsMode,
   ALL_RESULT_WIDGET_KEYS
 } from "../types.js";
+import {
+  TileWidth,
+  spanOfTileWidth,
+  tileWidthFromSpan,
+  normalizeTileWidth
+} from "./tileLayoutEngine.js";
 
 export interface PresetLayoutOption {
   id: LayoutIntentType;
@@ -155,11 +161,6 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["deep_research", "quick_definition", "travel", "comparison", "balanced"],
     isActionOriented: false
   },
-  quick_answer: {
-    capabilities: ["instant_verdict", "definition_snippet"],
-    intentFit: ["quick_definition", "balanced", "explain" as any],
-    isActionOriented: false
-  },
   sources: {
     capabilities: ["evidence_chain", "citation_retrieval", "literature_archive"],
     intentFit: ["fact_check", "deep_research", "balanced", "official_portal", "install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "news_trend", "quick_definition", "architecture"],
@@ -204,8 +205,10 @@ export interface WidgetDefinition {
   id: ResultWidgetKey;
   label: string;
   iconName: string;
-  defaultWidth: WidgetSemanticWidth;
-  minColSpan: number; // 4, 6, 8, 12 in 12-col grid
+  /** 默认宽度档位（25 / 50 / 75 / 100，占 12 栅格的 3 / 6 / 9 / 12 列） */
+  width: TileWidth;
+  /** 最小宽度档位，供求解器收窄时的底线 */
+  minWidth: TileWidth;
   basePriority: number; // 1 to 10 (higher = higher in reading flow)
   category: "primary" | "secondary" | "analytical" | "utility";
   requiresData?: (signals: ContentSignals) => boolean;
@@ -216,8 +219,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "related_links",
     label: "相关多链接跳转",
     iconName: "Compass",
-    defaultWidth: "half",
-    minColSpan: 6,
+    width: 50,
+    minWidth: 25,
     basePriority: 10,
     category: "primary"
   },
@@ -225,26 +228,17 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "ai_answer",
     label: "AI 智能回答",
     iconName: "Sparkles",
-    defaultWidth: "half",
-    minColSpan: 6,
+    width: 50,
+    minWidth: 25,
     basePriority: 9,
-    category: "primary"
-  },
-  quick_answer: {
-    id: "quick_answer",
-    label: "即时答案速递",
-    iconName: "Zap",
-    defaultWidth: "half",
-    minColSpan: 6,
-    basePriority: 10,
     category: "primary"
   },
   takeaways: {
     id: "takeaways",
     label: "核心结论要点",
     iconName: "Sparkles",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 25,
+    minWidth: 25,
     basePriority: 9,
     category: "primary",
     requiresData: (s) => s.takeawayCount > 0
@@ -253,8 +247,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "comparison",
     label: "多维对比矩阵",
     iconName: "Scale",
-    defaultWidth: "wide",
-    minColSpan: 6,
+    width: 75,
+    minWidth: 50,
     basePriority: 8,
     category: "analytical",
     requiresData: (s) => s.comparisonRows > 0
@@ -263,8 +257,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "mindmap",
     label: "知识架构导图",
     iconName: "GitFork",
-    defaultWidth: "wide",
-    minColSpan: 6,
+    width: 75,
+    minWidth: 50,
     basePriority: 8,
     category: "analytical",
     requiresData: (s) => s.mindMapBranches > 0
@@ -273,8 +267,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "official_portal",
     label: "官方认证门户",
     iconName: "ShieldCheck",
-    defaultWidth: "half",
-    minColSpan: 6,
+    width: 50,
+    minWidth: 50,
     basePriority: 9,
     category: "primary",
     requiresData: (s) => s.hasOfficial
@@ -283,8 +277,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "sources",
     label: "文献信源库",
     iconName: "Database",
-    defaultWidth: "half",
-    minColSpan: 6,
+    width: 50,
+    minWidth: 50,
     basePriority: 8,
     category: "primary",
     requiresData: (s) => s.sourceCount > 0
@@ -293,8 +287,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "actions_toolbox",
     label: "快捷操作工具箱",
     iconName: "Wrench",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 7,
     category: "utility"
   },
@@ -302,8 +296,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "fast_chat",
     label: "智能追问对话",
     iconName: "MessageSquare",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 7,
     category: "utility"
   },
@@ -311,8 +305,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "topic_digest",
     label: "分面专题解析",
     iconName: "Layout",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 6,
     category: "secondary"
   },
@@ -320,8 +314,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "verification_checklist",
     label: "事实核查审计",
     iconName: "CheckCircle2",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 6,
     category: "analytical"
   },
@@ -329,8 +323,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "analytics_trend",
     label: "信源相关度分布",
     iconName: "TrendingUp",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 6,
     category: "analytical"
   },
@@ -338,8 +332,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "followup",
     label: "延伸探索建议",
     iconName: "Compass",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 6,
     category: "secondary",
     requiresData: (s) => s.followUpCount > 0
@@ -348,8 +342,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "metrics_telemetry",
     label: "检索度量",
     iconName: "Activity",
-    defaultWidth: "compact",
-    minColSpan: 4,
+    width: 25,
+    minWidth: 25,
     basePriority: 5,
     category: "utility"
   },
@@ -357,8 +351,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "mobile_qr",
     label: "复制本页链接",
     iconName: "Link2",
-    defaultWidth: "compact",
-    minColSpan: 4,
+    width: 25,
+    minWidth: 25,
     basePriority: 4,
     category: "utility",
     requiresData: (s) => s.hasOfficial
@@ -367,8 +361,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "agent_workflow",
     label: "Agent 任务分派",
     iconName: "Cpu",
-    defaultWidth: "half",
-    minColSpan: 4,
+    width: 50,
+    minWidth: 25,
     basePriority: 4,
     category: "utility"
   },
@@ -376,8 +370,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "ai_overview",
     label: "AI 深度研报",
     iconName: "FileText",
-    defaultWidth: "full",
-    minColSpan: 6,
+    width: 100,
+    minWidth: 50,
     basePriority: 3,
     category: "secondary"
   },
@@ -385,19 +379,91 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "custom_cards",
     label: "搜索定制独有组件",
     iconName: "Sparkles",
-    defaultWidth: "half",
-    minColSpan: 6,
+    width: 50,
+    minWidth: 50,
     basePriority: 8,
     category: "primary"
   }
 };
 
 /**
+ * 恒启用的阅读流锚点：官网直达入口与 AI 综合回答始终在桌面上。
+ * 其余小组件必须经「能力 + 意图 + 内容信号」三重校验后才能被自动选型。
+ */
+const ANCHOR_WIDGET_KEYS: ResultWidgetKey[] = ["related_links", "ai_answer"];
+
+/**
+ * 可由 Agent 自主启停的小组件清单（全部已在前端注册中心登记，能真正渲染）。
+ * 未登记为模块的 key（comparison / mindmap / sources …）即使被能力规划器提及，
+ * 也不会进入启用集 —— 启用无法渲染的组件只会浪费栅格。
+ */
+export const AUTO_SELECTABLE_WIDGET_KEYS: ResultWidgetKey[] = ["takeaways"];
+
+/**
+ * 语义意图 → 展示标签（排版决策单的对外说明文案）。
+ */
+const INTENT_LABELS: Record<LayoutIntentType, { zh: string; en: string }> = {
+  comparison: { zh: "对比评测优先", en: "Comparison Focus" },
+  architecture: { zh: "架构导图优先", en: "Architecture Map Focus" },
+  official_portal: { zh: "官网跳转直达", en: "Official Portal Jump" },
+  code_tutorial: { zh: "代码实操优先", en: "Code Tutorial Focus" },
+  fact_check: { zh: "事实核查优先", en: "Fact Check Focus" },
+  news_trend: { zh: "时事热点优先", en: "News & Trend Focus" },
+  quick_definition: { zh: "简明速答优先", en: "Quick Answer Focus" },
+  deep_research: { zh: "深度研报优先", en: "Deep Research Focus" },
+  install: { zh: "安装部署优先", en: "Install & Deploy Focus" },
+  tool_discovery: { zh: "实用工具优先", en: "Tool Discovery Focus" },
+  travel: { zh: "旅游攻略优先", en: "Travel Guide Focus" },
+  troubleshooting: { zh: "故障排查优先", en: "Troubleshooting Focus" },
+  balanced: { zh: "均衡阅读流", en: "Balanced Reading Flow" }
+};
+
+function buildIntentLabel(intent: LayoutIntentType, isEn: boolean): string {
+  const entry = INTENT_LABELS[intent];
+  if (!entry) return isEn ? "Clear Reading Flow" : "清晰搜索阅读流";
+  return isEn ? entry.en : entry.zh;
+}
+
+/**
+ * 能力选型求解器：从可自主启停的组件里，挑出本次任务真正该上桌的那些。
+ *
+ * 入选条件（满足其一）：
+ *   1. 内容信号满足组件的 `requiresData` 就绪条件，且其 intentFit 命中当前意图；
+ *   2. 小组件构建 Agent（WidgetPlan）已显式点名该组件。
+ * 硬门槛：`requiresData` 不就绪者一律出局，避免出现空壳磁贴。
+ */
+export function selectAgentWidgets(params: {
+  intent: LayoutIntentType;
+  signals: ContentSignals;
+  plannedKeys?: ResultWidgetKey[];
+}): ResultWidgetKey[] {
+  const planned = new Set((params.plannedKeys || []).map(String));
+
+  const chosen = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) => {
+    const def = WIDGET_REGISTRY[key];
+    if (def?.requiresData && !def.requiresData(params.signals)) return false;
+    const fitsIntent = WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;
+    return fitsIntent || planned.has(String(key));
+  });
+
+  // 构建 Agent 显式点名者优先，其次按组件基类优先级排序
+  return chosen.sort((a, b) => {
+    const pa = planned.has(String(a)) ? 1 : 0;
+    const pb = planned.has(String(b)) ? 1 : 0;
+    if (pa !== pb) return pb - pa;
+    return (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0);
+  });
+}
+
+/**
  * Dynamic Capability Resolver based on Task Intent (Intent -> Capability -> Widgets)
  * Eliminates static hardcoded fallback templates.
  */
-export function resolveDynamicCapabilityWidgets(_intent?: LayoutIntentType): ResultWidgetKey[] {
-  return ["related_links", "ai_answer"];
+export function resolveDynamicCapabilityWidgets(intent: LayoutIntentType = "balanced"): ResultWidgetKey[] {
+  const selectable = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) =>
+    WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false
+  );
+  return [...ANCHOR_WIDGET_KEYS, ...selectable];
 }
 
 /**
@@ -425,9 +491,9 @@ export function getWidgetIconName(key: ResultWidgetKey): string {
 }
 
 export const WIDTH_SPAN_OPTIONS: Array<{ span: number; label: string; shortLabel: string; percent: string }> = [
-  { span: 4, label: "紧凑/次级 (33% · 4格)", shortLabel: "紧凑 (4格)", percent: "33%" },
+  { span: 3, label: "窄栏 (25% · 3格)", shortLabel: "窄栏 (3格)", percent: "25%" },
   { span: 6, label: "半宽对齐 (50% · 6格)", shortLabel: "半宽 (6格)", percent: "50%" },
-  { span: 8, label: "主宽聚焦 (66% · 8格)", shortLabel: "主宽 (8格)", percent: "66%" },
+  { span: 9, label: "主宽聚焦 (75% · 9格)", shortLabel: "主宽 (9格)", percent: "75%" },
   { span: 12, label: "全宽整行 (100% · 12格)", shortLabel: "全宽 (12格)", percent: "100%" },
 ];
 
@@ -435,12 +501,12 @@ export function getWidgetSpanLabel(span: number): string {
   // Normalize span input if needed
   const normalized = normalizeWidgetSpan(span);
   switch (normalized) {
-    case 4:
-      return "紧凑 (4格/33%)";
+    case 3:
+      return "窄栏 (3格/25%)";
     case 6:
       return "半宽 (6格/50%)";
-    case 8:
-      return "主宽 (8格/66%)";
+    case 9:
+      return "主宽 (9格/75%)";
     case 12:
       return "全宽 (12格/100%)";
     default:
@@ -452,45 +518,22 @@ export function getWidgetSpanLabel(span: number): string {
 // 2. Width Normalizer: Universal Bridge
 // ==========================================
 /**
- * Normalizes any width value (1..12, legacy 1..4, or semantic keywords)
- * to a strictly safe 12-column grid span number (4, 6, 8, 12).
- * Eliminates bugs where width=1 would squash or fail to render.
+ * 把任意宽度输入（宽度档位 25/50/75/100、栅格列数，或历史档位名）吸附到
+ * 唯一合法的四档栅格跨度 (3 / 6 / 9 / 12)，杜绝 "宽度=1 被压成一条" 这类事故。
  */
 export function normalizeWidgetSpan(
   span?: number | string,
-  semanticWidth?: WidgetSemanticWidth | string
+  width?: TileWidth | number | string | null
 ): number {
+  if (span === undefined || span === null || span === "") {
+    if (width === undefined || width === null || width === "") return 12;
+    return spanOfTileWidth(normalizeTileWidth(width));
+  }
   if (typeof span === "string") {
-    if (span === "full") return 12;
-    if (span === "large" || span === "wide") return 8;
-    if (span === "medium" || span === "half") return 6;
-    if (span === "small" || span === "compact") return 4;
-    const parsed = parseInt(span, 10);
-    if (!isNaN(parsed)) span = parsed;
+    return spanOfTileWidth(normalizeTileWidth(span));
   }
-
-  if (semanticWidth === "full") return 12;
-  if (semanticWidth === "large" || semanticWidth === "wide") return 8;
-  if (semanticWidth === "medium" || semanticWidth === "half") return 6;
-  if (semanticWidth === "small" || semanticWidth === "compact") return 4;
-
-  if (span === undefined || span === null) {
-    return 12;
-  }
-
-  const s = Number(span);
-
-  // Legacy 1..4 scale conversion (1 col of 4 = 4/12; 2 cols = 6/12; 3 cols = 8/12; 4 cols = 12/12)
-  if (s === 1) return 4; // Compact 4-columns, NEVER 1-column squished
-  if (s === 2) return 6; // Half
-  if (s === 3) return 4; // Compact 4-columns or 3-columns
-  if (s === 4) return 4; // Compact
-
-  // 12-column scale
-  if (s <= 4) return 4;
-  if (s <= 6) return 6;
-  if (s <= 9) return 8;
-  return 12;
+  const snapped = tileWidthFromSpan(Number(span));
+  return snapped === null ? 12 : spanOfTileWidth(snapped);
 }
 
 /**
@@ -499,25 +542,25 @@ export function normalizeWidgetSpan(
  */
 export function normalizeWidthToGridClass(
   span?: number | string,
-  semanticWidth?: WidgetSemanticWidth | string
+  width?: TileWidth | number | string | null
 ): string {
-  const normalizedSpan = normalizeWidgetSpan(span, semanticWidth);
+  const normalizedSpan = normalizeWidgetSpan(span, width);
 
   switch (normalizedSpan) {
     case 12:
       return "col-span-12";
-    case 8:
-      return "col-span-12 lg:col-span-8";
+    case 9:
+      return "col-span-12 lg:col-span-9";
     case 6:
       return "col-span-12 lg:col-span-6";
-    case 4:
+    case 3:
     default:
-      return "col-span-12 sm:col-span-6 lg:col-span-4";
+      return "col-span-12 sm:col-span-6 lg:col-span-3";
   }
 }
 
 export function getWidgetGridClass(placement?: WidgetGridPlacement): string {
-  return normalizeWidthToGridClass(placement?.colSpanLg, placement?.semanticWidth);
+  return normalizeWidthToGridClass(placement?.colSpanLg, placement?.width);
 }
 
 export function getWidgetFluidWidthClass(span?: number): string {
@@ -597,7 +640,7 @@ export function detectQueryIntent(query: string = ""): LayoutIntentType {
 
   if (
     q.length <= 25 &&
-    /(是什么|怎么读|读音|定义|含义|解释|换算|等于多少|多少钱|几点|谁是|在哪|什么时候|拼音|\b(what is|meaning|define|definition|convert|who is|where is|when is)\b)/i.test(q)
+    /(是什么|什么是|啥是|怎么读|读音|定义|含义|解释|换算|等于多少|多少钱|几点|谁是|在哪|什么时候|拼音|\b(what is|meaning|define|definition|convert|who is|where is|when is)\b)/i.test(q)
   ) {
     return "quick_definition";
   }
@@ -673,23 +716,42 @@ export function createLayoutPlan(params: {
   intent: LayoutIntentType;
   signals: ContentSignals;
   targetLanguage?: string;
+  /** 小组件构建 Agent 的点名清单：命中即可越过意图契合度校验直接入选 */
+  plannedKeys?: ResultWidgetKey[];
 }): LayoutPlan {
-  const { intent, targetLanguage } = params;
+  const { intent, signals, targetLanguage } = params;
   const isEn = targetLanguage === "en";
 
-  const intentLabel = isEn ? "Official Portal Jump" : "官网跳转直达";
+  const selected = selectAgentWidgets({
+    intent,
+    signals,
+    plannedKeys: params.plannedKeys
+  });
+
+  // 锚点恒启用，官网直达入口始终置顶
+  const enabled: ResultWidgetKey[] = [...ANCHOR_WIDGET_KEYS, ...selected];
+
+  const featured: ResultWidgetKey = "related_links";
+
+  const width: Partial<Record<ResultWidgetKey, TileWidth>> = {
+    related_links: WIDGET_REGISTRY.related_links.width,
+    ai_answer: WIDGET_REGISTRY.ai_answer.width
+  };
+  for (const key of selected) {
+    width[key] = WIDGET_REGISTRY[key]?.width || 50;
+  }
 
   return {
     intent,
-    intentLabel,
-    order: ["related_links", "ai_answer"],
-    enabled: ["related_links", "ai_answer"],
-    featured: "related_links",
-    width: { related_links: "half", ai_answer: "half" },
+    intentLabel: buildIntentLabel(intent, isEn),
+    order: enabled,
+    enabled,
+    featured,
+    width,
     budget: {
-      maxPrimary: 2,
+      maxPrimary: enabled.length,
       maxSecondary: 0,
-      totalActive: 2
+      totalActive: enabled.length
     }
   };
 }
@@ -701,6 +763,17 @@ export function determineClientWidgetActivation(params: {
   result?: SearchSynthesisResult;
   query?: string;
   targetLanguage?: string;
+  /** 小组件构建 Agent 的能力规划：其点名的组件可直接入选 */
+  widgetPlan?: WidgetPlan;
+  /** 显式内容密度信号（排版 Agent 一路透传；缺省时从 result 推导） */
+  filteredResults?: SearchSynthesisResult["filteredResults"];
+  comparisonCount?: number;
+  mindMapBranches?: number;
+  followUpCount?: number;
+  takeawayCount?: number;
+  summaryLength?: number;
+  hasOfficial?: boolean;
+  hasCustomCards?: boolean;
 }): AdaptiveLayoutStrategy {
   const { result, query = "", targetLanguage } = params;
   const q = query || result?.query || "";
@@ -708,18 +781,24 @@ export function determineClientWidgetActivation(params: {
 
   const intent = detectQueryIntent(q);
 
+  const sources = params.filteredResults || result?.filteredResults || [];
+
   const signals: ContentSignals = {
-    summaryLength: (result?.summary || "").length,
-    takeawayCount: (result?.keyTakeaways || []).length,
-    sourceCount: (result?.filteredResults || []).length,
-    comparisonRows: (result?.comparisonTable || []).length,
-    mindMapBranches: result?.mindMap?.children?.length || 0,
-    followUpCount: (result?.followUpQuestions || []).length,
-    hasOfficial: (result?.filteredResults || []).some((r) => r.isOfficial),
-    customCardCount: (result?.customCards || []).length
+    summaryLength: params.summaryLength ?? (result?.summary || "").length,
+    takeawayCount: params.takeawayCount ?? (result?.keyTakeaways || []).length,
+    sourceCount: sources.length,
+    comparisonRows: params.comparisonCount ?? (result?.comparisonTable || []).length,
+    mindMapBranches: params.mindMapBranches ?? (result?.mindMap?.children?.length || 0),
+    followUpCount: params.followUpCount ?? (result?.followUpQuestions || []).length,
+    hasOfficial: params.hasOfficial ?? sources.some((r) => r.isOfficial),
+    customCardCount: params.hasCustomCards ? 1 : (result?.customCards || []).length
   };
 
-  const plan = createLayoutPlan({ intent, signals, targetLanguage });
+  const plannedKeys = (params.widgetPlan?.widgets || [])
+    .map((w) => (typeof w === "string" ? w : w?.type) as ResultWidgetKey)
+    .filter(Boolean);
+
+  const plan = createLayoutPlan({ intent, signals, targetLanguage, plannedKeys });
 
   // Apply layout quality guardrail
   const guardReport = auditLayoutGuardrail(intent, plan.enabled);
@@ -739,14 +818,14 @@ export function determineClientWidgetActivation(params: {
 
   ALL_RESULT_WIDGET_KEYS.forEach((k) => {
     const isEnabled = plan.enabled.includes(k);
-    const semanticWidth = plan.width[k] || WIDGET_REGISTRY[k]?.defaultWidth || "full";
-    const span = normalizeWidgetSpan(undefined, semanticWidth);
+    const width = plan.width[k] || WIDGET_REGISTRY[k]?.width || 100;
+    const span = normalizeWidgetSpan(undefined, width);
 
     gridConfig[k] = {
       colSpanLg: span,
       colSpanMd: span <= 6 ? 6 : 12,
-      semanticWidth,
-      isCompact: span <= 4,
+      width,
+      isCompact: span <= 3,
       isAutoFilled: false
     };
 
@@ -767,7 +846,7 @@ export function determineClientWidgetActivation(params: {
       ? `Agent applied clean semantic reading layout for [${plan.intent}]. Reading sequence is strictly preserved with CSS Grid.`
       : `排版 Agent 判定为【${plan.intentLabel}】，依据内容密度启动 ${plan.enabled.length} 个核心组件，采用 CSS Grid 保证阅读流自然稳定。`,
     componentOrder: plan.order,
-    emphasizedWidget: plan.featured || "quick_answer",
+    emphasizedWidget: plan.featured || "related_links",
     gridConfig: gridConfig as Record<ResultWidgetKey, WidgetGridPlacement>,
     layoutPlan: plan,
     maxColumnsPerRow: 12,
@@ -810,7 +889,7 @@ export function calculateAdaptiveBinPacking(
     const custom = options.customSpans?.[key];
     return normalizeWidgetSpan(
       custom,
-      custom ? undefined : WIDGET_REGISTRY[key]?.defaultWidth
+      custom ? undefined : WIDGET_REGISTRY[key]?.width
     );
   };
 
@@ -836,8 +915,8 @@ export function calculateAdaptiveBinPacking(
         colSpanLg: span,
         colSpanMd: span <= 6 ? 6 : 12,
         rowIndex: currentRowIndex,
-        semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
-        isCompact: span <= 4,
+        width: tileWidthFromSpan(span) ?? 50,
+        isCompact: span <= 3,
         isAutoFilled: false
       };
 
@@ -864,7 +943,7 @@ export function calculateAdaptiveBinPacking(
 
       while (remaining.length > 0) {
         const spaceLeft = 12 - currentUsedSpan;
-        if (spaceLeft < 4) break;
+        if (spaceLeft < 3) break;
 
         let candidateIdx = -1;
         if (currentUsedSpan === 0) {
@@ -920,8 +999,8 @@ export function calculateAdaptiveBinPacking(
           colSpanLg: span,
           colSpanMd: span <= 6 ? 6 : 12,
           rowIndex: currentRowIndex,
-          semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
-          isCompact: span <= 4,
+          width: tileWidthFromSpan(span) ?? 50,
+          isCompact: span <= 3,
           isAutoFilled: autoFilledFlags[key] || false
         };
       });
@@ -960,8 +1039,8 @@ export function calculateAdaptiveBinPacking(
         colSpanLg: span,
         colSpanMd: span <= 6 ? 6 : 12,
         rowIndex: currentRowIndex,
-        semanticWidth: span >= 12 ? "full" : (span >= 8 ? "wide" : (span >= 6 ? "half" : "compact")),
-        isCompact: span <= 4,
+        width: tileWidthFromSpan(span) ?? 50,
+        isCompact: span <= 3,
         isAutoFilled: autoFilledFlags[key] || false
       };
     });

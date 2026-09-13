@@ -37,11 +37,13 @@ import {
 } from "../src/lib/adaptiveLayout.js";
 import {
   solveTileLayout,
-  tileSizeFromSpan,
+  spanOfTileWidth,
+  normalizeTileWidth,
+  tileWidthFromSpan,
   DEFAULT_CONTAINER_WIDTH_PX,
   TILE_COLUMN_GAP_PX,
   TILE_ROW_GAP_PX,
-  type TileSize
+  type TileWidth
 } from "../src/lib/tileLayoutEngine.js";
 
 /** 磁贴桌面（TileDesktopView）的基准栅格列数，排版预演与渲染必须使用同一口径 */
@@ -50,15 +52,14 @@ const LAYOUT_PREVIEW_COLUMNS = 12;
 /** 排版 Agent 的对外身份标识 */
 export const WIDGET_LAYOUT_AGENT_NAME = "小组件排版 Agent";
 
-/** 磁贴语义尺寸 -> 12 栅格跨度（排版 Agent 的核心换算表） */
-const SIZE_TO_SPAN: Record<string, number> = {
-  small: 4,
-  medium: 6,
-  wide: 6,
-  large: 8,
-  tall: 8,
-  full: 12
-};
+/**
+ * 磁贴宽度档位 -> 12 栅格跨度（排版 Agent 的核心换算表）。
+ * 全链路只有一套宽度词汇表（25 / 50 / 75 / 100），历史档位名由 normalizeTileWidth 兜底吸附。
+ */
+function widthToSpan(width: unknown): number | undefined {
+  if (width === undefined || width === null || width === "") return undefined;
+  return spanOfTileWidth(normalizeTileWidth(width as TileWidth | number | string), LAYOUT_PREVIEW_COLUMNS);
+}
 
 /** 排版 Agent 允许操作的小组件白名单（防止大模型臆造组件 ID） */
 const LAYOUT_ALLOWED_KEYS: ResultWidgetKey[] = [...ALL_RESULT_WIDGET_KEYS];
@@ -80,7 +81,7 @@ export interface WidgetLayoutAgentOptions {
     comparisonCount?: number;
     mindMapBranches?: number;
     followUpCount?: number;
-    /** 内容密度：决定 takeaways / topic_digest / quick_answer 是否有东西可渲染 */
+    /** 内容密度：决定 takeaways / topic_digest 是否有东西可渲染 */
     takeawayCount?: number;
     summaryLength?: number;
     /** 是否已锻造出独有卡片：custom_cards 的数据就绪条件 */
@@ -125,9 +126,9 @@ async function requestLlmLayoutRefinement(params: {
 你只负责决定小组件的【阅读顺序】【视觉焦点】和【12 栅格跨度】，绝不新增或删除任何组件。
 硬约束：
 1. order 必须是给定组件列表中元素的一个排列，不得增删、不得臆造 ID；
-2. spans 的取值只能是 4 / 6 / 8 / 12；
-3. 焦点组件 (emphasized) 的跨度必须 >= 8；
-4. 单行最多 4 个组件（4+4+4=12 或 3*4），避免出现大面积空白。
+2. spans 的取值只能是 3 / 6 / 9 / 12（即宽度的 25% / 50% / 75% / 100%）；
+3. 各组件跨度由插件清单声明，必须与上方列出的「当前跨度」完全一致，禁止放大或缩小；
+4. 单行最多 4 个组件（3+3+3+3=12），避免出现大面积空白。
 
 只输出 JSON，不要任何解释性文字，格式：
 {"order":["key1","key2"],"emphasized":"key1","spans":{"key1":12,"key2":6},"reasoning":["依据1","依据2"]}`;
@@ -202,7 +203,7 @@ function mergeLlmSuggestion(
       if (!allowed.has(key)) continue;
       const numeric = Number(span);
       if (!Number.isFinite(numeric)) continue;
-      // 只接受 4/6/8/12，其它值一律交给 normalizeWidgetSpan 吸附到最近合法跨度
+      // 只接受 3/6/9/12，其它值一律交给 normalizeWidgetSpan 吸附到最近合法跨度
       mergedSpans[key as ResultWidgetKey] = normalizeWidgetSpan(numeric);
     }
   }
@@ -211,9 +212,9 @@ function mergeLlmSuggestion(
     ? (String(suggestion.emphasized) as ResultWidgetKey)
     : base.emphasized;
 
-  // 焦点组件强制提权，避免大模型把焦点排到角落里
-  const focusSpan = mergedSpans[emphasized] ?? 6;
-  mergedSpans[emphasized] = focusSpan >= 8 ? 12 : 8;
+  // 注意：焦点只决定阅读序与置顶地位，**不再提权宽度**。
+  // 宽度由清单声明（25/50/75/100 四档）唯一决定；此前把焦点硬拉成 9/12 格，
+  // 会让窄栏组件（如 related_links）被撑成半屏，破坏四档契约。
 
   const reasoning = Array.isArray(suggestion.reasoning)
     ? suggestion.reasoning.filter((r) => typeof r === "string" && r.trim() !== "").slice(0, 4)
@@ -308,7 +309,7 @@ export async function planWidgetLayout(
       if (!item) continue;
       const key = (typeof item === "string" ? item : item.type) as ResultWidgetKey;
       const size = typeof item === "object" ? (item as any).size : undefined;
-      const mapped = size ? SIZE_TO_SPAN[String(size)] : undefined;
+      const mapped = widthToSpan(size);
       if (key && mapped) plannedSpans[key] = mapped;
     }
   }
@@ -319,23 +320,27 @@ export async function planWidgetLayout(
       plannedSpans[key] ??
       baseStrategy.customWidgetSpans?.[key] ??
       baseStrategy.gridConfig?.[key]?.colSpanLg ??
-      SIZE_TO_SPAN[String(widgetPlan?.widgets?.find((w: any) => (typeof w === "string" ? w : w?.type) === key)?.size)] ??
-      (key === "related_links" ? 6 : key === "ai_answer" ? 6 : 6);
+      widthToSpan(widgetPlan?.widgets?.find((w: any) => (typeof w === "string" ? w : w?.type) === key)?.size) ??
+      (key === "related_links" ? spanOfTileWidth(50, LAYOUT_PREVIEW_COLUMNS) : 6);
     spans[key] = normalizeWidgetSpan(preferred);
   }
 
-  // 确保 related_links 与 ai_answer 跨度均为 6（各占半宽），在 12 栅格中并排或自适应呈现
-  if (spans.related_links !== undefined && spans.related_links > 6) {
-    spans.related_links = 6;
-  }
-  if (spans.ai_answer !== undefined && spans.ai_answer > 6) {
-    spans.ai_answer = 6;
+  // 官网跳转与 AI 智能回答都封顶半宽（50%），避免任一组件挤占整屏首屏。
+  // 下限不做限制：窄于半宽由清单自身的 grid.width / minWidth 决定。
+  const HALF_WIDTH_SPAN = spanOfTileWidth(50, LAYOUT_PREVIEW_COLUMNS);
+  for (const key of ["related_links", "ai_answer"] as ResultWidgetKey[]) {
+    const span = spans[key];
+    if (span !== undefined && span > HALF_WIDTH_SPAN) {
+      spans[key] = HALF_WIDTH_SPAN;
+    }
   }
 
+  // 视觉焦点仅决定阅读序（求解器会把它排在最前），宽度一律回归清单声明的四档。
+  // related_links 是置顶焦点，但它的宽度就是清单里的 50%，不因焦点身份被额外撑宽 ——
+  // 否则 6+6=12 的整行对齐会被打破。
   let emphasized: ResultWidgetKey = safeOrder.includes("related_links")
     ? "related_links"
     : (enabledKeys.includes(baseStrategy.emphasizedWidget) ? baseStrategy.emphasizedWidget : safeOrder[0]);
-  spans[emphasized] = 6;
 
   // ---------------------------------------------------------------
   // 相位 3：大模型语义精修（可降级，不影响正确性）
@@ -369,7 +374,6 @@ export async function planWidgetLayout(
       emphasized = merged.emphasized;
       Object.keys(spans).forEach((k) => delete (spans as any)[k]);
       Object.assign(spans, merged.spans);
-      spans[emphasized] = (spans[emphasized] ?? 6) >= 8 ? 12 : 8;
     }
   }
 
@@ -391,8 +395,8 @@ export async function planWidgetLayout(
   const preview = solveTileLayout(
     safeOrder.map((key, index) => ({
       id: String(key),
-      // 跨度 -> 宽度档位 -> 再回到跨度，保证与渲染层 tileSizeFromSpan 的口径严格一致
-      size: (tileSizeFromSpan(spans[key]) ?? "medium") as TileSize,
+      // 跨度 -> 宽度档位 -> 再回到跨度，保证与渲染层 tileWidthFromSpan 的口径严格一致
+      size: (tileWidthFromSpan(spans[key]) ?? 50) as TileWidth,
       // 阅读序越靠前优先级越高；聚焦项由求解器自动前置
       priority: safeOrder.length - index,
       isEmphasized: key === emphasized

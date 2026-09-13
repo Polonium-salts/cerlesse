@@ -1,11 +1,10 @@
-import { 
-  SearchResult, 
-  WidgetIntentAnalysis, 
-  WidgetBlueprint, 
-  BlueprintComponent, 
-  WidgetPlannedSize 
+import {
+  SearchResult,
+  WidgetIntentAnalysis,
+  WidgetBlueprint,
+  BlueprintComponent
 } from "../src/types.js";
-import { recommendTileSize } from "../src/widgets/capabilities.js";
+import { recommendTileWidth } from "../src/widgets/capabilities.js";
 
 export interface ComposeOptions {
   query: string;
@@ -101,9 +100,7 @@ function composeSoftwareSuite(options: ComposeOptions): WidgetBlueprint {
     }
   ];
 
-  // recommendTileSize 返回的就是 TileSize，而 WidgetPlannedSize 已是 TileSize 的别名，
-  // 无需强制转换（历史上这里盲转掩盖了两套尺寸词表不一致的问题）。
-  const calculatedSize: WidgetPlannedSize = recommendTileSize({
+  const calculatedWidth = recommendTileWidth({
     componentCount: components.length,
     hasRichActions: true,
     hasComplexGrid: true
@@ -117,7 +114,7 @@ function composeSoftwareSuite(options: ComposeOptions): WidgetBlueprint {
     intent: "software_download",
     goal: intentAnalysis.goal,
     layout: "composite_card",
-    size: calculatedSize || "large",
+    size: calculatedWidth || 75,
     themeColor: "blue",
     components,
     matchedWidgetIds: ["official_portal", "actions_toolbox", "custom_cards"]
@@ -181,7 +178,7 @@ function composeResourceSuite(options: ComposeOptions): WidgetBlueprint {
     intent: "resource_search",
     goal: intentAnalysis.goal,
     layout: "composite_card",
-    size: "large",
+    size: 75,
     themeColor: "violet",
     components,
     matchedWidgetIds: ["custom_cards", "actions_toolbox", "sources"]
@@ -250,7 +247,7 @@ function composeStudySuite(options: ComposeOptions): WidgetBlueprint {
     intent: "study_tutorial",
     goal: intentAnalysis.goal,
     layout: "composite_card",
-    size: "large",
+    size: 75,
     themeColor: "emerald",
     components,
     matchedWidgetIds: ["custom_cards", "actions_toolbox", "mindmap"]
@@ -317,7 +314,7 @@ function composeGitHubSuite(options: ComposeOptions): WidgetBlueprint {
     intent: "github_project",
     goal: intentAnalysis.goal,
     layout: "composite_card",
-    size: "large",
+    size: 75,
     themeColor: "violet",
     components,
     matchedWidgetIds: ["custom_cards", "actions_toolbox", "sources"]
@@ -377,7 +374,7 @@ function composeWeatherSuite(options: ComposeOptions): WidgetBlueprint {
     intent: "weather",
     goal: intentAnalysis.goal,
     layout: "composite_card",
-    size: "medium",
+    size: 50,
     themeColor: "amber",
     components,
     matchedWidgetIds: ["custom_cards", "analytics_trend"]
@@ -421,10 +418,10 @@ function composeGenericSuite(options: ComposeOptions): WidgetBlueprint {
     intent: intentAnalysis.intent,
     goal: intentAnalysis.goal,
     layout: "composite_card",
-    size: "large",
+    size: 75,
     themeColor: "blue",
     components,
-    matchedWidgetIds: ["custom_cards", "quick_answer", "sources"]
+    matchedWidgetIds: ["custom_cards", "sources"]
   };
 }
 

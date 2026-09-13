@@ -24,7 +24,7 @@ import {
   saveDesktopState,
   loadDesktopState,
   clearDesktopState,
-  TileSize,
+  TileWidth,
   SolvedTileItem,
   TileLayoutInput,
   TILE_COLUMN_GAP_PX,
@@ -33,11 +33,11 @@ import {
   TILE_CONTENT_MAX_HEIGHT_PX,
   ARCHETYPE_RATIOS,
   resolveTileRatio,
-  tileSizeFromSpan,
-  tileSizeFromPlannedSize,
-  getTileColumnSpan
+  tileWidthFromSpan,
+  tileWidthFromPlannedSize,
+  spanOfTileWidth
 } from "../../lib/tileLayoutEngine.js";
-import { MANIFEST_MIN_SPANS } from "../../widgets/manifests/index.js";
+import { MANIFEST_MIN_WIDTHS } from "../../widgets/manifests/index.js";
 import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetRuntime } from "../../widgets/runtime.js";
 import { resolveDynamicCapabilityWidgets, getWidgetLabel } from "../../lib/adaptiveLayout.js";
@@ -88,8 +88,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   onUpdateCard,
   onDeleteCard
 }) => {
-  // 用户自定尺寸映射表
-  const [userSizes, setUserSizes] = useState<Record<string, TileSize>>({});
+  // 用户自定宽度映射表
+  const [userSizes, setUserSizes] = useState<Record<string, TileWidth>>({});
   // 用户移除的小组件集合
   const [hiddenTileIds, setHiddenTileIds] = useState<Set<string>>(new Set());
   // 已保存提示 Toast 状态
@@ -163,7 +163,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   }, [selectedCols, containerWidth]);
 
   /**
-   * 磁贴的最小可用跨度 = 声明宽度减一档。
+   * 磁贴的最小可用跨度 = 声明宽度减一档（25% 档位不再收窄）。
    *
    * 求解器的跨度弹性本意是闭合空洞，但此前的底线是「整行 1/3」（12 列时 = 4 格），
    * 对 6 / 8 格磁贴等于**放任连降两档**：实测 16 张里有 9 张被改窄，wide(8 格) 被压成
@@ -173,12 +173,12 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
    * 现在只允许收窄一档（填缝仍然是必要的：8+6 > 12，不靠收窄就无法拼满整行，
    * 实测完全禁用收窄会让空洞从 ~400 格暴涨到 ~3500 格），但不许连降两档。
    */
-  const minSpanFor = (id: string, size: TileSize) => {
-    // 优先取插件清单声明的 grid.minSpan —— 内容密集的组件可在自己的 JSON 里
+  const minSpanFor = (id: string, width: TileWidth) => {
+    // 优先取插件清单声明的 grid.minWidth —— 内容密集的组件可在自己的 JSON 里
     // 声明"宁可有空洞，也不许被压到这个宽度以下"（如 CLI 命令块收窄后会换行截断）。
-    const declared = MANIFEST_MIN_SPANS[id];
-    if (typeof declared === "number") return declared;
-    return Math.max(2, getTileColumnSpan(size, activeColumns) - 1);
+    const declared = MANIFEST_MIN_WIDTHS[id];
+    if (typeof declared === "number") return spanOfTileWidth(declared, activeColumns);
+    return Math.max(2, spanOfTileWidth(width, activeColumns) - 1);
   };
 
   // 固定比例核心：磁贴高度不再由「栅格行跨度 × 行高」推导，而是恒等于 宽度 / 固有宽高比。
@@ -221,11 +221,11 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
           // 独有卡片的宽度以卡片自身声明的 colSpan 为准（卡片上可直接切换宽度），
           // 保证磁贴宽度与卡片宽度标签口径一致（原实现直接取原型默认值，会与之漂移）；
           // 排版 Agent 对该槽位的作用体现在启停、阅读序与焦点地位上。
-          const declaredCardSize = tileSizeFromSpan(card.colSpan);
-          const size: TileSize = userSizes[cardKey] || userSizes[card.id] || declaredCardSize || (
-            card.archetype === "timeline" || card.archetype === "parameter_matrix" 
-              ? "large" 
-              : "medium"
+          const declaredCardWidth = tileWidthFromSpan(card.colSpan);
+          const size: TileWidth = userSizes[cardKey] || userSizes[card.id] || declaredCardWidth || (
+            card.archetype === "timeline" || card.archetype === "parameter_matrix"
+              ? 50
+              : 25
           );
 
           inputs.push({
@@ -261,14 +261,12 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       // 尺寸四级优先级：
       //   用户自定义 > 小组件排版 Agent 栅格跨度 > 小组件自身固有宽度 > Planner 规划尺寸 > 兜底
       //
-      // 「小组件自身固有宽度」一律从注册中心读取该模块声明的 defaultSize（磁贴口径 TileSize），
-      // 于是每个小组件都能按自身内容形态单独定宽，不再依赖此处的硬编码特判 ——
-      // 原实现只特殊处理了 ai_overview / metrics_telemetry，其余全部落到 "medium"，
-      // 再叠加 WidgetPlannedSize→TileSize 的隐式强转（整体缩水一档），内容因此被挤压裁切。
-      const agentSize = tileSizeFromSpan(agentSpans[keyStr]);
-      const moduleSize = module?.defaultSize;
-      const plannedSize = tileSizeFromPlannedSize(planned?.size);
-      const size: TileSize = userSizes[keyStr] || agentSize || moduleSize || plannedSize || "medium";
+      // 「小组件自身固有宽度」一律从注册中心读取该模块声明的 width（四档 TileWidth），
+      // 于是每个小组件都能按自身内容形态单独定宽，不再依赖此处的硬编码特判。
+      const agentSize = tileWidthFromSpan(agentSpans[keyStr]);
+      const moduleSize = module?.width;
+      const plannedSize = tileWidthFromPlannedSize(planned?.size);
+      const size: TileWidth = userSizes[keyStr] || agentSize || moduleSize || plannedSize || 50;
 
       inputs.push({
         id: keyStr,
@@ -352,8 +350,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     activeResult.executionTimeMs
   ]);
 
-  // 处理尺寸切换
-  const handleResizeTile = (id: string, nextSize: TileSize) => {
+  // 处理宽度档位切换
+  const handleResizeTile = (id: string, nextSize: TileWidth) => {
     setUserSizes(prev => ({
       ...prev,
       [id]: nextSize
@@ -403,8 +401,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
           module={cardModule}
           activeResult={activeResult}
           size={item.size}
-          isCompact={item.size === "small"}
-          onResize={(s) => handleResizeTile(item.id, s as TileSize)}
+          isCompact={item.size === 25}
+          onResize={(s) => handleResizeTile(item.id, s)}
           onExecuteSearch={onExecuteSearch}
         />
       );
@@ -434,8 +432,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         module={boundModule}
         activeResult={activeResult}
         size={item.size}
-        isCompact={item.size === "small"}
-        onResize={(s) => handleResizeTile(item.id, s as TileSize)}
+        isCompact={item.size === 25}
+        onResize={(s) => handleResizeTile(item.id, s)}
         onExecuteSearch={onExecuteSearch}
       />
     );

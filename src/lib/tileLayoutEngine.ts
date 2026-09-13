@@ -4,7 +4,7 @@
  * 设计契约：
  * 1. 宽高比是「小组件自身的固有属性」，只能从 RATIO_VALUES 目录中取值
  *    (1:1 / 4:3 / 3:2 / 16:9 / 2:1 / 3:1 / 4:5)，一经定义即不随任何条件改变；
- * 2. 尺寸档位 TileSize 只决定「占列宽度」，基准高度由 width / ratio 推导；
+ * 2. 宽度四档 TileWidth (25/50/75/100%) 只决定「占列宽度」，基准高度由 width / ratio 推导；
  * 3. 比例是「形状下限」而不是上限 —— 内容量是每次检索都不同的动态量，任何固定
  *    比例都无法保证"加载完整"。渲染层实测出内容自然高度后经 contentHeightPx
  *    回灌，磁贴即为内容让高（见 TILE_CONTENT_MAX_HEIGHT_PX）；
@@ -131,98 +131,149 @@ export function resolveTileRatio(widgetId: string, explicitRatio?: TileRatio): T
 }
 
 // ==========================================
-// 2. 尺寸档位 = 纯宽度档位
+// 2. 宽度四档 = 唯一的宽度词汇表
 // ==========================================
+//
+// 全链路（插件清单 grid.width → 小组件构建 Agent → 小组件排版 Agent 跨度 →
+// 瀑布流求解器 → 磁贴渲染）只承认四个宽度：25% / 50% / 75% / 100%。
+// 换算出 12 栅格下的 3 / 6 / 9 / 12 列。
+//
+// ── 为什么必须收敛成一套 ──────────────────────────────────────────────
+// 改造前存在三套同名不同义的档位词汇表：
+//   · 磁贴口径 TileSize   ：small=2列 / medium=4列 / large=6列 / wide=8列 / full=12列
+//   · 规划口径 WidgetPlannedSize：small=4列 / medium=6列 / large=8列 / full=12列
+//   · 语义口径 WidgetSemanticWidth：compact=4列 / half=6列 / wide=8列 / full=12列
+// "large" 在磁贴口径是 6 列、在规划口径却是 8 列；跨层强转必然整体缩水一档，
+// 表现为内容被挤压换行、命令与表格被裁切。现在只剩一个数字类型，歧义从类型层消失。
 
-/** 兼容既有数据（含 localStorage 中已保存的用户尺寸） */
-export type TileSize = "small" | "medium" | "wide" | "large" | "tall" | "full";
+/** 磁贴宽度：占整行（12 栅格）的百分比，只允许 25 / 50 / 75 / 100 四档。 */
+export type TileWidth = 25 | 50 | 75 | 100;
+
+/** 宽度四档全集（从小到大） */
+export const TILE_WIDTHS: readonly TileWidth[] = [25, 50, 75, 100];
 
 /**
- * 宽度档位：占整行的比例（12 栅格基准）。
- * 高度不再由档位决定 —— 它恒等于 宽度 / 该组件的固定宽高比。
+ * 宽度 → 占整行的比例（12 栅格基准）。
+ * 高度不再由宽度决定 —— 它恒等于 宽度 / 该组件的固定宽高比。
  */
-export const TILE_WIDTH_FRACTION: Record<TileSize, number> = {
-  small: 2 / 12,
-  medium: 4 / 12,
-  tall: 4 / 12,
-  large: 6 / 12,
-  wide: 8 / 12,
-  full: 12 / 12
+export const TILE_WIDTH_FRACTION: Record<TileWidth, number> = {
+  25: 3 / 12,
+  50: 6 / 12,
+  75: 9 / 12,
+  100: 12 / 12
 };
 
-/** 宽度档位的界面标签（仅描述宽度，不再暗示高度） */
-export const TILE_SIZE_LABELS: Record<TileSize, string> = {
-  small: "2格",
-  medium: "4格",
-  tall: "4格",
-  large: "6格",
-  wide: "8格",
-  full: "全宽"
+/** 宽度的界面标签 */
+export const TILE_WIDTH_LABELS: Record<TileWidth, string> = {
+  25: "25%",
+  50: "50%",
+  75: "75%",
+  100: "100%"
 };
 
-/** 可供用户选择的宽度档位（tall 与 medium 同宽，故不重复出现在操作区） */
-export const SELECTABLE_TILE_SIZES: TileSize[] = ["small", "medium", "large", "wide", "full"];
+/** 可供用户选择的宽度档位（四档均可选） */
+export const SELECTABLE_TILE_WIDTHS: TileWidth[] = [25, 50, 75, 100];
 
-/**
- * 12 栅格跨度 -> 宽度档位。
- * 小组件排版 Agent 输出的跨度恒为 4 / 6 / 8 / 12（normalizeWidgetSpan 保证），
- * 此处给出与 TILE_WIDTH_FRACTION 的严格逆映射，使 Agent 的排版决策可直接驱动磁贴宽度。
- * @returns 无法识别时返回 null，交由调用方回退到其它尺寸来源
- */
-export function tileSizeFromSpan(span?: number | null): TileSize | null {
-  if (span === undefined || span === null || !Number.isFinite(span)) return null;
-  if (span >= 12) return "full";
-  if (span >= 8) return "wide";
-  if (span >= 6) return "large";
-  if (span >= 4) return "medium";
-  if (span >= 2) return "small";
-  return null;
-}
-
-/**
- * 把「规划尺寸 WidgetPlannedSize」翻译成「磁贴宽度档位 TileSize」。
- *
- * ⚠️ 这是两套列数口径完全不同的词汇表，**直接 `as TileSize` 强转会让每个小组件
- *    整体缩水一档**（规划口径 small=4列 / medium=6列 / large=8列，
- *    磁贴口径 small=2列 / medium=4列 / large=6列），
- *    于是内容被挤压换行、命令与表格被裁切 —— 即"小组件内容没有加载补全"的观感。
- *
- * 映射（按真实列数对齐）：
- *   规划 small  (4 列) → 磁贴 medium (4 列)
- *   规划 medium (6 列) → 磁贴 large  (6 列)
- *   规划 large  (8 列) → 磁贴 wide   (8 列)
- *   规划 tall   (4 列) → 磁贴 tall   (4 列)
- *   规划 full  (12 列) → 磁贴 full  (12 列)
- *   扩展值 wide  (8 列) → 磁贴 wide   (8 列)
- *
- * @returns 无法识别时返回 null，交由调用方回退到其它尺寸来源
- */
-export function tileSizeFromPlannedSize(planned?: string | null): TileSize | null {
-  switch (planned) {
-    case "small":
-      return "medium";
-    case "medium":
-      return "large";
-    case "large":
-      return "wide";
-    case "wide":
-      return "wide";
-    case "tall":
-      return "tall";
-    case "full":
-      return "full";
-    default:
-      return null;
-  }
-}
-
-/** 依据宽度档位与当前列数解算列跨度 */
-export function getTileColumnSpan(size: TileSize, totalColumns: number): number {
-  const fraction = TILE_WIDTH_FRACTION[size] ?? TILE_WIDTH_FRACTION.medium;
+/** 依据宽度与当前列数解算列跨度 */
+export function spanOfTileWidth(width: TileWidth, totalColumns: number = 12): number {
+  const fraction = TILE_WIDTH_FRACTION[width] ?? TILE_WIDTH_FRACTION[50];
   const cols = Math.max(1, totalColumns);
   const raw = Math.round(fraction * cols);
   // 最窄不低于 2 列，保证窄屏下内容仍有可用宽度
   return Math.max(2, Math.min(cols, raw));
+}
+
+/**
+ * 列跨度 -> 宽度（按最近一档吸附）。
+ * 求解器可能为闭合空洞把跨度微调一档，磁贴宽度必须跟着真实跨度走，
+ * 否则组件会按错误的宽度渲染内部排版。
+ * @returns 无法识别时返回 null，交由调用方回退到其它宽度来源
+ */
+export function tileWidthFromSpan(span?: number | null): TileWidth | null {
+  if (span === undefined || span === null || !Number.isFinite(span)) return null;
+  if (span >= 10.5) return 100;
+  if (span >= 7.5) return 75;
+  if (span >= 4.5) return 50;
+  if (span >= 1) return 25;
+  return null;
+}
+
+/** 历史磁贴档位名（TileSize 口径）-> 四档宽度 */
+const LEGACY_TILE_SIZE_NAMES: Record<string, TileWidth> = {
+  small: 25,  // 2 列
+  medium: 25, // 4 列 -> 就近跌入 25%
+  tall: 25,   // 4 列
+  large: 50,  // 6 列
+  wide: 75,   // 8 列
+  full: 100   // 12 列
+};
+
+/** 历史语义宽度名（WidgetSemanticWidth 口径）-> 四档宽度 */
+const SEMANTIC_WIDTH_NAMES: Record<string, TileWidth> = {
+  compact: 25,
+  small: 25,
+  medium: 50,
+  half: 50,
+  large: 75,
+  wide: 75,
+  full: 100
+};
+
+/**
+ * 归一化任意历史宽度表示 -> 四档宽度。
+ *
+ * 收四类输入：
+ *   1. 四档本身（25 / 50 / 75 / 100，数值或 "50%" 字符串）；
+ *   2. 历史档位名（磁贴口径 small/medium/large/wide/full/tall，语义口径 half/compact）；
+ *   3. 历史列跨度（2 / 4 / 6 / 8 / 12）—— 按最近一档吸附；
+ *   4. 缺省 / 无法识别 -> 50（半宽）。
+ *
+ * 用途：localStorage 里已保存的用户宽度、旧清单、动态卡片等历史数据在读取时统一收敛，
+ * 不必再保留第二套词汇表。
+ */
+export function normalizeTileWidth(input: TileWidth | number | string | null | undefined): TileWidth {
+  if (input === undefined || input === null) return 50;
+
+  if (typeof input === "number") {
+    if (!Number.isFinite(input)) return 50;
+    // 数值 >= 20 视为百分比口径；更小的值只可能是历史列跨度口径
+    if (input >= 20) return TILE_WIDTHS.reduce(
+      (best, w) => (Math.abs(w - input) < Math.abs(best - input) ? w : best),
+      50 as TileWidth
+    );
+    return tileWidthFromSpan(input) ?? 50;
+  }
+
+  const key = String(input).trim().toLowerCase();
+  if (key === "") return 50;
+  if (/^\d+(\.\d+)?%?$/.test(key)) return normalizeTileWidth(parseFloat(key));
+  return LEGACY_TILE_SIZE_NAMES[key] ?? SEMANTIC_WIDTH_NAMES[key] ?? 50;
+}
+
+/**
+ * 规划口径尺寸名 -> 四档宽度（兼容历史 widgetPlan 数据）。
+ *
+ * ⚠️ 规划口径的 "large" = 8 列（75%），与磁贴口径的 "large" = 6 列（50%）**不同义**。
+ * 这是两套词汇表唯一无法靠名字区分的地方，故单独保留一张映射表。
+ * 新建的 widgetPlan 一律直接输出四档数字，此函数只为读取历史数据而存在。
+ */
+export function tileWidthFromPlannedSize(planned?: string | number | null): TileWidth | null {
+  if (planned === undefined || planned === null) return null;
+  if (typeof planned === "number") return tileWidthFromSpan(planned);
+  switch (String(planned).trim().toLowerCase()) {
+    case "small":
+      return 25;
+    case "medium":
+    case "wide":
+      return 50;
+    case "large":
+    case "tall":
+      return 75;
+    case "full":
+      return 100;
+    default:
+      return null;
+  }
 }
 
 // ==========================================
@@ -248,14 +299,13 @@ export const TILE_SPAN_FLEX = 1;
 
 /**
  * 可拼接跨度目录：只有这些宽度能互相拼满整行。
- *   2+4+6 / 4+4+4 / 6+6 / 8+4 / 12 —— 都能刚好凑满 12 列。
- * 反过来，诸如 10 这种宽度会稳定留下 2 列的窄缝，任何磁贴都塞不进去，
+ *   3+9 / 6+6 / 3+3+6 / 3+3+3+3 / 12 —— 都能刚好凑满 12 列。
+ * 反过来，诸如 5 或 10 这种宽度会稳定留下窄缝，任何磁贴都塞不进去，
  * 于是变成永远无法闭合的空洞。因此求解器（含高度护栏）只在目录内取值。
  */
 export function tileableSpans(totalColumns: number): number[] {
   const set = new Set<number>();
-  for (const size of SELECTABLE_TILE_SIZES) set.add(getTileColumnSpan(size, totalColumns));
-  set.add(getTileColumnSpan("small", totalColumns));
+  for (const width of SELECTABLE_TILE_WIDTHS) set.add(spanOfTileWidth(width, totalColumns));
   return [...set].sort((a, b) => a - b);
 }
 
@@ -355,7 +405,7 @@ export type TilePlacementOrder = "reading" | "anchor";
 
 export interface TileLayoutInput {
   id: string;
-  size: TileSize;
+  size: TileWidth;
   /** 显式指定比例（自定义卡片等无法从 ID 推断的场景） */
   ratio?: TileRatio;
   priority?: number;
@@ -408,7 +458,7 @@ export interface TileLayoutOptions {
 
 export interface SolvedTileItem {
   id: string;
-  size: TileSize;
+  size: TileWidth;
   ratio: TileRatio;
   /** 起始列（0-indexed） */
   x: number;
@@ -455,14 +505,14 @@ export interface TileLayoutSolution {
 
 /**
  * 将「实际占位列跨度」回译为最接近的宽度档位。
- * 跨度微调可能把某个磁贴增减 1~2 列，size 必须跟着真实宽度走，
- * 否则组件会按错误的档位渲染内部排版（例如实际宽度已 8 列却仍按 4 列排版）。
+ * 跨度微调可能把某个磁贴增减一档，宽度必须跟着真实跨度走，
+ * 否则组件会按错误的宽度渲染内部排版（例如实际宽度已 9 列却仍按 3 列排版）。
  */
-function sizeForSpan(span: number, totalColumns: number): TileSize {
-  let best: TileSize = "medium";
+function widthForSpan(span: number, totalColumns: number): TileWidth {
+  let best: TileWidth = 50;
   let bestDiff = Number.POSITIVE_INFINITY;
-  for (const candidate of SELECTABLE_TILE_SIZES) {
-    const diff = Math.abs(getTileColumnSpan(candidate, totalColumns) - span);
+  for (const candidate of SELECTABLE_TILE_WIDTHS) {
+    const diff = Math.abs(spanOfTileWidth(candidate, totalColumns) - span);
     if (diff < bestDiff) {
       bestDiff = diff;
       best = candidate;
@@ -640,7 +690,7 @@ export function solveTileLayout(
 
     const item: SolvedTileItem = {
       id: input.id,
-      size: sizeForSpan(span, totalColumns),
+      size: widthForSpan(span, totalColumns),
       ratio,
       x,
       y: yTop,
@@ -679,7 +729,7 @@ export function solveTileLayout(
   // 1. 显式固定坐标的磁贴优先落位；其余磁贴整体沉到它们下方，保证永不重叠。
   const fixedInputs = inputs.filter(t => t.fixedPosition && t.x !== undefined && t.y !== undefined);
   for (const t of fixedInputs) {
-    const span = Math.max(1, Math.min(getTileColumnSpan(t.size, totalColumns), totalColumns));
+    const span = Math.max(1, Math.min(spanOfTileWidth(t.size, totalColumns), totalColumns));
     const ratio = resolveTileRatio(t.id, t.ratio);
     const x = Math.max(0, Math.min(t.x!, Math.max(0, totalColumns - span)));
     commit(t, span, ratio, x, Math.max(0, t.y! * (cell + rowGap)), 0);
@@ -690,14 +740,14 @@ export function solveTileLayout(
   const rest = inputs.filter(t => !fixedIds.has(t.id));
   const spanOfInput = (t: TileLayoutInput) =>
     clampSpanToHeightBand(
-      Math.max(2, Math.min(getTileColumnSpan(t.size, totalColumns), totalColumns)),
+      Math.max(2, Math.min(spanOfTileWidth(t.size, totalColumns), totalColumns)),
       resolveTileRatio(t.id, t.ratio)
     );
 
   /** 实测过内容高度的磁贴所锁定的跨度（null = 未实测，走常规弹性闭合） */
   const lockedSpanOf = (t: TileLayoutInput): number | null => {
     if (!t.contentHeightPx || t.contentHeightPx <= 0) return null;
-    const span = t.contentSpan ?? getTileColumnSpan(t.size, totalColumns);
+    const span = t.contentSpan ?? spanOfTileWidth(t.size, totalColumns);
     return Math.max(2, Math.min(Math.round(span), totalColumns));
   };
 
@@ -843,7 +893,7 @@ export interface StoredDesktopState {
   timestamp: number;
   tiles: Array<{
     id: string;
-    size: TileSize;
+    size: TileWidth;
     x: number;
     y: number;
   }>;

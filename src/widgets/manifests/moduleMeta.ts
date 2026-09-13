@@ -26,8 +26,8 @@ export type WidgetModuleMeta = Pick<
   | "tags"
   | "agentHint"
   | "icon"
-  | "defaultSize"
-  | "supportedSizes"
+  | "width"
+  | "supportedWidths"
   | "tileTheme"
 >;
 
@@ -42,9 +42,9 @@ export function manifestToModuleMeta(manifest: WidgetManifest): WidgetModuleMeta
     tags: manifest.tags,
     agentHint: manifest.agentHint,
     icon: resolveManifestIcon(manifest.icon),
-    // 尺寸档位的唯一事实来源就是清单的 grid 段
-    defaultSize: manifest.grid.defaultSize,
-    supportedSizes: manifest.grid.supportedSizes,
+    // 宽度档位的唯一事实来源就是清单的 grid 段
+    width: manifest.grid.width,
+    supportedWidths: manifest.grid.supportedWidths,
     tileTheme: manifest.theme
   };
 }
@@ -74,9 +74,8 @@ export function manifestMeta(id: string): WidgetModuleMeta {
       id,
       name: id,
       version: "0.0.0",
-      defaultSize: "medium",
-      supportedSizes: ["medium", "large", "full"]
-    };
-  }
+      width: 50,
+      supportedWidths: [25, 50, 75, 100]
+    };  }
   return manifestToModuleMeta(manifest);
 }

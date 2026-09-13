@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetModule, WidgetCategoryType } from "../../widgets/sdk/types.js";
-import { TileSize } from "../../lib/tileLayoutEngine.js";
+import { TileWidth, TILE_WIDTH_LABELS } from "../../lib/tileLayoutEngine.js";
 import { CustomCardData } from "../../types.js";
 import { Button } from "../ui/button.js";
 import { Badge } from "../ui/badge.js";
@@ -24,7 +24,7 @@ interface WidgetMarketplaceDrawerProps {
   onClose: () => void;
   activeTileIds: string[];
   customCards?: CustomCardData[];
-  onAddTile: (id: string, size?: TileSize) => void;
+  onAddTile: (id: string, size?: TileWidth) => void;
   onRemoveTile: (id: string) => void;
 }
 
@@ -47,7 +47,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   // 预览所选尺寸状态
-  const [previewSizes, setPreviewSizes] = useState<Record<string, TileSize>>({});
+  const [previewSizes, setPreviewSizes] = useState<Record<string, TileWidth>>({});
 
   // 获取所有已注册的官方与动态模块
   const allModules = useMemo(() => {
@@ -69,8 +69,8 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
           version: "1.0.0",
           description: card.subtitle || "AI 专属独有业务卡片",
           category: "custom",
-          defaultSize: "medium",
-          supportedSizes: ["small", "medium", "large", "full"]
+          width: 75,
+          supportedWidths: [25, 50, 75, 100]
         });
       }
     });
@@ -183,7 +183,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
                   const modId = String(module.id);
                   const isOnDesktop = activeIdSet.has(modId)
                     || (modId.startsWith("custom_card__") && activeIdSet.has("custom_cards"));
-                  const chosenSize = previewSizes[modId] || (module.defaultSize as TileSize) || "medium";
+                  const chosenSize = previewSizes[modId] || (module.width as TileWidth) || 50;
 
                   const IconComp = typeof module.icon === "function" ? module.icon : Layers;
 
@@ -240,19 +240,19 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
                         </div>
                       </div>
 
-                      {/* 磁贴尺寸选择器 */}
+                      {/* 磁贴宽度选择器 */}
                       <div className="flex items-center justify-between text-xs pt-1.5 border-t border-border text-muted-foreground">
-                        <span>支持尺寸规格:</span>
+                        <span>支持宽度规格:</span>
                         <div className="flex items-center gap-1">
-                          {(module.supportedSizes || ["small", "medium", "large", "full"]).map((s) => (
+                          {(module.supportedWidths || [25, 50, 75, 100]).map((w) => (
                             <Button
-                              key={s}
-                              variant={chosenSize === s ? "default" : "outline"}
+                              key={w}
+                              variant={chosenSize === w ? "default" : "outline"}
                               size="xs"
-                              onClick={() => setPreviewSizes(prev => ({ ...prev, [modId]: s as TileSize }))}
+                              onClick={() => setPreviewSizes(prev => ({ ...prev, [modId]: w }))}
                               className="font-mono px-1.5"
                             >
-                              {s === "small" ? "2x2" : s === "medium" ? "4x2" : s === "wide" ? "6x2" : s === "large" ? "4x4" : "全宽"}
+                              {TILE_WIDTH_LABELS[w] ?? `${w}%`}
                             </Button>
                           ))}
                         </div>

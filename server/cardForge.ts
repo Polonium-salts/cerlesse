@@ -280,7 +280,7 @@ export function buildWidgetSchemaFromCard(card: Partial<CustomCardData>): Widget
     id: card.id || `schema-widget-${Date.now()}`,
     name: card.title || "业务小组件",
     version: "1.0.0",
-    size: (card.archetype === "timeline" || card.archetype === "parameter_matrix") ? "large" : "medium",
+    size: (card.archetype === "timeline" || card.archetype === "parameter_matrix") ? 100 : 75,
     layout: (card.archetype === "parameter_matrix" || card.archetype === "tool_discovery") ? "matrix" : "card",
     themeColor: card.themeColor || "blue",
     iconName: card.iconName || "Sparkles",

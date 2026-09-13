@@ -40,7 +40,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 export const TileAtomRenderer: React.FC<TileRendererProps> = ({ descriptor, context }) => {
-  const isCompact = context.isCompact || context.size === "small";
+  const isCompact = context.isCompact || context.size === 25;
 
   return (
     <div

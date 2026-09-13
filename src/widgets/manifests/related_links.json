@@ -39,10 +39,10 @@
   },
   "icon": "ExternalLink",
   "grid": {
-    "defaultSize": "medium",
-    "supportedSizes": ["small", "medium", "large", "wide", "full"],
+    "width": 50,
+    "supportedWidths": [25, 50, 75, 100],
     "ratio": "4:3",
-    "minSpan": 4
+    "minWidth": 25
   },
   "theme": {
     "accentColor": "#0ea5e9",

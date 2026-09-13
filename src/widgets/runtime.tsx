@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { 
   WidgetModule, 
-  WidgetContext, 
-  WidgetPlannedSize,
+  WidgetContext,
   TileSchemaDescriptor
 } from "./sdk/types.js";
+import type { TileWidth } from "../lib/tileLayoutEngine.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 import { TileAtomRenderer } from "./tileRenderer.js";
 import { SearchSynthesisResult } from "../types.js";
@@ -16,9 +16,9 @@ interface WidgetRuntimeProps {
   module: WidgetModule;
   data?: any;
   activeResult?: SearchSynthesisResult;
-  size?: WidgetPlannedSize | "wide";
+  size?: TileWidth;
   isCompact?: boolean;
-  onResize?: (nextSize: WidgetPlannedSize | "wide") => void;
+  onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
@@ -53,7 +53,7 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
     });
   }, []);
 
-  const effectiveSize = (size || module.defaultSize || "medium") as WidgetPlannedSize;
+  const effectiveSize: TileWidth = size || module.width || 50;
 
   // 隔离的 Storage API（以组件 ID 隔离命名空间）
   const scopedStorage = useMemo(() => {

@@ -19,14 +19,14 @@ import {
 } from "../src/lib/tileLayoutEngine.js";
 
 const inputs: TileLayoutInput[] = [
-  { id: "ai_overview", size: "large", priority: 120, isEmphasized: true },
-  { id: "quick_answer", size: "medium", priority: 110 },
-  { id: "custom_card__dl", size: "medium", ratio: ARCHETYPE_RATIOS["download_hub"], priority: 105 },
-  { id: "takeaways", size: "medium", priority: 100 },
-  { id: "actions_toolbox", size: "wide", priority: 95 },
-  { id: "metrics_telemetry", size: "small", priority: 90 },
-  { id: "followup", size: "small", priority: 85 },
-  { id: "sources", size: "full", priority: 80 }
+  { id: "ai_overview", size: 75, priority: 120, isEmphasized: true },
+  { id: "quick_answer", size: 50, priority: 110 },
+  { id: "custom_card__dl", size: 50, ratio: ARCHETYPE_RATIOS["download_hub"], priority: 105 },
+  { id: "takeaways", size: 50, priority: 100 },
+  { id: "actions_toolbox", size: 75, priority: 95 },
+  { id: "metrics_telemetry", size: 25, priority: 90 },
+  { id: "followup", size: 25, priority: 85 },
+  { id: "sources", size: 100, priority: 80 }
 ];
 
 let allPassed = true;

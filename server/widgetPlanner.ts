@@ -6,11 +6,11 @@ import {
   SearchResult, 
   WidgetAction,
   WidgetPlannedItem,
-  WidgetPlannedSize,
   WidgetIntentAnalysis,
   WidgetBlueprint,
   BlueprintComponent
 } from "../src/types.js";
+import type { TileWidth } from "../src/lib/tileLayoutEngine.js";
 import { classifyQueryIntent, planTaskCapabilities } from "./intentAgent.js";
 import { synthesizeToolActions } from "./toolRegistry.js";
 import { analyzeWidgetIntent, INTENT_CAPABILITIES_MAP } from "./widgetIntentAnalyzer.js";
@@ -29,7 +29,7 @@ interface ArchetypeDefinition {
   selectionHeuristics: string;
   themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
   iconName: string;
-  defaultSize: WidgetPlannedSize;
+  width: TileWidth;
   matchPatterns?: RegExp;
 }
 
@@ -42,7 +42,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.download_hub?.selectionHeuristics || "搜索涉及软件/工具下载时实用性最高",
     themeColor: "blue",
     iconName: "Download",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(下载|安装包|release|installer|client|客户端|安装教程)/i
   },
   action_checklist: {
@@ -53,7 +53,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.action_checklist?.selectionHeuristics || "用户提出具体操作步骤或排查报错时实用性最高",
     themeColor: "emerald",
     iconName: "CheckCircle",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(步骤|排查|checklist|清单|指南|排错|配置步骤)/i
   },
   tool_discovery: {
@@ -64,7 +64,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.tool_discovery?.selectionHeuristics || "寻找实用工具与替代品时实用性最高",
     themeColor: "emerald",
     iconName: "Wrench",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(工具|在线|推荐|转换器|免安装|体验|网站推荐)/i
   },
   travel_itinerary: {
@@ -75,7 +75,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.travel_itinerary?.selectionHeuristics || "用户查询旅游行程与出行规划时实用性最高",
     themeColor: "amber",
     iconName: "Compass",
-    defaultSize: "full",
+    width: 100,
     matchPatterns: /(旅游|攻略|行程|路线|景点|门票|自驾|几日游)/i
   },
   pros_cons: {
@@ -86,7 +86,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.pros_cons?.selectionHeuristics || "用户犹豫不决或探寻某事物好坏时实用性最高",
     themeColor: "violet",
     iconName: "Scale",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(优缺点|利弊|权衡|避坑|优势与不足)/i
   },
   verdict_summary: {
@@ -97,7 +97,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.verdict_summary?.selectionHeuristics || "用户直接发问'哪个好/买哪个'时实用性最高",
     themeColor: "violet",
     iconName: "Scale",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(谁更好|推荐|买哪个|选型|裁决|选哪个|pk)/i
   },
   parameter_matrix: {
@@ -108,7 +108,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.parameter_matrix?.selectionHeuristics || "用户对比多个型号或技术参数时实用性最高",
     themeColor: "zinc",
     iconName: "Layers",
-    defaultSize: "full",
+    width: 100,
     matchPatterns: /(参数|指标|规格|基准|配置对比|矩阵|概念|原理|什么是)/i
   },
   timeline: {
@@ -119,7 +119,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.timeline?.selectionHeuristics || "查询历史、发展史或演进过程时实用性最高",
     themeColor: "zinc",
     iconName: "Calendar",
-    defaultSize: "full",
+    width: 100,
     matchPatterns: /(演进|历程|版本历史|发展史|里程碑|时间线)/i
   },
   quote_dossier: {
@@ -130,7 +130,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: ARCHETYPE_PROFILES.quote_dossier?.selectionHeuristics || "用户探寻业界观点与多方争议时实用性最高",
     themeColor: "blue",
     iconName: "Quote",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(言论|评价|争议|观点|评语)/i
   },
   schema: {
@@ -141,7 +141,7 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     selectionHeuristics: "当无预置模板可完美承载时实用性最高",
     themeColor: "blue",
     iconName: "Box",
-    defaultSize: "large",
+    width: 75,
     matchPatterns: /(schema|组件|蓝图|动态组件)/i
   }
 };
@@ -157,7 +157,7 @@ interface WidgetDefinition {
   description: string;
   selectionHeuristics: string;
   basePriority: number; // 1 - 100
-  defaultSize: WidgetPlannedSize;
+  width: TileWidth;
   flexible: boolean;
   isActionOriented: boolean;
 }
@@ -186,7 +186,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "场景专属业务卡片套件（包含软件下载枢纽、学习路线图、素材预览、气象看板等）",
     selectionHeuristics: "具备极高场景针对性，在具有明确领域意图时优先级最高",
     basePriority: 95,
-    defaultSize: "large",
+    width: 75,
     flexible: true,
     isActionOriented: true
   },
@@ -197,7 +197,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "提供一键运行 CLI、安装命令复制、代码片段与快捷链接",
     selectionHeuristics: "在技术实施、命令行执行、快速安装等场景下实用性最高",
     basePriority: 88,
-    defaultSize: "wide",
+    width: 50,
     flexible: true,
     isActionOriented: true
   },
@@ -208,7 +208,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: OFFICIAL_WIDGET_PROFILES.related_links?.functionality || "识别官方正版网站、官方文档与服务入口并提供一键直达",
     selectionHeuristics: OFFICIAL_WIDGET_PROFILES.related_links?.selectionHeuristics || "查询涉及品牌、软件名或寻找官网时实用性最高",
     basePriority: 85,
-    defaultSize: "medium",
+    width: 50,
     flexible: true,
     isActionOriented: true
   },
@@ -219,7 +219,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "前置依赖检查、故障排查诊断与多项核验清单",
     selectionHeuristics: "遇到报错、依赖冲突或环境安装时实用性最高",
     basePriority: 80,
-    defaultSize: "large",
+    width: 75,
     flexible: true,
     isActionOriented: true
   },
@@ -230,7 +230,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "多维度横向对比表格与技术指标 PK",
     selectionHeuristics: "用户面临二选一或多选一对决选型时实用性最高",
     basePriority: 86,
-    defaultSize: "full",
+    width: 100,
     flexible: false,
     isActionOriented: false
   },
@@ -241,18 +241,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "层级知识树、系统拓扑与核心架构导图",
     selectionHeuristics: "解析复杂系统、技术原理与概念全景时实用性最高",
     basePriority: 82,
-    defaultSize: "large",
-    flexible: true,
-    isActionOriented: false
-  },
-  quick_answer: {
-    type: "quick_answer",
-    capabilities: ["instant_verdict", "definition_snippet", "concept_definition", "direct_answer"],
-    tags: ["即时速答", "核心定义", "权威裁决", "一句话概括"],
-    description: "首屏一句话即时回答与核心结论",
-    selectionHeuristics: "需要直截了当给出答案与定义的问答时实用性最高",
-    basePriority: 90,
-    defaultSize: "wide",
+    width: 75,
     flexible: true,
     isActionOriented: false
   },
@@ -263,7 +252,9 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "高密度条目式核心结论提炼与洞察速览",
     selectionHeuristics: "长文内容研报需要快速抓住要点时实用性最高",
     basePriority: 84,
-    defaultSize: "medium",
+    // 与 src/widgets/manifests/takeaways.json 的 grid.width 保持一致（25% 窄栏，3 格）。
+    // 规划层宽度是该组件的最终上桌宽度来源，二者一旦漂移，清单改尺寸就不生效。
+    width: 25,
     flexible: true,
     isActionOriented: false
   },
@@ -274,7 +265,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "全网信源引文出处、发布时间与存证溯源",
     selectionHeuristics: "严肃调研、学术研报与结论核实时必备",
     basePriority: 72,
-    defaultSize: "wide",
+    width: 50,
     flexible: false,
     isActionOriented: false
   },
@@ -285,7 +276,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "多维度深挖解读与延伸技术点",
     selectionHeuristics: "综合调研与知识延展时实用性最高",
     basePriority: 65,
-    defaultSize: "large",
+    width: 75,
     flexible: true,
     isActionOriented: false
   },
@@ -296,7 +287,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "信源热度分析、时间趋势与情感分布统计",
     selectionHeuristics: "舆情分析、趋势研判与统计量化场景下实用性最高",
     basePriority: 60,
-    defaultSize: "wide",
+    width: 50,
     flexible: true,
     isActionOriented: false
   },
@@ -307,7 +298,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "基于上下文的多轮交互式问答气泡",
     selectionHeuristics: "用户需要持续追问、深度交互探索时实用性最高",
     basePriority: 55,
-    defaultSize: "medium",
+    width: 50,
     flexible: true,
     isActionOriented: true
   },
@@ -318,7 +309,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "智能推荐高频延展问题与发散探索方向",
     selectionHeuristics: "引导用户拓宽视野时实用性最高",
     basePriority: 50,
-    defaultSize: "small",
+    width: 25,
     flexible: true,
     isActionOriented: false
   },
@@ -329,7 +320,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "检索质量、模型置信度与响应遥测指标",
     selectionHeuristics: "系统状态监控与信源质检时展示",
     basePriority: 45,
-    defaultSize: "small",
+    width: 25,
     flexible: true,
     isActionOriented: false
   },
@@ -340,7 +331,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "生成专属二维码，支持手机扫码快速续读与跨端流转",
     selectionHeuristics: "需要随时随地分享或手机继续浏览时实用性最高",
     basePriority: 40,
-    defaultSize: "small",
+    width: 25,
     flexible: true,
     isActionOriented: true
   },
@@ -351,7 +342,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "可视化多 Agent 协同流水线、思考步骤与执行耗时",
     selectionHeuristics: "展示 Agentic 思考过程与复杂执行流程时实用性最高",
     basePriority: 35,
-    defaultSize: "wide",
+    width: 50,
     flexible: true,
     isActionOriented: false
   },
@@ -362,7 +353,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     description: "全景式深度分析长篇综述报告",
     selectionHeuristics: "需要一站式长篇研报时实用性最高",
     basePriority: 30,
-    defaultSize: "full",
+    width: 100,
     flexible: false,
     isActionOriented: false
   }
@@ -414,17 +405,16 @@ function resolveArchetypeFromCapabilities(
 }
 
 /**
- * 磁贴尺寸阶梯（按占用面积从小到大）
- *   small 2x2  <  medium 4x2  <  wide 6x2  <  large 4x4  <  full 12x4
+ * 磁贴宽度阶梯（按占用面积从小到大）：25% → 50% → 75% → 100%
  */
-const TILE_SIZE_LADDER: WidgetPlannedSize[] = ["small", "medium", "wide", "large", "full"];
+const TILE_WIDTH_LADDER: TileWidth[] = [25, 50, 75, 100];
 
-/** 在尺寸阶梯上上下移动若干级（越界则钳制到端点） */
-function scaleTileSize(base: WidgetPlannedSize, steps: number): WidgetPlannedSize {
-  const idx = TILE_SIZE_LADDER.indexOf(base);
+/** 在宽度阶梯上上下移动若干级（越界则钳制到端点） */
+function scaleTileWidth(base: TileWidth, steps: number): TileWidth {
+  const idx = TILE_WIDTH_LADDER.indexOf(base);
   if (idx < 0) return base;
-  const next = Math.max(0, Math.min(TILE_SIZE_LADDER.length - 1, idx + steps));
-  return TILE_SIZE_LADDER[next];
+  const next = Math.max(0, Math.min(TILE_WIDTH_LADDER.length - 1, idx + steps));
+  return TILE_WIDTH_LADDER[next];
 }
 
 /**
@@ -432,7 +422,7 @@ function scaleTileSize(base: WidgetPlannedSize, steps: number): WidgetPlannedSiz
  *
  * 规划器原先"命中即上桌"，且把 5 个锚点无条件塞进清单，于是桌面常年同时出现
  * 11~13 个磁贴，其中大半只是弱相关或彼此重复（sources 与 analytics_trend 都在列信源，
- * takeaways / topic_digest / quick_answer 都在复述同一段摘要）。这里按相关度截断。
+ * takeaways 与 topic_digest 都在复述同一段摘要）。这里按相关度截断。
  */
 const MAX_PLANNED_WIDGETS = 9;
 
@@ -502,20 +492,20 @@ function resolveWidgetsFromCapabilities(
       dynamicScore += 18;
     }
 
-    // 仅收录具备能力交集或作为基础信息锚点 (如 quick_answer, takeaways, sources) 的组件
-    const isAnchorWidget = ["quick_answer", "takeaways", "sources", "custom_cards", "actions_toolbox"].includes(key);
+    // 仅收录具备能力交集或作为基础信息锚点 (如 takeaways, sources) 的组件
+    const isAnchorWidget = ["takeaways", "sources", "custom_cards", "actions_toolbox"].includes(key);
     if (matchCount > 0 || isAnchorWidget) {
       // 尺寸随"对口程度"伸缩：用能力特异性而非命中条数决定面积，
       // 避免一个泛化组件仅靠堆命中数就吃掉首屏大块版面。
-      let finalSize = scaleTileSize(
-        def.defaultSize,
+      let finalSize = scaleTileWidth(
+        def.width,
         specificity >= 2.2 ? 1 : specificity > 0 && specificity <= 0.8 ? -1 : 0
       );
 
       // custom_cards 是复合蓝图宿主，需要足够面积承载多分区内容：
-      // 矩阵/时间线类内容偏高 -> full 全宽；其余业务套件 -> large 4x4 正方形焦点磁贴。
+      // 矩阵/时间线类内容偏高 -> 100% 全宽；其余业务套件 -> 75% 焦点磁贴。
       if (key === "custom_cards") {
-        finalSize = archetype === "timeline" || archetype === "parameter_matrix" ? "full" : "large";
+        finalSize = archetype === "timeline" || archetype === "parameter_matrix" ? 100 : 75;
       }
 
       // 优先级分层：下游排版引擎（tileLayoutEngine / bentoLayoutEngine / TileDesktopView）
@@ -555,7 +545,7 @@ function resolveWidgetsFromCapabilities(
     const sourceItem: WidgetPlannedItem = {
       type: "sources",
       priority: 60,
-      size: "medium",
+      size: 50,
       flexible: false,
       reason: "信源存证与文献追溯"
     };

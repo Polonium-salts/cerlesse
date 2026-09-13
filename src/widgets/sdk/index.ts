@@ -9,7 +9,7 @@ export * from "./sandbox.js";
 export function createWidget<TData = any>(definition: WidgetModule<TData>): WidgetModule<TData> {
   return {
     version: "1.0.0",
-    supportedSizes: ["small", "medium", "large", "full"],
+    supportedWidths: [25, 50, 75, 100],
     ...definition
   };
 }

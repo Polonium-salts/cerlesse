@@ -211,12 +211,11 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       intent: "explain",
       userGoal: query,
       suggestedArchetype: "download_hub",
-      capabilities: ["related_links", "ai_answer", "quick_answer"],
+      capabilities: ["related_links", "ai_answer"],
       widgets: [
-        { type: "related_links", priority: 100, size: "medium", reason: "权威官网入口直达置顶" },
-        { type: "ai_answer", priority: 85, size: "medium", reason: "AI 智能综合回答精简呈现" },
-        { type: "quick_answer", priority: 80, size: "wide", reason: "即时答案速览" },
-        { type: "takeaways", priority: 75, size: "medium", reason: "核心要点" }
+        { type: "related_links", priority: 100, size: 50, reason: "权威官网入口直达置顶" },
+        { type: "ai_answer", priority: 85, size: 50, reason: "AI 智能综合回答精简呈现" },
+        { type: "takeaways", priority: 75, size: 25, reason: "核心要点" }
       ],
       primaryActions: []
     };
@@ -227,7 +226,7 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     widgetPlan.widgets.unshift({
       type: "related_links",
       priority: 100,
-      size: "medium",
+      size: 50,
       reason: "权威官网与多链接安全直达置顶"
     });
   }
@@ -235,7 +234,7 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     widgetPlan.widgets.push({
       type: "ai_answer",
       priority: 85,
-      size: "medium",
+      size: 50,
       reason: "核心 AI 智能回答与深度推理"
     });
   }

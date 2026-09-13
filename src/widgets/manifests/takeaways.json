@@ -1,0 +1,49 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "takeaways",
+  "name": "核心要点",
+  "version": "1.0.0",
+  "description": "高密度条目式核心结论提炼，支持逐条勾选并本地记忆掌握进度",
+  "category": "synthesis",
+  "tags": [
+    "核心要点",
+    "结论提炼",
+    "速记清单",
+    "关键洞察",
+    "要点速览"
+  ],
+  "agentHint": {
+    "functionality": "把长文研报浓缩为条目式核心要点，支持逐条勾选并本地记忆掌握进度",
+    "bestFor": [
+      "长文研报快速抓取要点",
+      "学习/调研后的要点复盘",
+      "需要清单化记忆的结构化结论"
+    ],
+    "dataRequirements": [
+      "可条目化的核心结论数组"
+    ],
+    "selectionHeuristics": "当检索产出较长且存在多条并列结论时实用性最高",
+    "triggerKeywords": [
+      "要点",
+      "总结",
+      "提炼",
+      "重点",
+      "归纳",
+      "关键"
+    ],
+    "antiPatterns": [
+      "仅需一句话定论的极简速答场景"
+    ]
+  },
+  "icon": "FileText",
+  "grid": {
+    "width": 25,
+    "supportedWidths": [25, 50, 75, 100],
+    "ratio": "4:3",
+    "minWidth": 25
+  },
+  "theme": {
+    "accentColor": "#6366f1",
+    "flipAnimation": "fade"
+  }
+}

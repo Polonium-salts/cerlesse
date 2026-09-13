@@ -1,4 +1,5 @@
 import type { WidgetSchema } from "./widgets/sdk/types.js";
+import type { TileWidth } from "./lib/tileLayoutEngine.js";
 
 export interface SearchResult {
   id: string;
@@ -176,9 +177,15 @@ export type ResultWidgetKey =
   | "custom_cards"
   | string;
 
+/**
+ * 可参与自动选型的小组件全集（前端注册中心已登记的模块 id）。
+ * related_links / ai_answer 是恒启用的阅读流锚点；takeaways 由 Agent
+ * 依据搜索意图与内容密度自主启停。此清单同时是排版 Agent 的组件白名单来源。
+ */
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
+  "related_links",
   "ai_answer",
-  "related_links"
+  "takeaways"
 ];
 
 export interface WidgetStatusDetail {
@@ -187,8 +194,6 @@ export interface WidgetStatusDetail {
   reason: string;
   autoDecidedByAgent?: boolean;
 }
-
-export type WidgetSemanticWidth = "full" | "large" | "medium" | "small" | "compact" | "wide" | "half";
 
 export type LayoutStructureType = "single_column" | "two_column" | "dashboard" | "modular_grid";
 
@@ -237,16 +242,18 @@ export type QueryIntent =
   | "research";        // 深度研报/全产业链/学术探讨
 
 /**
- * 组件规划的语义尺寸。
- * 与 src/lib/tileLayoutEngine.ts 的 TileSize 保持同一套档位（含 "wide"），
- * 否则规划器输出 "wide" 时类型不通过，而排版相位又确实会读取该档位。
+ * 组件规划的宽度档位。
+ *
+ * 与 src/lib/tileLayoutEngine.ts 的 TileWidth 完全是同一套四档（25 / 50 / 75 / 100），
+ * 这里只保留类型别名以兼容既有导入路径。历史上规划口径曾用 small/medium/large 命名，
+ * 且与磁贴口径同名不同义（规划 large=8列，磁贴 large=6列），现已彻底收敛为数字四档。
  */
-export type WidgetPlannedSize = "small" | "medium" | "wide" | "large" | "tall" | "full";
+export type WidgetPlannedSize = TileWidth;
 
 export interface WidgetPlannedItem {
   type: ResultWidgetKey;
   priority: number; // 1 to 100, higher = higher visual prominence
-  size: WidgetPlannedSize; // "small" (4 cols) | "medium" (6 cols) | "large" (8 cols) | "full" (12 cols)
+  size: TileWidth; // 25 (3 cols) | 50 (6 cols) | 75 (9 cols) | 100 (12 cols)
   flexible?: boolean; // Whether layout engine can expand or shrink this widget to fill bento row gaps
   reason?: string; // Justification from the capability resolver
   capabilities?: string[]; // Capabilities matched to this widget
@@ -496,7 +503,7 @@ export interface LayoutPlan {
   order: ResultWidgetKey[];
   enabled: ResultWidgetKey[];
   featured?: ResultWidgetKey;
-  width: Partial<Record<ResultWidgetKey, WidgetSemanticWidth>>;
+  width: Partial<Record<ResultWidgetKey, TileWidth>>;
   budget?: {
     maxPrimary: number;
     maxSecondary: number;
@@ -510,9 +517,9 @@ export interface LayoutPlan {
 }
 
 export interface WidgetGridPlacement {
-  colSpanLg: number; // 4, 6, 8, 12 (12-column CSS Grid: 12=full, 8=wide, 6=half, 4=compact)
+  colSpanLg: number; // 3, 6, 9, 12 (12-column CSS Grid: 12=100%, 9=75%, 6=50%, 3=25%)
   colSpanMd?: number; // 6 or 12 for tablet
-  semanticWidth?: WidgetSemanticWidth; // "full" | "wide" | "half" | "compact"
+  width?: TileWidth; // 25 | 50 | 75 | 100
   rowIndex?: number; // 0-based conceptual row index
   itemsInRow?: number; // Total number of widgets sharing this row (1, 2, 3)
   isCompact?: boolean; // Whether the widget should render in compact mode

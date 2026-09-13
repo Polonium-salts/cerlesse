@@ -110,43 +110,43 @@ function run(title: string, inputs: TileLayoutInput[], opts: Parameters<typeof s
 
 // ── 场景 ────────────────────────────────────────────────────────────
 const scenarioA: TileLayoutInput[] = [
-  { id: "ai_overview", size: "full", priority: 120, isEmphasized: true },
-  { id: "quick_answer", size: "large", priority: 110 },
-  { id: "takeaways", size: "medium", priority: 100 },
-  { id: "metrics_telemetry", size: "small", priority: 95 },
-  { id: "comparison", size: "large", priority: 90 },
-  { id: "followup", size: "small", priority: 85 },
-  { id: "mindmap", size: "large", priority: 80 },
-  { id: "actions_toolbox", size: "medium", priority: 75 },
-  { id: "sources", size: "full", priority: 70 },
-  { id: "official_portal", size: "medium", priority: 65 },
-  { id: "agent_workflow", size: "large", priority: 60 }
+  { id: "ai_overview", size: 100, priority: 120, isEmphasized: true },
+  { id: "quick_answer", size: 75, priority: 110 },
+  { id: "takeaways", size: 50, priority: 100 },
+  { id: "metrics_telemetry", size: 25, priority: 95 },
+  { id: "comparison", size: 75, priority: 90 },
+  { id: "followup", size: 25, priority: 85 },
+  { id: "mindmap", size: 75, priority: 80 },
+  { id: "actions_toolbox", size: 50, priority: 75 },
+  { id: "sources", size: 100, priority: 70 },
+  { id: "official_portal", size: 50, priority: 65 },
+  { id: "agent_workflow", size: 75, priority: 60 }
 ];
 
 // 最贴近真实排版 Agent 的产出：焦点提权到全宽（其余为 4/6/8 混合宽度）
 const scenarioC: TileLayoutInput[] = [
-  { id: "ai_overview", size: "full", priority: 120, isEmphasized: true },
-  { id: "quick_answer", size: "large", priority: 110 },
-  { id: "takeaways", size: "medium", priority: 100 },
-  { id: "metrics_telemetry", size: "small", priority: 95 },
-  { id: "comparison", size: "large", priority: 90 },
-  { id: "followup", size: "small", priority: 85 },
-  { id: "mindmap", size: "large", priority: 80 },
-  { id: "actions_toolbox", size: "medium", priority: 75 },
-  { id: "sources", size: "large", priority: 70 },
-  { id: "official_portal", size: "medium", priority: 65 },
-  { id: "agent_workflow", size: "large", priority: 60 }
+  { id: "ai_overview", size: 100, priority: 120, isEmphasized: true },
+  { id: "quick_answer", size: 75, priority: 110 },
+  { id: "takeaways", size: 50, priority: 100 },
+  { id: "metrics_telemetry", size: 25, priority: 95 },
+  { id: "comparison", size: 75, priority: 90 },
+  { id: "followup", size: 25, priority: 85 },
+  { id: "mindmap", size: 75, priority: 80 },
+  { id: "actions_toolbox", size: 50, priority: 75 },
+  { id: "sources", size: 75, priority: 70 },
+  { id: "official_portal", size: 50, priority: 65 },
+  { id: "agent_workflow", size: 75, priority: 60 }
 ];
 
 const scenarioB: TileLayoutInput[] = [
-  { id: "custom_card__c1", size: "large", ratio: "4:5", priority: 130, isEmphasized: true },
-  { id: "quick_answer", size: "medium", priority: 120 },
-  { id: "fast_chat", size: "small", priority: 115 },
-  { id: "takeaways", size: "large", priority: 110 },
-  { id: "followup", size: "small", priority: 105 },
-  { id: "analytics_trend", size: "wide", priority: 100 },
-  { id: "sources", size: "large", priority: 95 },
-  { id: "verification_checklist", size: "medium", priority: 90 }
+  { id: "custom_card__c1", size: 75, ratio: "4:5", priority: 130, isEmphasized: true },
+  { id: "quick_answer", size: 50, priority: 120 },
+  { id: "fast_chat", size: 25, priority: 115 },
+  { id: "takeaways", size: 75, priority: 110 },
+  { id: "followup", size: 25, priority: 105 },
+  { id: "analytics_trend", size: 75, priority: 100 },
+  { id: "sources", size: 75, priority: 95 },
+  { id: "verification_checklist", size: 50, priority: 90 }
 ];
 
 // ── 参数矩阵：找出"最不规则且最致密"的组合 ──────────────────────────
@@ -276,7 +276,7 @@ check(
 );
 
 // 决策 4：护栏不再断崖式降级（727px 仅越界 7px，不该被砍掉 2 列宽）
-const tallNarrow: TileLayoutInput[] = [{ id: "custom_card__t", size: "large", ratio: "4:5", priority: 100, isEmphasized: true }];
+const tallNarrow: TileLayoutInput[] = [{ id: "custom_card__t", size: 75, ratio: "4:5", priority: 100, isEmphasized: true }];
 const tallRes = measure(tallNarrow, { ...BASE });
 const tallItem = tallRes.items[0];
 check(
@@ -286,7 +286,7 @@ check(
 );
 
 // 存在性事实：全宽磁贴会抹平所有列高，是瀑布流的"天敌"
-const cNoFull: TileLayoutInput[] = scenarioC.map((t) => (t.size === "full" ? { ...t, size: "wide" as const } : t));
+const cNoFull: TileLayoutInput[] = scenarioC.map((t) => (t.size === 100 ? { ...t, size: 75 as const } : t));
 const cFlat = measure(cNoFull, { ...BASE });
 console.log(
   `  [观察] 全宽磁贴对参差度的影响：无全宽 ${Math.round(cFlat.raggednessPx)}px vs 有全宽 ${Math.round(c.raggednessPx)}px` +
@@ -294,9 +294,9 @@ console.log(
 );
 
 const extreme: TileLayoutInput[] = [
-  { id: "followup", size: "full", priority: 100, isEmphasized: true },
-  { id: "quick_answer", size: "large", priority: 90 },
-  { id: "sources", size: "full", priority: 80 }
+  { id: "followup", size: 100, priority: 100, isEmphasized: true },
+  { id: "quick_answer", size: 75, priority: 90 },
+  { id: "sources", size: 100, priority: 80 }
 ];
 const extremeGuard = measure(extreme, { ...BASE });
 const extremeRaw = measure(extreme, { ...BASE, clampToHeightBand: false });

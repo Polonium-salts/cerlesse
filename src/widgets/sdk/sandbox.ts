@@ -52,8 +52,8 @@ export function safeInstantiateWidgetModule(codeString: string): WidgetModule | 
     if (result && typeof result === "object" && (result.id || result.name)) {
       return {
         version: "1.0.0",
-        defaultSize: result.defaultSize || "medium",
-        supportedSizes: result.supportedSizes || ["small", "medium", "large", "full"],
+        width: result.width || 50,
+        supportedWidths: result.supportedWidths || [25, 50, 75, 100],
         ...result
       } as WidgetModule;
     }

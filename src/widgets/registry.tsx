@@ -2,6 +2,7 @@ import React from "react";
 import { WidgetModule, ResultWidgetKey } from "./sdk/types.js";
 import { safeInstantiateWidgetModule } from "./sdk/sandbox.js";
 import { CustomCardData } from "../types.js";
+import type { TileWidth } from "../lib/tileLayoutEngine.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 
 /**
@@ -140,10 +141,10 @@ class WidgetRegistryClass {
   ): WidgetModule {
     const cardKey = `custom_card__${card.id}`;
     
-    // 确定黄金默认尺寸
-    const defaultSize = (card.archetype === "timeline" || card.archetype === "parameter_matrix")
-      ? "large"
-      : "medium";
+    // 确定黄金默认宽度
+    const width: TileWidth = (card.archetype === "timeline" || card.archetype === "parameter_matrix")
+      ? 100
+      : 75;
 
     const customModule: WidgetModule = {
       id: cardKey,
@@ -151,8 +152,8 @@ class WidgetRegistryClass {
       version: "1.0.0",
       description: card.subtitle || `${card.archetype} 业务卡片`,
       category: "custom",
-      defaultSize,
-      supportedSizes: ["small", "medium", "large", "full"],
+      width,
+      supportedWidths: [25, 50, 75, 100],
       schema: card.archetype === "schema" ? card.schema : undefined,
       render: (ctx) => {
         if (card.schema) {

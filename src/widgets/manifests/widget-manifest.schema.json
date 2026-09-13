@@ -79,30 +79,29 @@
     "grid": {
       "type": "object",
       "description": "网格规格 —— 磁贴形状的唯一事实来源",
-      "required": ["defaultSize", "supportedSizes", "ratio"],
+      "required": ["width", "supportedWidths", "ratio"],
       "additionalProperties": false,
       "properties": {
-        "defaultSize": {
-          "enum": ["small", "medium", "large", "wide", "tall", "full"],
-          "description": "默认占列宽度档位（12 栅格基准）：small=2格 / medium=4格 / tall=4格 / large=6格 / wide=8格 / full=12格"
+        "width": {
+          "enum": [25, 50, 75, 100],
+          "description": "默认占宽百分比（12 栅格基准）：25=3格 / 50=6格 / 75=9格 / 100=12格"
         },
-        "supportedSizes": {
+        "supportedWidths": {
           "type": "array",
           "minItems": 1,
-          "description": "允许用户切换的宽度档位集合",
+          "description": "允许用户切换的宽度百分比集合，取值仅限 25 / 50 / 75 / 100",
           "items": {
-            "enum": ["small", "medium", "large", "wide", "tall", "full"]
+            "enum": [25, 50, 75, 100]
           }
         },
         "ratio": {
           "enum": ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"],
           "description": "网格宽高比。磁贴高度恒等于 宽度 ÷ ratio，比例一经声明即不随任何条件漂移。"
         },
-        "minSpan": {
+        "minWidth": {
           "type": "integer",
-          "minimum": 2,
-          "maximum": 12,
-          "description": "可选。允许求解器收窄的最小列跨度。缺省时沿用通用规则「最多收窄一档」；内容密集的插件可声明此值，表示宁可有空洞也不许压到这个宽度以下。"
+          "enum": [25, 50, 75, 100],
+          "description": "可选。允许求解器收窄到的最小占宽百分比。缺省时沿用通用规则「最多收窄一档」；内容密集的插件可声明此值，表示宁可有空洞也不许压到这个宽度以下。"
         }
       }
     },

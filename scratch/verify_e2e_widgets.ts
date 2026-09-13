@@ -1,6 +1,7 @@
 async function verify() {
   console.log("Testing Agent API with Widget Schema & Plugin System...");
-  const res = await fetch("http://localhost:3000/api/agent/run", {
+  const base = process.env.CERLESSE_URL || "http://localhost:3100";
+  const res = await fetch(`${base}/api/agent/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

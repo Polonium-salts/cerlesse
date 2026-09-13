@@ -9,7 +9,8 @@ import { OFFICIAL_WIDGET_MODULES } from "../modules/index.js";
 export {
   OFFICIAL_WIDGET_MODULES,
   aiAnswerModule,
-  relatedLinksModule
+  relatedLinksModule,
+  takeawaysModule
 } from "../modules/index.js";
 
 /** 初始化并自动向注册中心登记小组件模块 */

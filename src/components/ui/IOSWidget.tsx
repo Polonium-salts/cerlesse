@@ -1,6 +1,6 @@
 import React from "react";
 import { cn } from "../../lib/utils.js";
-import { WidgetPlannedSize } from "../../types.js";
+import type { TileWidth } from "../../lib/tileLayoutEngine.js";
 
 interface IOSWidgetProps {
   id?: string;
@@ -9,8 +9,8 @@ interface IOSWidgetProps {
   icon?: React.ReactNode;
   badge?: React.ReactNode;
   actions?: React.ReactNode;
-  size?: WidgetPlannedSize | "wide";
-  onResize?: (size: WidgetPlannedSize | "wide") => void;
+  size?: TileWidth;
+  onResize?: (size: TileWidth) => void;
   className?: string;
   headerClassName?: string;
   contentClassName?: string;
@@ -95,7 +95,7 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
   onClick
 }) => {
   const hasHeader = Boolean(title || icon || badge || actions || onResize);
-  const isSmall = size === "small";
+  const isSmall = size === 25;
   const { hostRef, overflowing } = useContentBox();
 
   return (

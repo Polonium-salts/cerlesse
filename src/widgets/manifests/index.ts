@@ -1,8 +1,9 @@
-import type { TileSize, TileRatio } from "../../lib/tileLayoutEngine.js";
+import type { TileWidth, TileRatio } from "../../lib/tileLayoutEngine.js";
 import type { WidgetCategoryType, TileThemeConfig, WidgetAgentPromptHint } from "../sdk/types.js";
 
 import relatedLinks from "./related_links.json";
 import aiAnswer from "./ai_answer.json";
+import takeaways from "./takeaways.json";
 
 /**
  * 小组件插件清单聚合层 (Widget Manifest Catalog)
@@ -12,14 +13,14 @@ import aiAnswer from "./ai_answer.json";
 
 /** 网格规格 —— 磁贴形状的唯一事实来源 */
 export interface WidgetGridSpec {
-  /** 默认占列宽度档位（12 栅格基准） */
-  defaultSize: TileSize;
-  /** 允许用户切换的宽度档位 */
-  supportedSizes: TileSize[];
+  /** 默认占宽百分比（12 栅格基准）：25 / 50 / 75 / 100 */
+  width: TileWidth;
+  /** 允许用户切换的宽度百分比 */
+  supportedWidths: TileWidth[];
   /** 网格宽高比：磁贴高度恒等于 宽度 ÷ ratio */
   ratio: TileRatio;
-  /** 可选。允许求解器收窄的最小列跨度；缺省沿用通用规则「最多收窄一档」 */
-  minSpan?: number;
+  /** 可选。允许求解器收窄到的最小占宽百分比；缺省沿用通用规则「最多收窄一档」 */
+  minWidth?: TileWidth;
 }
 
 /** 插件清单 (Widget Manifest) */
@@ -46,7 +47,8 @@ function asManifest(raw: unknown): WidgetManifest {
 /** 全部小组件清单 */
 export const WIDGET_MANIFESTS: WidgetManifest[] = [
   aiAnswer,
-  relatedLinks
+  relatedLinks,
+  takeaways
 ].map(asManifest);
 
 /** id → 清单 索引 */
@@ -69,14 +71,14 @@ export const MANIFEST_RATIOS: Record<string, TileRatio> = WIDGET_MANIFESTS.reduc
 }, {});
 
 /**
- * id → 最小列跨度（仅声明了 minSpan 的清单会出现）。
+ * id → 最小占宽百分比（仅声明了 minWidth 的清单会出现）。
  * 未声明的组件由调用方回落到通用规则「最多收窄一档」。
  */
-export const MANIFEST_MIN_SPANS: Record<string, number> = WIDGET_MANIFESTS.reduce<
-  Record<string, number>
+export const MANIFEST_MIN_WIDTHS: Record<string, TileWidth> = WIDGET_MANIFESTS.reduce<
+  Record<string, TileWidth>
 >((acc, manifest) => {
-  if (typeof manifest.grid.minSpan === "number") {
-    acc[manifest.id] = manifest.grid.minSpan;
+  if (typeof manifest.grid.minWidth === "number") {
+    acc[manifest.id] = manifest.grid.minWidth;
   }
   return acc;
 }, {});

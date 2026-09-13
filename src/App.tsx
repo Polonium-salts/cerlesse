@@ -670,9 +670,9 @@ export default function App() {
     }
     const mod = WidgetRegistry.get(key);
     if (mod) {
-      if (mod.defaultSize === "full") return "col-span-12";
-      if (mod.defaultSize === "large") return isEmphasized ? "col-span-12" : "col-span-12 lg:col-span-6";
-      if (mod.defaultSize === "small") return "col-span-12 sm:col-span-6 lg:col-span-3";
+      if (mod.width === 100) return "col-span-12";
+      if (mod.width === 75) return isEmphasized ? "col-span-12" : "col-span-12 lg:col-span-9";
+      if (mod.width === 25) return "col-span-12 sm:col-span-6 lg:col-span-3";
       return "col-span-12 lg:col-span-6";
     }
     return "col-span-12";
@@ -700,7 +700,7 @@ export default function App() {
   ) => {
     if (!activeResult) return null;
     const placement = currentStrategy.gridConfig?.[key];
-    const isCompact = overrideCompact ?? (size === "small") ?? placement?.isCompact ?? (placement?.colSpanLg ? placement.colSpanLg <= 4 : false);
+    const isCompact = overrideCompact ?? (size === 25) ?? placement?.isCompact ?? (placement?.colSpanLg ? placement.colSpanLg <= 3 : false);
 
     // 1. 若为旧版 custom_cards 聚合组件且包含多张卡片，平铺展示
     if (key === "custom_cards") {

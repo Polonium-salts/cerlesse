@@ -1,5 +1,4 @@
-import { WidgetPlannedSize } from "../types.js";
-import { TileSize } from "../lib/tileLayoutEngine.js";
+import { TileWidth } from "../lib/tileLayoutEngine.js";
 import {
   CANONICAL_CAPABILITIES,
   normalizeCapabilities,
@@ -85,33 +84,33 @@ export const WIDGET_CAPABILITIES = {
 export type WidgetCapabilityKey = (typeof WIDGET_CAPABILITIES)[keyof typeof WIDGET_CAPABILITIES];
 
 /**
- * 根据组件内的信息密度和交互复杂度，智能计算推荐的磁贴尺寸
+ * 根据组件内的信息密度和交互复杂度，智能计算推荐的磁贴宽度档位 (25 / 50 / 75 / 100)
  */
-export function recommendTileSize(options: {
+export function recommendTileWidth(options: {
   componentCount: number;
   hasRichActions?: boolean;
   hasComplexGrid?: boolean;
   preferredLayout?: "compact" | "spacious";
-}): TileSize {
-  const { componentCount, hasRichActions = false, hasComplexGrid = false, preferredLayout = "spacious" } = options;
+}): TileWidth {
+  const { componentCount, hasRichActions = false, hasComplexGrid = false } = options;
 
   if (componentCount <= 1 && !hasRichActions && !hasComplexGrid) {
-    return "small"; // 2x2
+    return 25; // 3 列
   }
 
   if (componentCount <= 2 && !hasComplexGrid) {
-    return "medium"; // 4x2
+    return 50; // 6 列
   }
 
   if (hasComplexGrid || componentCount >= 5) {
-    return preferredLayout === "spacious" ? "large" : "wide"; // 4x4 or 6x2
+    return 75; // 9 列
   }
 
   if (hasRichActions || componentCount >= 3) {
-    return "medium"; // 4x2
+    return 50; // 6 列
   }
 
-  return "medium";
+  return 50;
 }
 
 /**

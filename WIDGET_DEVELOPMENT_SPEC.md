@@ -51,7 +51,7 @@ Cerlesse 采用**单智能体端到端编排 + 清单驱动 (Manifest-Driven) + 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                       沙箱运行时与 Live Tile 桌面                        │
 │   - WidgetContext 沙箱隔离 (受控 actions, 命名空间持久化 storage)         │
-│   - 12 栅格行带对齐排版 (TileLayoutEngine: 2/4/6/8/12 格对齐)           │
+│   - 12 栅格行带对齐排版 (TileLayoutEngine: 3/6/9/12 格对齐)            │
 │   - 3D Live Tile 正反面翻转、全景小组件中心与焦点联动                   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -113,10 +113,10 @@ Cerlesse 采用**单智能体端到端编排 + 清单驱动 (Manifest-Driven) + 
 | `tags` | `string[]` | 是 | 语义与功能标签列表，供 Agent 提示与用户检索。 |
 | `agentHint` | `object` | 是 | 底层功能描述、适用场景、信源要求与启发式选取准则。 |
 | `icon` | `string` | 否 | Lucide 图标名称（白名单定义于 `icons.ts`）。 |
-| `grid.defaultSize` | `TileSize` | 是 | 默认占列宽度档位：`small` (2格) \| `medium` (4格) \| `large` (6格) \| `wide` (8格) \| `tall` (4格) \| `full` (12格)。 |
-| `grid.supportedSizes`| `TileSize[]` | 是 | 允许用户手动缩放切换的宽度档位集合。 |
-| `grid.ratio` | `string` | 是 | 宽高比（`1:1`, `4:3`, `3:2`, `16:9`, `2:1`, `3:1`, `4:5`），高度严格遵循 `宽度 ÷ ratio`。 |
-| `grid.minSpan` | `number` | 否 | 最小栅格跨度保护（如 4 或 6）。 |
+| `grid.width` | `TileWidth` | 是 | 默认占列宽度档位，**只能取 `25` \| `50` \| `75` \| `100`**（对应 12 栅格中的 3 / 6 / 9 / 12 列）。 |
+| `grid.supportedWidths`| `TileWidth[]` | 是 | 允许用户手动缩放切换的宽度档位集合，取值同样限定在 `25/50/75/100`，且必须包含 `grid.width`。 |
+| `grid.ratio` | `string` | 是 | 宽高比基线（`1:1`, `4:3`, `3:2`, `16:9`, `2:1`, `3:1`, `4:5`）。高度以 `宽度 ÷ ratio` 为**下限**，内容放不下时可继续增高（见下方说明），但绝不会被压到比例之下。 |
+| `grid.minWidth` | `TileWidth` | 否 | 最小宽度保护档位，必须 ≤ `grid.width` 且落在四档内（如 `25`）。 |
 | `theme.accentColor` | `string` | 否 | 强调点缀色 HEX（如 `#0ea5e9`）。 |
 | `theme.badgeText` | `string` | 否 | 磁贴右上角实时徽标文案（如 `PRO`, `LIVE`）。 |
 | `theme.animation` | `string` | 否 | 动效类名（如 `pulse`, `glow`, `none`）。 |
@@ -127,20 +127,30 @@ Cerlesse 采用**单智能体端到端编排 + 清单驱动 (Manifest-Driven) + 
 
 系统基于现代 Bento Grid 与磁贴排版系统，统一采用 **12 列栅格（12-Column Grid）** 进行行带对齐装箱。
 
-### 1. 尺寸档位契约 (`TileSize`)
+### 1. 尺寸档位契约 (`TileWidth`)
 
-| 尺寸档位 (`TileSize`) | 栅格跨度 (`colSpan`) | 占比 | 典型应用场景 | 建议长宽比 |
+宽度词汇表**全链路唯一**：清单、SDK 契约、Agent 决策、装箱求解器、渲染层一律使用 `TileWidth`，
+取值仅限 **`25` / `50` / `75` / `100`**（百分比语义，即占满行的比例）。
+
+| 宽度档位 (`TileWidth`) | 栅格跨度 (`colSpan`) | 占比 | 典型应用场景 | 建议长宽比 |
 | :--- | :--- | :--- | :--- | :--- |
-| `small` | **2 格** | 1/6 宽 | 快速指标、状态开关、天气徽标、单值卡片 | `1:1` 或 `4:3` |
-| `medium` | **4 格** 或 **6 格** | 1/3 ~ 1/2 宽 | 官网跳转卡片、检查清单、参数对照、工具推荐 | `4:3` 或 `3:2` |
-| `large` | **6 格** | 1/2 宽 (半屏) | AI 智能回答、对比分析矩阵、优缺点评测 | `4:3` 或 `16:9` |
-| `wide` | **8 格** | 2/3 宽 | 综合思维导图、全流程步骤拆解 | `16:9` 或 `2:1` |
-| `tall` | **4 格** | 1/3 宽 (双倍高) | 垂直时间线、长图谱、多项历史记录 | `4:5` |
-| `full` | **12 格** | 100% 满宽 | 超宽全景研报、大表格、全链路知识图谱 | `3:1` 或 `16:9` |
+| `25` | **3 格** | 1/4 宽 | 快速指标、核心要点速记、官网跳转卡片、单值小组件 | `4:3` 或 `1:1` |
+| `50` | **6 格** | 1/2 宽 (半屏) | AI 智能回答、对比分析矩阵、参数对照、检查清单 | `4:3` 或 `3:2` |
+| `75` | **9 格** | 3/4 宽 | 综合思维导图、全流程步骤拆解、宽幅时间线 | `4:3` 或 `16:9` |
+| `100` | **12 格** | 100% 满宽 | 超宽全景研报、大表格、全链路知识图谱 | `3:1` 或 `16:9` |
 
-> 📌 **最新布局规范注意**：
-> - **官网跳转 (`related_links`)**：默认采用 `medium` 档位（`colSpan: 6` 半宽，`ratio: 4:3`），置顶推荐。
-> - **AI 智能回答 (`ai_answer`)**：默认采用 `large` 档位（`colSpan: 6` 半宽，`ratio: 4:3`），与官网卡片或其它深度分析并排呈现，避免过度占用整屏空间。
+> 📌 **宽度契约要点**：
+> - 类型定义位于 `src/lib/tileLayoutEngine.ts`：`export type TileWidth = 25 | 50 | 75 | 100;`
+> - **历史清单兼容**：旧清单中的 `small` / `medium` / `large` / `wide` / `tall` / `full` 名称不会被拒绝，
+>   由 `normalizeTileWidth()` 自动映射到**最近的档位**后再参与排版；新组件请直接写数字。
+> - **官网跳转 (`related_links`)**：默认 `25`（3 格窄栏，`ratio: 4:3`），置顶推荐。
+> - **AI 智能回答 (`ai_answer`)**：默认 `50`（6 格半宽，`ratio: 4:3`），与官网卡片或其它深度分析并排呈现，避免过度占用整屏空间。
+> - **核心要点 (`takeaways`)**：默认 `25`（3 格窄栏，`ratio: 4:3`）。
+>
+> ⚠️ **宽度是硬契约，高度是下限**：磁贴的实际像素宽度**严格等于** `占据列数 ÷ 12 × 容器宽`，
+> 由 `grid.width` 唯一决定；高度则取 `max(宽度 ÷ ratio, 实测内容高度)`——渲染层会实测内容的
+> 自然高度并回填 `contentHeightPx`，宁可让磁贴长高，也不裁切文字。因此 `ratio` 是"最少给这么多
+> 高度"，而不是"只能这么多"。
 
 ### 2. 响应式规则
 - **桌面端 (Desktop ≥ 1024px)**: 完整 12 列栅格，严格遵循装箱对齐；
@@ -175,11 +185,11 @@ export interface WidgetModule<TData = any> {
   /** 图标组件（Lucide 图标）或图标名 */
   icon?: React.ComponentType<{ className?: string }> | string;
   
-  /** 默认栅格尺寸 */
-  defaultSize: TileSize;
+  /** 默认磁贴宽度（25 / 50 / 75 / 100，对应 12 栅格的 3 / 6 / 9 / 12 列） */
+  width: TileWidth;
   
-  /** 支持切换的尺寸列表 */
-  supportedSizes?: TileSize[];
+  /** 支持切换的宽度列表，取值仅限 25 / 50 / 75 / 100 */
+  supportedWidths?: TileWidth[];
   
   /** 磁贴主题配置（点缀色、磁贴徽标、动效） */
   tileTheme?: TileThemeConfig;
@@ -215,11 +225,14 @@ export interface WidgetContext<TData = any> {
   /** 全网检索与 Agent 研报原始对象 */
   activeResult?: SearchSynthesisResult;
   
-  /** 当前组件的栅格尺寸 */
-  size: WidgetPlannedSize;
+  /** 当前组件的磁贴宽度档位（25 / 50 / 75 / 100） */
+  size: TileWidth;
   
-  /** 是否处于紧凑视图 (small / mobile) */
+  /** 是否处于紧凑视图 (25% 窄栏 / mobile) */
   isCompact: boolean;
+  
+  /** 宿主桥接：请求将当前磁贴切换到指定宽度档位 */
+  onResize?: (nextSize: TileWidth) => void;
   
   /** 局域响应式状态 */
   state: Record<string, any>;
@@ -264,7 +277,7 @@ export interface WidgetSchema {
   id: string;
   name: string;
   version?: string;
-  size: WidgetPlannedSize;
+  size: TileWidth;
   layout: "card" | "dashboard" | "split" | "list" | "matrix";
   themeColor?: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
   iconName?: string;
@@ -301,22 +314,34 @@ export type WidgetSchemaNode =
 
 ## 六、小组件业务原型 (Archetypes) 与官方库
 
-系统内置 12 款经过打磨的官方小组件：
+### 1. 已实现并注册的官方小组件
 
-| 组件 ID | 业务原型 | 核心标签 (Tags) | 默认尺寸 | 核心功能与亮点 |
+以下 3 款已具备完整的 `manifests/*.json` 清单与 `modules/*.tsx` 渲染模块，可被 Agent 编排上桌：
+
+| 组件 ID | 业务原型 | 核心标签 (Tags) | 默认宽度 (`grid.width`) | 核心功能与亮点 |
 | :--- | :--- | :--- | :--- | :--- |
-| `related_links` | `portal` | 官网导航, 官方入口, 多链接直达 | `medium` (6格/半宽) | 提炼官方网站及子频道，提供安全跳转卡片，默认置顶 |
-| `ai_answer` | `synthesis` | AI回答, 深度推理, 核心结论 | `large` (6格/半宽) | 结构化多源提炼、Markdown 高亮、智能追问拓展 |
-| `quick_answer` | `synthesis` | 即时速览, 问答卡片 | `wide` (8格) | 快速一句话定论与关键参数点 |
-| `takeaways` | `synthesis` | 核心要点, 提炼速记 | `medium` (4格) | 结构化核心要点小清单 |
-| `pros_cons` | `analysis` | 优劣势对比, 决策评估 | `large` (6格) | 正反双栏对比、优缺点分析 |
-| `parameter_matrix`| `analysis` | 参数对比, 规格矩阵 | `large` (6格) | 多产品、框架或方案横向打分矩阵 |
-| `timeline` | `analysis` | 时间线, 事件脉络 | `large` (6格) | 节点状态、历史大事件脉络追踪 |
-| `action_checklist`| `action` | 部署清单, 实操指南 | `medium` (4格) | 勾选状态持久化、进度百分比、指令一键复制 |
-| `download_hub` | `portal` | 官方下载, 安装镜像 | `medium` (4格) | 跨平台版本包区分、哈希校验码复制 |
-| `tool_discovery` | `portal` | 工具生态, 关联神器 | `medium` (4格) | 效率工具、扩展推荐、评分与标签 |
-| `verdict` | `analysis` | 权威裁决, 购买/选型建议 | `medium` (4格) | 推荐指数、核心依据与适用人群判定 |
-| `travel` | `action` | 行程规划, 路线打卡 | `large` (6格) | 日程规划、打卡点信息与交通地图指引 |
+| `related_links` | `portal` | 官网导航, 官方入口, 多链接直达 | `25`（3 格窄栏） | 提炼官方网站及子频道，提供安全跳转卡片，默认置顶 |
+| `ai_answer` | `synthesis` | AI回答, 深度推理, 核心结论 | `50`（6 格半宽） | 结构化多源提炼、Markdown 高亮、智能追问拓展 |
+| `takeaways` | `synthesis` | 核心要点, 提炼速记 | `25`（3 格窄栏） | 结构化核心要点小清单，支持逐条勾选并本地记忆进度 |
+
+> ⚠️ **注意**：`related_links` 与 `takeaways` 的默认宽度已在四档收敛中由旧的 4 格降至 **`25`（3 格窄栏）**。
+
+### 2. 规划层类型（尚未实现渲染模块）
+
+`server/widgetPlanner.ts` 的类型注册表还登记了下列规划类型——它们参与 Agent 的意图评分与装箱决策，
+但**当前没有对应的渲染模块**，因此不会实际出现在桌面上。若要启用，需按第七节补全清单与模块：
+
+| 规划类型 | 默认宽度 | 说明 |
+| :--- | :--- | :--- |
+| `official_portal` | `50` | 官网直达（规划层入口，实际渲染由 `related_links` 承担） |
+| `comparison` | `100` | 多维横向对比表格与指标 PK |
+| `mindmap` | `75` | 层级知识树、系统拓扑与架构导图 |
+| `sources` | `50` | 全网信源引文出处与存证溯源 |
+| `topic_digest` | `75` | 多维度深挖解读与延伸技术点 |
+| `analytics_trend` | `50` | 信源热度、时间趋势与情感分布统计 |
+| `actions_toolbox` | `50` | 一键运行 CLI、命令复制与代码片段 |
+| `verification_checklist` | `75` | 前置依赖检查与故障排查清单 |
+| `custom_cards` | `100` / `75` | Agent 动态锻造的业务卡片套件（由 `cardForge` 生成） |
 
 ---
 
@@ -345,10 +370,10 @@ export type WidgetSchemaNode =
   },
   "icon": "Terminal",
   "grid": {
-    "defaultSize": "medium",
-    "supportedSizes": ["small", "medium", "large"],
+    "width": 50,
+    "supportedWidths": [25, 50, 75, 100],
     "ratio": "4:3",
-    "minSpan": 4
+    "minWidth": 25
   },
   "theme": {
     "accentColor": "#10b981",
@@ -385,8 +410,8 @@ export const MyToolWidget: WidgetModule<ToolData> = {
   name: "极速开发工具箱",
   version: "1.0.0",
   category: "action",
-  defaultSize: "medium",
-  supportedSizes: ["medium", "large"],
+  width: 50,
+  supportedWidths: [25, 50, 75, 100],
 
   // 数据清洗管道
   data: (activeResult) => {
@@ -417,7 +442,7 @@ export const MyToolWidget: WidgetModule<ToolData> = {
         {/* 头部 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Terminal className="size-4 text-emerald-500" />
+            <Terminal className="size-4 text-primary" />
             <h4 className="text-sm font-semibold text-foreground truncate">{title}</h4>
           </div>
           <button
@@ -442,7 +467,7 @@ export const MyToolWidget: WidgetModule<ToolData> = {
               </div>
               <button
                 onClick={() => ctx.actions.copyCommand({ cmd: item.cmd })}
-                className="p-1.5 text-muted-foreground hover:text-emerald-500 transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-primary transition-colors"
                 title="一键复制"
               >
                 <Copy className="size-3.5" />
@@ -454,7 +479,7 @@ export const MyToolWidget: WidgetModule<ToolData> = {
         {/* 底部提示 */}
         <div className="text-[11px] text-muted-foreground flex items-center justify-between pt-1 border-t border-border/40">
           <span>点击图标可一键复制到剪贴板</span>
-          <CheckCircle2 className="size-3 text-emerald-500" />
+          <CheckCircle2 className="size-3 text-primary" />
         </div>
       </div>
     );
@@ -495,7 +520,7 @@ export const MyToolWidget: WidgetModule<ToolData> = {
   "type": "widget",
   "id": "python-env-setup",
   "name": "Python 极速环境配置",
-  "size": "medium",
+  "size": 50,
   "layout": "card",
   "themeColor": "emerald",
   "iconName": "Terminal",
@@ -531,14 +556,18 @@ export const MyToolWidget: WidgetModule<ToolData> = {
 在 `src/widgets/registry.tsx` 中完成统一挂载：
 
 ```typescript
-import { widgetRegistry } from "./registry.js";
+import { WidgetRegistry } from "./registry.js";
 import { MyToolWidget } from "./modules/MyToolWidget.js";
 
 // 注册新组件
-widgetRegistry.register(MyToolWidget);
+WidgetRegistry.register(MyToolWidget);
 ```
 
 注册完成后，`SearchAgent` 与 `LayoutAgent` 即可自动感知该小组件，在命中相应意图或触发关键词时自动编排并渲染于 12 栅格磁贴桌面中。
+
+> 📌 **别忘了同步清单**：仅有 `WidgetModule` 还不足以驱动尺寸与元信息——磁贴的宽度档位与长宽比由
+> `src/widgets/manifests/<id>.json` 的 `grid` 段声明（见步骤 1）。`width` 的**唯一合法取值是
+> `25` / `50` / `75` / `100`**，若清单缺失该组件会回落到默认 `50`。
 
 ---
 
@@ -556,4 +585,4 @@ widgetRegistry.register(MyToolWidget);
 
 ---
 
-*文档版本：v3.0.0 ｜ 维护团队：Cerlesse Agent Core Team*
+*文档版本：v3.1.0 ｜ 维护团队：Cerlesse Agent Core Team*

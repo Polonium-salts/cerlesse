@@ -19,8 +19,9 @@ import {
 import {
   WIDGET_MANIFESTS,
   MANIFEST_RATIOS,
-  MANIFEST_MIN_SPANS
+  MANIFEST_MIN_WIDTHS
 } from "../src/widgets/manifests/index.js";
+import { spanOfTileWidth, type TileWidth } from "../src/lib/tileLayoutEngine.js";
 
 let failed = 0;
 const fail = (msg: string) => {
@@ -59,24 +60,34 @@ if (WIDGET_RATIOS["custom_cards"] !== "4:3") {
   console.log("  ✓ custom_cards 保留本地比例 4:3");
 }
 
-console.log("\n--- 4. minSpan 可选声明的传导 ---");
-const minSpanIds = Object.keys(MANIFEST_MIN_SPANS);
-console.log(`  · 声明了 minSpan 的清单: ${minSpanIds.join(", ") || "(无)"}`);
-for (const [id, span] of Object.entries(MANIFEST_MIN_SPANS)) {
-  if (typeof span !== "number" || span < 2 || span > 12) fail(`${id}: minSpan=${span} 非法`);
+console.log("\n--- 4. minWidth 可选声明的传导 ---");
+const minWidthIds = Object.keys(MANIFEST_MIN_WIDTHS);
+console.log(`  · 声明了 minWidth 的清单: ${minWidthIds.join(", ") || "(无)"}`);
+const LEGAL_WIDTHS: TileWidth[] = [25, 50, 75, 100];
+for (const [id, width] of Object.entries(MANIFEST_MIN_WIDTHS)) {
+  if (!LEGAL_WIDTHS.includes(width)) fail(`${id}: minWidth=${width} 非法（只能是 25/50/75/100）`);
 }
-console.log("  ✓ minSpan 取值合法");
+console.log("  ✓ minWidth 取值合法");
 
 console.log("\n--- 5. 清单字段完整性 ---");
 for (const m of WIDGET_MANIFESTS) {
   if (!m.id || !m.name || !m.version) fail(`${m.id ?? "(无 id)"}: 缺少必填字段`);
   const grid = m.grid;
-  if (!grid?.defaultSize || !Array.isArray(grid.supportedSizes) || grid.supportedSizes.length === 0) {
-    fail(`${m.id}: grid 段不完整`);
+  if (!LEGAL_WIDTHS.includes(grid?.width) || !Array.isArray(grid.supportedWidths) || grid.supportedWidths.length === 0) {
+    fail(`${m.id}: grid 段不完整或宽度非法`);
     continue;
   }
-  if (!grid.supportedSizes.includes(grid.defaultSize)) {
-    fail(`${m.id}: defaultSize "${grid.defaultSize}" 不在 supportedSizes 内`);
+  if (!grid.supportedWidths.includes(grid.width)) {
+    fail(`${m.id}: width "${grid.width}" 不在 supportedWidths 内`);
+  }
+  for (const w of grid.supportedWidths) {
+    if (!LEGAL_WIDTHS.includes(w)) fail(`${m.id}: supportedWidths 含非法档位 ${w}`);
+  }
+  if (grid.minWidth !== undefined && (!LEGAL_WIDTHS.includes(grid.minWidth) || grid.minWidth > grid.width)) {
+    fail(`${m.id}: minWidth=${grid.minWidth} 非法（必须 ≤ width 且在四档内）`);
+  }
+  if (spanOfTileWidth(grid.width, 12) !== Math.round((grid.width / 100) * 12)) {
+    fail(`${m.id}: 宽度 ${grid.width}% 的列跨度换算不正确`);
   }
   if (!RATIO_VALUES[grid.ratio]) {
     fail(`${m.id}: ratio "${grid.ratio}" 不在允许的比例目录中`);
@@ -88,8 +99,8 @@ console.log("\n--- 6. 端到端：清单比例决定磁贴的实际像素形状 
 const solution = solveTileLayout(
   WIDGET_MANIFESTS.map((m) => ({
     id: m.id,
-    size: m.grid.defaultSize,
-    minSpan: m.grid.minSpan
+    size: m.grid.width,
+    minSpan: m.grid.minWidth ? spanOfTileWidth(m.grid.minWidth, 12) : undefined
   })),
   { totalColumns: 12, containerWidth: 1280 }
 );
