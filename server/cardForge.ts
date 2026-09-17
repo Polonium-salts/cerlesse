@@ -280,7 +280,7 @@ export function buildWidgetSchemaFromCard(card: Partial<CustomCardData>): Widget
     id: card.id || `schema-widget-${Date.now()}`,
     name: card.title || "业务小组件",
     version: "1.0.0",
-    size: (card.archetype === "timeline" || card.archetype === "parameter_matrix") ? 100 : 75,
+    size: (card.archetype === "parameter_matrix") ? 100 : 75,
     layout: (card.archetype === "parameter_matrix" || card.archetype === "tool_discovery") ? "matrix" : "card",
     themeColor: card.themeColor || "blue",
     iconName: card.iconName || "Sparkles",
@@ -312,7 +312,7 @@ async function generateCardWithOpenRouter(
 ${sourcesContext}
 为用户锻造一个 archetype 为 "${suggestedArchetype}" 的可交互业务小组件数据模型。
 必须输出严格合法的 JSON 对象，包含:
-title (15字以内简短精炼), subtitle, category: "action", archetype: "${suggestedArchetype}", themeColor: "${themeColor}", iconName, metrics: [{ label, value, subtext, trend }], actions: [{ type: "open_url"|"copy", label, url, command }], sections: [{ title, items: [{ title, description, tag, tagColor, sourceTitle, sourceUrl }] }], takeawayFootnote, 以及专属的 ${suggestedArchetype === "action_checklist" ? "checklistData" : suggestedArchetype === "parameter_matrix" ? "matrixData" : suggestedArchetype === "download_hub" ? "downloadHubData" : suggestedArchetype === "timeline" ? "timelineData" : suggestedArchetype === "tool_discovery" ? "toolDiscoveryData" : suggestedArchetype === "pros_cons" ? "prosConsData" : "verdictData"} 数据模型。内容必须真实有洞察，绝不使用套话。`;
+title (15字以内简短精炼), subtitle, category: "action", archetype: "${suggestedArchetype}", themeColor: "${themeColor}", iconName, metrics: [{ label, value, subtext, trend }], actions: [{ type: "open_url"|"copy", label, url, command }], sections: [{ title, items: [{ title, description, tag, tagColor, sourceTitle, sourceUrl }] }], takeawayFootnote, 以及专属的 ${suggestedArchetype === "parameter_matrix" ? "matrixData" : suggestedArchetype === "download_hub" ? "downloadHubData" : suggestedArchetype === "tool_discovery" ? "toolDiscoveryData" : suggestedArchetype === "pros_cons" ? "prosConsData" : "verdictData"} 数据模型。内容必须真实有洞察，绝不使用套话。`;
 
   try {
     const content = await callOpenRouterChat({
@@ -413,14 +413,14 @@ export function detectBestArchetype(
     return "verdict_summary";
   }
 
-  // 7. Timeline, history, evolution, milestones
+  // 7. Contextual entities & comparisons
   if (/(发展|演变|演进|历史|历程|时间线|版本|里程碑|起源|路线图|\b(roadmap|timeline|history|milestones|evolution)\b)/i.test(q)) {
-    return "timeline";
+    return "parameter_matrix";
   }
 
   // 8. Actionable tutorials, steps, setup, guides, installation, how-to
   if (/(怎么|如何|步骤|清单|教程|指南|安装|部署|配置|攻略|排查|操作|接入|搭建|\b(how to|install|deploy|setup|tutorial|guide|steps|troubleshoot|checklist)\b)/i.test(q)) {
-    return "action_checklist";
+    return "parameter_matrix";
   }
 
   // 9. Technology platforms, companies, frameworks, hardware entities
@@ -439,14 +439,14 @@ export function detectBestArchetype(
     return "parameter_matrix";
   }
   if (/(年|月|发布|推出|成立|代际|版本|v1|v2|v3|release)/i.test(snippetsText)) {
-    return "timeline";
+    return "parameter_matrix";
   }
   if (/(步骤|第一步|命令|npm|curl|配置|安装|执行)/i.test(snippetsText)) {
-    return "action_checklist";
+    return "parameter_matrix";
   }
 
   // Default entity archetype
-  return q.length <= 15 ? "parameter_matrix" : "action_checklist";
+  return "parameter_matrix";
 }
 
 /**
@@ -465,21 +465,20 @@ export function detectMultipleArchetypes(
     else detected.push("pros_cons");
   } else if (/(安装|下载|配置环境|部署|命令|镜像|\b(install|download|setup|docker)\b)/i.test(q)) {
     if (primary !== "download_hub") detected.push("download_hub");
-    else detected.push("action_checklist");
+    else detected.push("parameter_matrix");
   } else if (/(工具|网站|平台|在线|生成器|\b(tool|tools|online|app)\b)/i.test(q)) {
     if (primary !== "tool_discovery") detected.push("tool_discovery");
     else detected.push("parameter_matrix");
   } else if (/(旅游|攻略|游玩|景点|行程|\b(travel|itinerary|trip)\b)/i.test(q)) {
     if (primary !== "travel_itinerary") detected.push("travel_itinerary");
-    else detected.push("action_checklist");
-  } else if (/(特性|新特性|演变|演进|历史|版本|更新|新功能|\b(feature|features|timeline|version|history)\b)/i.test(q)) {
-    if (primary !== "timeline") detected.push("timeline");
     else detected.push("parameter_matrix");
+  } else if (/(特性|新特性|演变|演进|历史|版本|更新|新功能|\b(feature|features|timeline|version|history)\b)/i.test(q)) {
+    if (primary !== "parameter_matrix") detected.push("parameter_matrix");
+    else detected.push("verdict_summary");
   } else {
-    // Default complementary pair: technical matrix + actionable checklist
-    if (primary === "parameter_matrix") detected.push("action_checklist");
-    else if (primary === "action_checklist") detected.push("parameter_matrix");
-    else detected.push("action_checklist");
+    // Default complementary pair
+    if (primary === "parameter_matrix") detected.push("verdict_summary");
+    else detected.push("parameter_matrix");
   }
 
   return Array.from(new Set(detected)).slice(0, 2);
@@ -782,161 +781,6 @@ function generateAlgorithmicCard(
           tagColor: "amber",
           sourceTitle: c.sourceTitle,
           sourceUrl: c.sourceUrl
-        }))
-      }
-    ];
-  } else if (chosenArchetype === "action_checklist") {
-    title = `${query} · 实操指南与交互清单`;
-    subtitle = "分步执行跟踪 · 交互式检查器";
-    iconName = "CheckCircle";
-    metrics = [
-      { label: "步骤总数", value: "4 步", subtext: "全周期拆解", trend: "neutral" },
-      { label: "预估耗时", value: "15 分钟", subtext: "基准快速落地", trend: "up" }
-    ];
-
-    checklistData = {
-      tasks: [
-        {
-          id: "task-1",
-          stepNumber: 1,
-          title: "前置环境与核心依赖核验",
-          instruction: `核实宿主环境与必要安全权限：${topSources[0]?.snippet?.slice(0, 60) || "满足核心系统版本与环境依赖"}`,
-          estimatedTime: "3 分钟",
-          difficulty: "easy",
-          priority: "critical",
-          commandOrCode: "curl -fsSL https://check.env/verify.sh | bash",
-          checked: true,
-          sourceTitle: topSources[0]?.title?.slice(0, 14),
-          sourceUrl: topSources[0]?.url
-        },
-        {
-          id: "task-2",
-          stepNumber: 2,
-          title: "核心参数配置与基线初始化",
-          instruction: "按照官方推荐模板初始化配置文件，绑定生产安全密钥与日志追踪标识。",
-          estimatedTime: "5 分钟",
-          difficulty: "medium",
-          priority: "critical",
-          commandOrCode: "npm install && cp .env.example .env.local",
-          checked: false,
-          sourceTitle: topSources[1]?.title?.slice(0, 14),
-          sourceUrl: topSources[1]?.url
-        },
-        {
-          id: "task-3",
-          stepNumber: 3,
-          title: "关键业务流联调与边界校验",
-          instruction: "运行端到端单元测试及网络重试异常测试，确认无阻断性错误及死锁隐患。",
-          estimatedTime: "5 分钟",
-          difficulty: "medium",
-          priority: "normal",
-          commandOrCode: "npm test -- --runInBand",
-          checked: false,
-          sourceTitle: topSources[2]?.title?.slice(0, 14),
-          sourceUrl: topSources[2]?.url
-        },
-        {
-          id: "task-4",
-          stepNumber: 4,
-          title: "性能监控挂载与最终生产验收",
-          instruction: "接入健康检查端点与告警熔断通道，完成第一阶段验收签名与指标归档。",
-          estimatedTime: "2 分钟",
-          difficulty: "easy",
-          priority: "optional",
-          commandOrCode: "curl -I http://localhost:3000/api/health",
-          checked: false,
-          sourceTitle: topSources[3]?.title?.slice(0, 14),
-          sourceUrl: topSources[3]?.url
-        }
-      ]
-    };
-
-    sections = [
-      {
-        title: "核心落地执行清单",
-        items: checklistData.tasks.map(t => ({
-          title: `步骤 0${t.stepNumber}：${t.title}`,
-          description: `${t.instruction} (${t.estimatedTime})`,
-          tag: t.priority === "critical" ? "关键步骤" : "推荐项",
-          tagColor: t.priority === "critical" ? "rose" : "blue",
-          sourceTitle: t.sourceTitle,
-          sourceUrl: t.sourceUrl,
-          checked: t.checked
-        }))
-      }
-    ];
-  } else if (chosenArchetype === "timeline") {
-    title = `${query} · 演进脉络与关键里程碑`;
-    subtitle = "时序发展轨迹 · 阶段脉络步进器";
-    iconName = "Clock";
-    metrics = [
-      { label: "时间跨度", value: "3 个代际", subtext: "技术演进", trend: "neutral" },
-      { label: "当前状态", value: "活跃迭代", subtext: "技术成熟期", trend: "up" }
-    ];
-
-    timelineData = {
-      milestones: [
-        {
-          id: "m-1",
-          phase: "第一阶段：技术奠基",
-          dateOrPeriod: "初期奠基",
-          title: "架构确立与概念验证",
-          description: topSources[0]?.snippet?.slice(0, 80) || "首次提出基础规范与核心原型，打通从理论到工程可行的首个闭环。",
-          status: "completed",
-          tag: "基石突破",
-          impactScore: "高",
-          sourceTitle: topSources[0]?.title?.slice(0, 16),
-          sourceUrl: topSources[0]?.url
-        },
-        {
-          id: "m-2",
-          phase: "第二阶段：生态扩展",
-          dateOrPeriod: "核心演进",
-          title: "标准化与规模化落地",
-          description: topSources[1]?.snippet?.slice(0, 80) || "广泛适配主流平台与行业框架，性能瓶颈得到根本性缓解，生态快速扩张。",
-          status: "completed",
-          tag: "规模普及",
-          impactScore: "极高",
-          sourceTitle: topSources[1]?.title?.slice(0, 16),
-          sourceUrl: topSources[1]?.url
-        },
-        {
-          id: "m-3",
-          phase: "第三阶段：主流成熟",
-          dateOrPeriod: "当前版本",
-          title: "智能化增强与生产基准",
-          description: topSources[2]?.snippet?.slice(0, 80) || "进入高可靠与企业级成熟阶段，成为行业当前广泛采用的通用解决方案。",
-          status: "current",
-          tag: "生产首选",
-          impactScore: "主流",
-          sourceTitle: topSources[2]?.title?.slice(0, 16),
-          sourceUrl: topSources[2]?.url
-        },
-        {
-          id: "m-4",
-          phase: "第四阶段：未来愿景",
-          dateOrPeriod: "未来路线图",
-          title: "下一代轻量与多模态演化",
-          description: topSources[3]?.snippet?.slice(0, 80) || "向全自动调优、极低能耗与高自适应计算迈进，重塑未来架构标准。",
-          status: "upcoming",
-          tag: "前沿趋势",
-          impactScore: "探索",
-          sourceTitle: topSources[3]?.title?.slice(0, 16),
-          sourceUrl: topSources[3]?.url
-        }
-      ]
-    };
-
-    sections = [
-      {
-        title: "演进里程碑总览",
-        items: timelineData.milestones.map(m => ({
-          title: `${m.dateOrPeriod} · ${m.title}`,
-          description: m.description,
-          tag: m.tag,
-          tagColor: m.status === "current" ? "emerald" : "blue",
-          sourceTitle: m.sourceTitle,
-          sourceUrl: m.sourceUrl
         }))
       }
     ];

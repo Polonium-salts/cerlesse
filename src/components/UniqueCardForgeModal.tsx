@@ -48,12 +48,6 @@ const ARCHETYPES: {
     icon: Sparkles
   },
   {
-    id: "action_checklist",
-    label: "实操清单",
-    desc: "梳理分步实操检查项与避坑要点，带交互勾选",
-    icon: CheckCircle2
-  },
-  {
     id: "pros_cons",
     label: "优劣与避坑",
     desc: "对比技术或方案的核心亮点与潜在踩坑风险",
@@ -70,12 +64,6 @@ const ARCHETYPES: {
     label: "论据档案",
     desc: "精选权威专家观点、关键言论与信源原句",
     icon: Quote
-  },
-  {
-    id: "timeline",
-    label: "发展里程碑",
-    desc: "梳理关键演进脉络、历史节点与版本发布",
-    icon: Clock
   },
   {
     id: "verdict_summary",

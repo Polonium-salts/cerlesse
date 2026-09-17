@@ -324,8 +324,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     minWidth: 75,
     basePriority: 80,
     category: "secondary",
-    // 保持启用：聚合全网检索图片素材与视觉图集
-    requiresData: () => true
+    requiresData: (s) => Boolean(s.imageIntent || (s.imageCount && s.imageCount > 0))
   },
   comparison: {
     id: "comparison",
@@ -564,12 +563,10 @@ export function selectAgentWidgets(params: {
   // 1. 如果有 Agent 服务端规划结果，严格遵循 Agent 规划，杜绝默认全量加载或硬编码过滤
   if (hasAgentPlan) {
     const list = [...(params.plannedKeys || [])];
-    if (!list.includes("image_gallery")) {
-      list.push("image_gallery");
-    }
     return list.filter((key) => {
       // 仅当明确存在零数据且无法渲染时剔除空壳
       if (key === "takeaways" && params.signals.takeawayCount === 0) return false;
+      if (key === "image_gallery" && !params.signals.imageIntent && (params.signals.imageCount ?? 0) === 0) return false;
       return true;
     });
   }
@@ -577,8 +574,7 @@ export function selectAgentWidgets(params: {
   // 2. 兜底场景（无 Agent 规划时的本地轻量决策）：严格依照数据门槛与意图信号决定
   const allKeys = Object.keys(WIDGET_REGISTRY) as ResultWidgetKey[];
   const chosen = allKeys.filter((key) => {
-    // 用户指定要求：图片小组件保持启用
-    if (key === "image_gallery") return true;
+    if (key === "image_gallery") return Boolean(params.signals.imageIntent || (params.signals.imageCount && params.signals.imageCount > 0));
 
     const def = WIDGET_REGISTRY[key];
     if (def?.requiresData && !def.requiresData(params.signals)) return false;
@@ -592,10 +588,6 @@ export function selectAgentWidgets(params: {
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;
   });
 
-  if (!chosen.includes("image_gallery")) {
-    chosen.push("image_gallery");
-  }
-
   return chosen.sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0));
 }
 
@@ -606,16 +598,12 @@ export function selectAgentWidgets(params: {
 export function resolveDynamicCapabilityWidgets(intent: LayoutIntentType = "balanced"): ResultWidgetKey[] {
   const allKeys = Object.keys(WIDGET_REGISTRY) as ResultWidgetKey[];
   const selectable = allKeys.filter((key) => {
-    if (key === "image_gallery") return true;
-    if (["weather", "translation", "search_engine", "token_usage"].includes(key)) {
+    if (["weather", "translation", "search_engine", "token_usage", "image_gallery"].includes(key)) {
       return (WIDGET_CAPABILITY_REGISTRY[key]?.intentFit || []).includes(intent);
     }
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false;
   });
-  if (!selectable.includes("image_gallery")) {
-    selectable.push("image_gallery");
-  }
-  return selectable.length > 0 ? selectable : ["ai_answer", "takeaways", "image_gallery"];
+  return selectable.length > 0 ? selectable : ["ai_answer", "related_links", "sources"];
 }
 
 /**
@@ -628,9 +616,6 @@ export function auditLayoutGuardrail(intent: LayoutIntentType, enabledWidgets: R
   violations: string[];
 } {
   const result = [...enabledWidgets];
-  if (!result.includes("image_gallery")) {
-    result.push("image_gallery");
-  }
   return {
     passed: true,
     remediatedWidgets: result,

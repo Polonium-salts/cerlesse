@@ -147,7 +147,7 @@ class WidgetRegistryClass {
     const cardKey = `custom_card__${card.id}`;
     
     // 确定黄金默认宽度
-    const width: TileWidth = (card.archetype === "timeline" || card.archetype === "parameter_matrix")
+    const width: TileWidth = card.archetype === "parameter_matrix"
       ? 100
       : 75;
 

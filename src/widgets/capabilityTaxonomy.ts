@@ -544,17 +544,6 @@ export const ARCHETYPE_PROFILES: Record<string, WidgetPracticalityMeta> = {
     selectionHeuristics: "当搜索词包含工具/软件获取意图时实用性最高，帮助用户一步直达正版下载。",
     triggerKeywords: ["下载", "安装包", "client", "客户端", "release", "最新版", "installer"]
   },
-  action_checklist: {
-    id: "action_checklist",
-    name: "实战清单 / 步骤指引",
-    category: "action",
-    tags: ["操作步骤", "排查清单", "配置指南", "实操避坑", "环境核对", "命令排错", "步骤条", "交互式勾选"],
-    functionality: "提供带状态勾选框的分步骤操作指南、前置条件核对清单与故障排错诊断流程",
-    bestFor: ["How-to 教程、配置步骤、故障排查、环境安装前置检查、流程审批清单"],
-    dataRequirements: ["清晰的步骤项", "操作指导说明或命令"],
-    selectionHeuristics: "当用户提出具体操作方法或排查报错时实用性最高，支持用户交互式核对进度。",
-    triggerKeywords: ["步骤", "教程", "怎么配", "排查", "报错解决", "指南", "清单", "checklist"]
-  },
   tool_discovery: {
     id: "tool_discovery",
     name: "工具神器发现",
@@ -598,17 +587,6 @@ export const ARCHETYPE_PROFILES: Record<string, WidgetPracticalityMeta> = {
     dataRequirements: ["横向对比项", "关键参数指标"],
     selectionHeuristics: "用户对比多个型号或技术参数时实用性最高。",
     triggerKeywords: ["参数", "配置对比", "规格", "基准测试", "benchmark", "对比表"]
-  },
-  timeline: {
-    id: "timeline",
-    name: "时间线 / 版本沿革",
-    category: "analysis",
-    tags: ["发展历程", "版本历史", "演进路线", "大事件", "路线图", "历史沿革", "时间轴"],
-    functionality: "时间轴垂直串联历史版本、关键发布节点、演进里程碑或未来规划路线图",
-    bestFor: ["技术发展历史、产品演进路线、大事件回顾、发版历程"],
-    dataRequirements: ["时间节点", "事件标题与描述"],
-    selectionHeuristics: "查询历史、发展史或演进过程时实用性最高。",
-    triggerKeywords: ["发展史", "历史", "时间线", "演进", "历程", "版本历史", "路线图"]
   },
   travel_itinerary: {
     id: "travel_itinerary",

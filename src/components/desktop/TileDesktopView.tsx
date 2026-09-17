@@ -9,7 +9,9 @@ import {
   Columns3,
   ArrowLeftRight,
   Sparkles,
-  LayoutGrid
+  LayoutGrid,
+  GripVertical,
+  Move
 } from "lucide-react";
 import {
   ResultWidgetKey,
@@ -281,7 +283,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
           
           const declaredCardWidth = tileWidthFromSpan(card.colSpan);
           const size: TileWidth = declaredCardWidth || (
-            card.archetype === "timeline" || card.archetype === "parameter_matrix"
+            card.archetype === "parameter_matrix"
               ? 50
               : 25
           );
@@ -379,6 +381,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   const handleAutoAlignRows = () => {
     clearDesktopState();
     setUserSides({});
+    setCustomMuuriOrder([]);
     setShowAlignToast(true);
     setTimeout(() => setShowAlignToast(false), 2500);
   };
@@ -387,11 +390,22 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   const handleRestoreAllTiles = () => {
     setUserSides({});
     setHiddenTileIds(new Set());
+    setCustomMuuriOrder([]);
     clearDesktopState();
   };
 
   // 桌面布局引擎选择："muuri" (Muuri 动态交叉回填引擎) | "skyline" (2D Skyline 装箱引擎)
   const [layoutEngine, setLayoutEngine] = useState<"muuri" | "skyline">("muuri");
+
+  // Muuri 拖拽与排序控制
+  const [muuriDragEnabled, setMuuriDragEnabled] = useState<boolean>(true);
+  const [muuriDragAction, setMuuriDragAction] = useState<"move" | "swap">("move");
+  const [customMuuriOrder, setCustomMuuriOrder] = useState<string[]>([]);
+
+  // 拖拽排序后更新顺序
+  const handleMuuriOrderChange = (newOrder: string[]) => {
+    setCustomMuuriOrder(newOrder);
+  };
 
   // 保存当前桌面布局到本地
   const handleSaveDesktop = () => {
@@ -458,12 +472,22 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
 
   // Muuri 磁贴项列表 (带拖拽手柄与卡片内容包装)
   const muuriItems: MuuriWidgetItem[] = useMemo(() => {
-    return tileInputs.map((input) => ({
+    const rawItems = tileInputs.map((input) => ({
       id: input.id,
       size: input.size,
       priority: input.priority,
       node: (
         <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-full shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
+          {/* 拖拽排序把手 */}
+          {muuriDragEnabled && (
+            <div
+              className="muuri-drag-handle absolute top-2.5 left-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded-lg bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-foreground shadow-xs flex items-center justify-center"
+              title="按住拖拽调整小组件位置"
+            >
+              <GripVertical className="w-3.5 h-3.5" />
+            </div>
+          )}
+
           {/* 75% 与 25% 互补磁贴左右排位切换把手 */}
           {(input.size === 75 || input.size === 25) && (
             <Button
@@ -511,7 +535,20 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         </div>
       )
     }));
-  }, [tileInputs, customCards, activeResult, onNavigateTab, onExecuteSearch, onUpdateCard, onDeleteCard]);
+
+    // 若存在用户拖拽产生的自定义顺序，优先遵循自定义顺序
+    if (customMuuriOrder && customMuuriOrder.length > 0) {
+      const orderMap = new Map<string, number>();
+      customMuuriOrder.forEach((id, idx) => orderMap.set(id, idx));
+      return [...rawItems].sort((a, b) => {
+        const idxA = orderMap.has(a.id) ? (orderMap.get(a.id) as number) : 9999;
+        const idxB = orderMap.has(b.id) ? (orderMap.get(b.id) as number) : 9999;
+        return idxA - idxB;
+      });
+    }
+
+    return rawItems;
+  }, [tileInputs, customCards, activeResult, customMuuriOrder, muuriDragEnabled, onNavigateTab, onExecuteSearch, onUpdateCard, onDeleteCard]);
 
   return (
     <div className="w-full space-y-4">
@@ -584,6 +621,35 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
             </Button>
           </div>
 
+          {/* Muuri 专用拖拽与交互模式切换 */}
+          {layoutEngine === "muuri" && (
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-muted/40 border border-border/50">
+              <Button
+                variant={muuriDragEnabled ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setMuuriDragEnabled(!muuriDragEnabled)}
+                className={`h-7 px-2 text-xs gap-1 rounded-md ${
+                  muuriDragEnabled ? "font-semibold" : "text-muted-foreground"
+                }`}
+                title={muuriDragEnabled ? "已开启自由拖拽：抓取组件即可重排位置" : "拖拽已锁定：组件保持当前静止排列"}
+              >
+                <Move className="w-3 h-3" />
+                <span>{muuriDragEnabled ? "拖拽中" : "锁定"}</span>
+              </Button>
+              {muuriDragEnabled && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMuuriDragAction(muuriDragAction === "move" ? "swap" : "move")}
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md"
+                  title="切换拖拽排序模式：move (平滑挤移) / swap (位置互换)"
+                >
+                  <span>{muuriDragAction === "move" ? "挤移" : "互换"}</span>
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* 整行穿插排列 */}
           <Button
             variant="outline"
@@ -635,7 +701,10 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         <MuuriWidgetGrid
           items={muuriItems}
           fillGaps={true}
-          dragEnabled={false}
+          dragEnabled={muuriDragEnabled}
+          dragHandle=".muuri-drag-handle"
+          dragSortAction={muuriDragAction}
+          onOrderChange={handleMuuriOrderChange}
           columnGapPx={TILE_COLUMN_GAP_PX}
           rowGapPx={TILE_ROW_GAP_PX}
         />

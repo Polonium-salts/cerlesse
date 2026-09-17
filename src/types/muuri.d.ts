@@ -13,14 +13,24 @@ declare module "muuri" {
     layoutDuration?: number;
     layoutEasing?: string;
     dragEnabled?: boolean;
+    dragHandle?: string;
     dragContainer?: HTMLElement;
     dragStartPredicate?: {
       distance?: number;
       delay?: number;
       handle?: string;
-    };
+    } | Function;
     dragAxis?: "x" | "y" | "xy";
     dragSort?: boolean | { (item: any): any };
+    dragSortPredicate?: {
+      action?: "move" | "swap";
+      threshold?: number;
+      [key: string]: any;
+    } | Function;
+    dragSortHeuristics?: {
+      sortInterval?: number;
+      minDragDistance?: number;
+    };
     dragAutoScroll?: any;
     dragRelease?: {
       duration?: number;

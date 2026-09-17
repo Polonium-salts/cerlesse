@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type { ResultWidgetKey, TileWidth, WidgetPlannedItem } from "../src/types.js";
 import {
   WidgetDecisionSchema,
@@ -8,6 +7,17 @@ import {
 } from "../src/widgets/widgetContract.js";
 import { WIDGET_CATALOG } from "../src/widgets/widgetRetriever.js";
 import { callOpenRouterChat } from "./openrouter.js";
+import {
+  getRouteForIntent,
+  filterAllowedCandidates,
+  normalizeIntent,
+  isWidgetForbidden
+} from "./agentRouter.js";
+import {
+  validateWidgetDecision,
+  repairWidgetDecision,
+  type ValidationContext
+} from "./agentValidator.js";
 
 export interface WidgetSelectorOptions {
   query: string;
@@ -28,83 +38,7 @@ export interface WidgetSelectorResult {
 }
 
 /**
- * 校验并规范化 Selector 的决策结果 (Zod + 目录 + 数据可用性校验)
- */
-export function validateWidgetDecision(
-  rawDecision: unknown,
-  candidates: CandidateWidget[],
-  signals?: ContentSignalsPayload
-): { valid: boolean; decision: WidgetDecision | null; errors: string[] } {
-  const errors: string[] = [];
-  const parseResult = WidgetDecisionSchema.safeParse(rawDecision);
-
-  if (!parseResult.success) {
-    return {
-      valid: false,
-      decision: null,
-      errors: parseResult.error.issues.map(e => `${e.path.join(".")}: ${e.message}`)
-    };
-  }
-
-  const decision = parseResult.data;
-  const candidateKeys = new Set(candidates.map(c => c.key));
-  const seenKeys = new Set<string>();
-  const sanitizedWidgets = [];
-
-  for (const item of decision.selectedWidgets) {
-    const key = item.key as ResultWidgetKey;
-    // 1. 存在性校验：必须在合法 WIDGET_CATALOG 中
-    if (!WIDGET_CATALOG[key]) {
-      errors.push(`未知组件 key: "${key}"，已剔除`);
-      continue;
-    }
-
-    // 2. 去重校验
-    if (seenKeys.has(key)) {
-      continue;
-    }
-    seenKeys.add(key);
-
-    // 3. 数据可用性校验：防止空壳磁贴 (图片组件保持常驻启用)
-    if (key === "takeaways" && (signals?.takeawayCount ?? 0) === 0) {
-      errors.push("takeaways 缺少要点数据，已阻断");
-      continue;
-    }
-
-    sanitizedWidgets.push({
-      ...item,
-      key,
-      size: item.size || WIDGET_CATALOG[key].defaultSpan
-    });
-  }
-
-  // 保证用户指令：图片小组件保持启用
-  if (!sanitizedWidgets.some(w => w.key === "image_gallery")) {
-    sanitizedWidgets.push({
-      key: "image_gallery",
-      priority: 74,
-      size: 75,
-      reason: "全网检索图片素材与视觉图集",
-      confidence: 0.9
-    });
-  }
-
-  if (sanitizedWidgets.length === 0) {
-    return { valid: false, decision: null, errors: ["校验后无有效组件保留"] };
-  }
-
-  return {
-    valid: true,
-    decision: {
-      ...decision,
-      selectedWidgets: sanitizedWidgets
-    },
-    errors
-  };
-}
-
-/**
- * 确定性重排兜底引擎 (基于 Orama 打分与多信号融合的确定性排序)
+ * 确定性重排兜底引擎 (基于 Agent Router + Orama 综合分数的确定性排序)
  */
 export function deterministicReRankWidgets(
   query: string,
@@ -113,57 +47,154 @@ export function deterministicReRankWidgets(
   candidates: CandidateWidget[],
   signals?: ContentSignalsPayload
 ): WidgetDecision {
-  // 过滤得分过低或明显不相关的组件
-  const eligible = candidates.filter(c => c.finalScore >= 0.20);
-  const selectedCandidates = eligible.length >= 2 ? eligible.slice(0, 5) : candidates.slice(0, 3);
+  const canonicalIntent = normalizeIntent(intent);
+  const route = getRouteForIntent(canonicalIntent);
 
-  const selectedWidgets = selectedCandidates.map((c, index) => {
-    // 优先级阶梯递减：第 1 名 95，随后依次递减
-    const priority = Math.max(60, 95 - index * 8);
-    const catalogItem = WIDGET_CATALOG[c.key];
-    const size: TileWidth = catalogItem ? catalogItem.defaultSpan : 50;
+  // 1. 硬性排除黑名单组件
+  const allowedCandidates = filterAllowedCandidates(candidates, canonicalIntent);
 
-    return {
+  // 2. 依据 finalScore 降序重排
+  const sorted = [...allowedCandidates].sort((a, b) => b.finalScore - a.finalScore);
+
+  const selectedMap = new Map<string, { key: string; priority: number; size: TileWidth; reason: string; confidence: number }>();
+
+  // 3. 优先注入必选组件 (Mandatory Widgets)
+  for (const mandKey of route.mandatoryWidgets) {
+    const cand = sorted.find(c => c.key === mandKey);
+    const catItem = WIDGET_CATALOG[mandKey];
+    if (cand || catItem) {
+      selectedMap.set(mandKey, {
+        key: mandKey,
+        priority: cand ? Math.round(cand.finalScore * 100) : (catItem?.basePriority ?? 95),
+        size: cand?.defaultSpan || catItem?.defaultSpan || 75,
+        reason: cand?.reason || `意图 [${canonicalIntent}] 核心必备组件`,
+        confidence: cand ? Math.max(0.8, cand.finalScore) : 0.95
+      });
+    }
+  }
+
+  // 4. 补充高分候选组件 (排除已选和低于阈值的项)
+  for (const c of sorted) {
+    if (selectedMap.size >= 4) break;
+    if (selectedMap.has(c.key)) continue;
+    if (c.finalScore < 0.25) continue;
+
+    // 数据就绪检查
+    if (c.key === "takeaways" && signals?.takeawayCount === 0) continue;
+    if (c.key === "image_gallery") {
+      const hasImages = (signals?.imageCount ?? 0) > 0;
+      const hasImageIntent = signals?.imageIntent === true;
+      if (!hasImages && !hasImageIntent && !route.requiresImages) continue;
+    }
+
+    selectedMap.set(c.key, {
       key: c.key,
-      priority,
-      size,
+      priority: Math.max(50, Math.round(c.finalScore * 100)),
+      size: c.defaultSpan,
       reason: c.reason || `契合度得分 ${(c.finalScore * 100).toFixed(0)}%`,
       confidence: Math.min(1.0, Math.max(0.6, c.finalScore))
-    };
-  });
+    });
+  }
 
-  // 保证图片小组件始终保持启用
-  if (!selectedWidgets.some(w => w.key === "image_gallery")) {
-    selectedWidgets.push({
-      key: "image_gallery",
-      priority: 74,
-      size: 75,
-      reason: "全网检索图片素材与视觉图集",
+  // 5. 确保三大基底 (ai_answer, related_links, sources) 稳定存在
+  if (!selectedMap.has("ai_answer") && !isWidgetForbidden("ai_answer", canonicalIntent)) {
+    selectedMap.set("ai_answer", {
+      key: "ai_answer",
+      priority: 95,
+      size: 50,
+      reason: "全网检索核心速答基底",
+      confidence: 0.95
+    });
+  }
+  if (!selectedMap.has("related_links") && !isWidgetForbidden("related_links", canonicalIntent)) {
+    selectedMap.set("related_links", {
+      key: "related_links",
+      priority: 90,
+      size: 50,
+      reason: "官方认证入口与导航直达",
+      confidence: 0.9
+    });
+  }
+  if (!selectedMap.has("sources") && !isWidgetForbidden("sources", canonicalIntent)) {
+    selectedMap.set("sources", {
+      key: "sources",
+      priority: 85,
+      size: 50,
+      reason: "权威信源存证与文献引用",
       confidence: 0.85
     });
   }
 
-  return {
-    intent,
+  const selectedWidgets = Array.from(selectedMap.values()).slice(0, 6);
+  selectedWidgets.sort((a, b) => b.priority - a.priority);
+
+  const initialDecision: WidgetDecision = {
+    intent: canonicalIntent,
     userGoal,
     selectedWidgets
   };
+
+  // 通过 Validator 执行最终校验与必要修补
+  const validationContext: ValidationContext = {
+    query,
+    intent: canonicalIntent,
+    userGoal,
+    signals,
+    candidates
+  };
+  const report = validateWidgetDecision(initialDecision, validationContext);
+  if (!report.passed) {
+    return repairWidgetDecision(initialDecision, validationContext, report);
+  }
+
+  return initialDecision;
+}
+
+/**
+ * 格式化候选组件为富数据文本供 LLM 研判
+ */
+function formatCandidatesForLLM(candidates: CandidateWidget[]): string {
+  return candidates.map((c, idx) => {
+    return `${idx + 1}. [Key: ${c.key}] "${c.name}" (${c.category})
+   - 功能描述: ${c.description}
+   - 算法打分: 综合分 ${(c.finalScore * 100).toFixed(0)}% | 语义分 ${(c.semanticScore * 100).toFixed(0)}% | 意图分 ${(c.intentScore * 100).toFixed(0)}% | 能力分 ${(c.capabilityScore * 100).toFixed(0)}% | 数据就绪 ${(c.dataReadyScore * 100).toFixed(0)}%
+   - 匹配原子能力: [${c.matchedCapabilities.length > 0 ? c.matchedCapabilities.join(", ") : "基础"}]
+   - 推荐栅格宽度: ${c.defaultSpan}%
+   - 推荐原因: ${c.reason}`;
+  }).join("\n\n");
 }
 
 /**
  * Widget Selector Agent (智能选型与重排 Agent)
  * ============================================================
- * 职责：从 Orama 召回的 Top 候选组件中，综合检索上下文选出最优的 3~5 个小组件
+ * 职责：
+ * 1. 结合 Router 规则白名单对 Orama 召回候选执行硬过滤 (Hard Filter)
+ * 2. 向上游大模型提供完整的多维打分证据与原子能力契合证明 (LLM Decides)
+ * 3. 经由 Agent Validator 进行合规校验与自动修复 (Validator Verifies & Repairs)
+ * 4. 支持 MAX_RETRY = 1 的校验自愈回路
  */
 export async function selectAndReRankWidgets(
   options: WidgetSelectorOptions
 ): Promise<WidgetSelectorResult> {
-  const { query, intent, candidates, signals, apiKey, model, targetLanguage } = options;
-  const userGoal = options.userGoal || `针对 "${query}" 获取精准回答与相关业务工具`;
+  const { query, intent, candidates, signals, apiKey, model } = options;
+  const canonicalIntent = normalizeIntent(intent);
+  const route = getRouteForIntent(canonicalIntent);
+  const userGoal = options.userGoal || `针对 "${query}" 获取精准解答与专属交互工具`;
 
-  // 若无可用候选直接使用确定性兜底
-  if (!candidates || candidates.length === 0) {
-    const fallbackDecision = deterministicReRankWidgets(query, intent, userGoal, candidates, signals);
+  // 1. 硬性路由过滤：只将合法允许的候选组件送入 LLM 研判
+  const allowedCandidates = filterAllowedCandidates(candidates, canonicalIntent);
+
+  const validationContext: ValidationContext = {
+    query,
+    intent: canonicalIntent,
+    userGoal,
+    signals,
+    candidates: allowedCandidates
+  };
+
+  // 若无可用候选或未配置 API Key，直接执行确定性兜底重排
+  if (!allowedCandidates || allowedCandidates.length === 0 || !apiKey) {
+    const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals);
     const plannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
       type: w.key as ResultWidgetKey,
       priority: w.priority,
@@ -179,49 +210,51 @@ export async function selectAndReRankWidgets(
     };
   }
 
-  // 若提供了 API Key，则使用大模型进行深度语义重排与裁决
-  if (apiKey) {
-    try {
-      const candidateListStr = candidates.map((c, idx) => 
-        `${idx + 1}. key="${c.key}" (${c.name}): ${c.description} [类别: ${c.category}, 语义相关分: ${(c.semanticScore * 100).toFixed(0)}%, 建议宽度: ${c.defaultSpan}%]`
-      ).join("\n");
+  // 2. 构造具有全量打分证据的高密度 Prompt
+  const candidateListStr = formatCandidatesForLLM(allowedCandidates);
 
-      const systemPrompt = `你是一个严谨专业的小组件选型与重排 Agent (Widget Selector Agent)。
-你的核心任务是根据用户的搜索内容、核心意图以及 Orama 语义检索引擎初筛出的候选组件池，精选出最适合呈现在结果页的 2 到 5 个核心小组件。
+  const systemPrompt = `你是一个精通组件架构与用户体验的高级选型智能体 (Widget Selector Agent)。
+你的核心任务是根据用户的搜索内容、真实意图、以及算法打分系统计算出的全量指标，挑选出最契合、最能解决用户痛点的 2 到 5 个小组件。
 
-选型铁律：
-1. 绝对不要在所有任务上都塞相同的无关组件（例如天气查询绝不要放翻译或通用代码库；代码报错绝不要放天气或旅行图集）。
-2. 从候选池中挑选最对口、能真正帮助用户解决问题的组件。
-3. 必须输出合法且严格符合 Schema 的 JSON。
-4. 选出的组件 key 必须来自给定的候选池，不得臆造任何不存在的 key。`;
+【架构原则】
+1. 规则约束：本次任务意图为 [${canonicalIntent}]。
+   - 必须优先包含的核心组件: [${route.mandatoryWidgets.join(", ") || "无"}]
+   - 硬性禁止出现的组件: [${route.forbiddenWidgets.join(", ") || "无"}]
+2. 证据导向：综合分 (FinalScore)、原子能力匹配 (Matched Capabilities) 和数据就绪度代表了算法评估事实，请依据这些证据进行理性裁决。
+3. 杜绝无关干扰：不要在天气/报错/翻译任务中强行塞入无关组件（如天气任务严禁放翻译或排错；排错任务严禁放天气或图片库）。
+4. 输出严格的 JSON 格式，所选 key 必须来自候选池。`;
 
-      const userPrompt = `用户查询: "${query}"
-核心意图: "${intent}"
+  const userPrompt = `用户查询: "${query}"
+规范意图: "${canonicalIntent}"
 用户目标: "${userGoal}"
 
-Orama 语义召回的候选组件列表:
+【候选组件全量评分与能力清单】:
 ${candidateListStr}
 
-请为当前任务精选 2~5 个最合适的小组件，并为每个组件给出 1-100 的优先级分数（最核心的 90-100）、推荐宽度占比（25/50/75/100）及明确理由。
-仅输出 JSON，结构如下：
+请为当前任务裁决 2~5 个最优小组件，输出严格 JSON，格式如下：
 {
-  "intent": "${intent}",
+  "intent": "${canonicalIntent}",
   "userGoal": "${userGoal}",
   "selectedWidgets": [
     {
-      "key": "组件key",
+      "key": "候选池中的组件key",
       "priority": 95,
       "size": 50,
-      "reason": "推荐该组件的业务原因",
+      "reason": "结合打分与任务诉求的选择理由",
       "confidence": 0.95
     }
   ]
 }`;
 
+  let maxAttempts = 2; // MAX_RETRY = 1 (首次尝试 + 1 次重试)
+  let currentPrompt = userPrompt;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
       const raw = await callOpenRouterChat({
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "user", content: currentPrompt }
         ],
         model,
         apiKey,
@@ -234,42 +267,71 @@ ${candidateListStr}
       if (raw) {
         const cleaned = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
         const parsed = JSON.parse(cleaned);
-        const validation = validateWidgetDecision(parsed, candidates, signals);
+        const parseResult = WidgetDecisionSchema.safeParse(parsed);
 
-        if (validation.valid && validation.decision) {
-          const plannedWidgets = validation.decision.selectedWidgets.map(w => ({
-            type: w.key as ResultWidgetKey,
-            priority: w.priority,
-            size: w.size || 50,
-            flexible: true,
-            reason: w.reason
-          }));
-          return {
-            decision: validation.decision,
-            plannedWidgets,
-            widgetOrder: plannedWidgets.map(w => w.type),
-            reRankedBy: "llm_agent"
-          };
-        } else {
-          console.warn("[WidgetSelector] LLM 选型结果未通过校验，回退确定性重排:", validation.errors);
+        if (parseResult.success) {
+          const decision = parseResult.data;
+          const report = validateWidgetDecision(decision, validationContext);
+
+          if (report.passed) {
+            const plannedWidgets = decision.selectedWidgets.map(w => ({
+              type: w.key as ResultWidgetKey,
+              priority: w.priority,
+              size: w.size || 50,
+              flexible: true,
+              reason: w.reason
+            }));
+            return {
+              decision,
+              plannedWidgets,
+              widgetOrder: plannedWidgets.map(w => w.type),
+              reRankedBy: "llm_agent"
+            };
+          } else {
+            console.warn(`[WidgetSelector] Attempt ${attempt + 1} 校验未通过:`, report.violations);
+
+            // 若仍有重试机会，组装错误信息重新提示
+            if (attempt === 0) {
+              currentPrompt = `${userPrompt}\n\n【注意：上次选型存在以下违规，请立即修正】:\n${report.violations.join("\n")}\n请重新生成严格合规的 JSON 选型决策：`;
+              continue;
+            } else {
+              // 重试后仍有瑕疵，使用 Validator 自动修复
+              const repaired = repairWidgetDecision(decision, validationContext, report);
+              const plannedWidgets = repaired.selectedWidgets.map(w => ({
+                type: w.key as ResultWidgetKey,
+                priority: w.priority,
+                size: w.size || 50,
+                flexible: true,
+                reason: w.reason
+              }));
+              return {
+                decision: repaired,
+                plannedWidgets,
+                widgetOrder: plannedWidgets.map(w => w.type),
+                reRankedBy: "llm_agent"
+              };
+            }
+          }
         }
       }
     } catch (err) {
-      console.warn("[WidgetSelector] LLM 选型异常，回退确定性重排:", err);
+      console.warn(`[WidgetSelector] LLM 选型第 ${attempt + 1} 次尝试异常:`, err);
     }
   }
 
-  // 确定性重排兜底
-  const decision = deterministicReRankWidgets(query, intent, userGoal, candidates, signals);
-  const plannedWidgets = decision.selectedWidgets.map(w => ({
+  // 所有尝试均失败，降级确定性重排兜底
+  console.info("[WidgetSelector] 回退至确定性规则重排引擎");
+  const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals);
+  const plannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
     type: w.key as ResultWidgetKey,
     priority: w.priority,
     size: w.size || 50,
     flexible: true,
     reason: w.reason
   }));
+
   return {
-    decision,
+    decision: fallbackDecision,
     plannedWidgets,
     widgetOrder: plannedWidgets.map(w => w.type),
     reRankedBy: "rule_engine"

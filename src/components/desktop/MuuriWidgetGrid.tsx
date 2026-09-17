@@ -13,6 +13,8 @@ interface MuuriWidgetGridProps {
   items: MuuriWidgetItem[];
   fillGaps?: boolean;
   dragEnabled?: boolean;
+  dragHandle?: string;
+  dragSortAction?: "move" | "swap";
   columnGapPx?: number;
   rowGapPx?: number;
   onOrderChange?: (newOrder: string[]) => void;
@@ -21,17 +23,22 @@ interface MuuriWidgetGridProps {
 /**
  * Muuri 驱动的高性能交叉填充磁贴网格 (Muuri Cross-Interlocking Tile Grid)
  * ============================================================
+ * 架构规范：
+ * React 管理小组件 → Muuri 管理位置/动画/拖拽 → Cross-Masonry 算法决定业务布局
+ * 
  * 具备特性：
  * 1. layout.fillGaps: true 开启自动空隙回填，让小卡片自动钻入大卡片留下的空缺；
  * 2. 响应式分级宽度 (25% / 50% / 75% / 100%)，支持大卡片与小卡片自由穿插；
- * 3. 固定静止展示，禁止任意拖动错位，保持布局整洁稳定；
- * 4. 搭载平滑弹簧/贝塞尔动画曲线，搜索结果切换时自然浮动过渡；
+ * 3. 完美支持 dragEnabled + dragHandle 拖拽手柄，支持 move / swap 交换模式；
+ * 4. 搭载平滑弹性动画曲线，卡片拖拽与搜索结果切换时自然浮动过渡；
  * 5. ResizeObserver 实时监听子项物理高度并触发布局重算。
  */
 export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
   items,
   fillGaps = true,
-  dragEnabled = false,
+  dragEnabled = true,
+  dragHandle = ".muuri-drag-handle",
+  dragSortAction = "move",
   columnGapPx = 12,
   rowGapPx = 12,
   onOrderChange
@@ -39,6 +46,7 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const gridInstanceRef = useRef<Muuri | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   // 初始化 Muuri 网格
   useEffect(() => {
@@ -47,28 +55,48 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
     try {
       const grid = new Muuri(containerRef.current, {
         items: ".muuri-tile-item",
+        dragEnabled: Boolean(dragEnabled),
+        dragHandle: dragHandle || undefined,
+        dragAxis: "xy",
+        dragSort: Boolean(dragEnabled),
+        dragSortPredicate: {
+          action: dragSortAction,
+          threshold: 45
+        },
         layout: {
           fillGaps: fillGaps,
           rounding: false
         },
-        layoutDuration: 380,
-        layoutEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
-        dragEnabled: Boolean(dragEnabled),
-        dragSort: Boolean(dragEnabled)
+        layoutDuration: 300,
+        layoutEasing: "ease",
+        dragRelease: {
+          duration: 300,
+          easing: "ease",
+          useRequestAnimationFrame: true
+        }
       });
 
       gridInstanceRef.current = grid;
       setIsReady(true);
 
-      // 拖拽排序后通知父组件 (若启用)
+      // 拖拽事件监听
       if (dragEnabled) {
-        grid.on("dragEnd", () => {
+        grid.on("dragStart", () => {
+          setIsDragging(true);
+        });
+
+        grid.on("dragReleaseEnd", () => {
+          setIsDragging(false);
           const currentItems = grid.getItems();
-          const order = currentItems.map(it => {
-            const el = it.getElement();
-            return el.getAttribute("data-muuri-id") || "";
-          }).filter(Boolean);
-          onOrderChange?.(order);
+          const order = currentItems
+            .map(it => {
+              const el = it.getElement();
+              return el?.getAttribute("data-muuri-id") || "";
+            })
+            .filter(Boolean);
+          if (order.length > 0) {
+            onOrderChange?.(order);
+          }
         });
       }
 
@@ -79,7 +107,7 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
     } catch (e) {
       console.error("Failed to initialize Muuri grid:", e);
     }
-  }, [fillGaps, dragEnabled]);
+  }, [fillGaps, dragEnabled, dragHandle, dragSortAction]);
 
   // 当 items 列表发生变化时，刷新与重新布局
   useEffect(() => {
@@ -106,7 +134,7 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
     if (!containerRef.current || !gridInstanceRef.current || typeof ResizeObserver === "undefined") return;
 
     const ro = new ResizeObserver(() => {
-      if (gridInstanceRef.current) {
+      if (gridInstanceRef.current && !isDragging) {
         gridInstanceRef.current.refreshItems().layout();
       }
     });
@@ -116,7 +144,7 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
     itemEls.forEach(el => ro.observe(el));
 
     return () => ro.disconnect();
-  }, [items, isReady]);
+  }, [items, isReady, isDragging]);
 
   // 宽度计算辅助函数
   const getWidthStyle = (size: TileWidth) => {
@@ -130,7 +158,9 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
   return (
     <div
       ref={containerRef}
-      className="muuri-grid relative w-full transition-all duration-300 min-h-[300px]"
+      className={`muuri-grid relative w-full transition-all duration-300 min-h-[300px] ${
+        isDragging ? "muuri-grid-dragging select-none" : ""
+      }`}
       style={{
         margin: `0 -${columnGapPx / 2}px`
       }}

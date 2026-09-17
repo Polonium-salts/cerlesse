@@ -18,6 +18,7 @@ import { normalizeCapabilities, INTENT_TAXONOMY_ALIGNMENT, GENERIC_INTENTS, INTE
 import { composeWidgetsForTask } from "./widgetComposer.js";
 import { retrieveWidgets } from "../src/widgets/widgetRetriever.js";
 import { selectAndReRankWidgets } from "./widgetSelector.js";
+import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
 
 // ==========================================
 // 1. Archetype Capability Registry (原型能力与标签库)
@@ -35,6 +36,19 @@ interface ArchetypeDefinition {
   matchPatterns?: RegExp;
 }
 
+/**
+ * 彻底禁用的原型名单 (Hard Disabled Archetypes)
+ * 即使历史提示词、缓存或 LLM 生成了这些原型，也会在进入规划/选择阶段前被强制拦截并丢弃。
+ */
+export const DISABLED_ARCHETYPES = new Set<string>([
+  "action_checklist",
+  "timeline",
+]);
+
+export function isArchetypeAllowed(archetype: string): boolean {
+  return !DISABLED_ARCHETYPES.has(archetype);
+}
+
 const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
   download_hub: {
     archetype: "download_hub",
@@ -46,17 +60,6 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     iconName: "Download",
     width: 75,
     matchPatterns: /(下载|安装包|release|installer|client|客户端|安装教程)/i
-  },
-  action_checklist: {
-    archetype: "action_checklist",
-    capabilities: ["install_step", "checklist", "step_by_step", "environment_checklist", "troubleshooting_audit", "prerequisites_check", "fix_command", "verification"],
-    tags: ARCHETYPE_PROFILES.action_checklist?.tags || ["操作步骤", "排查清单", "配置指南", "实操避坑"],
-    description: ARCHETYPE_PROFILES.action_checklist?.functionality || "分步骤实操指引、排查清单与前置检查",
-    selectionHeuristics: ARCHETYPE_PROFILES.action_checklist?.selectionHeuristics || "用户提出具体操作步骤或排查报错时实用性最高",
-    themeColor: "emerald",
-    iconName: "CheckCircle",
-    width: 75,
-    matchPatterns: /(步骤|排查|checklist|清单|指南|排错|配置步骤)/i
   },
   tool_discovery: {
     archetype: "tool_discovery",
@@ -112,17 +115,6 @@ const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
     iconName: "Layers",
     width: 100,
     matchPatterns: /(参数|指标|规格|基准|配置对比|矩阵|概念|原理|什么是)/i
-  },
-  timeline: {
-    archetype: "timeline",
-    capabilities: ["timeline_evolution", "milestones", "history", "version_history", "roadmap"],
-    tags: ARCHETYPE_PROFILES.timeline?.tags || ["发展历程", "版本历史", "演进路线", "大事件"],
-    description: ARCHETYPE_PROFILES.timeline?.functionality || "时间轴垂直串联历史版本与演进里程碑",
-    selectionHeuristics: ARCHETYPE_PROFILES.timeline?.selectionHeuristics || "查询历史、发展史或演进过程时实用性最高",
-    themeColor: "zinc",
-    iconName: "Calendar",
-    width: 100,
-    matchPatterns: /(演进|历程|版本历史|发展史|里程碑|时间线)/i
   },
   quote_dossier: {
     archetype: "quote_dossier",
@@ -489,14 +481,13 @@ function resolveArchetypeFromCapabilities(
   query: string
 ): { archetype: CustomCardArchetype; themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc"; iconName: string } {
   const capSet = new Set(capabilities.map(c => c.toLowerCase()));
-  let bestArchetype: CustomCardArchetype = /(演进|历程|版本|历史)/i.test(query)
-    ? "timeline"
-    : /(言论|评价|争议|观点)/i.test(query)
-      ? "quote_dossier"
-      : "parameter_matrix";
+  let bestArchetype: CustomCardArchetype = /(言论|评价|争议|观点)/i.test(query)
+    ? "quote_dossier"
+    : "parameter_matrix";
   let maxScore = 0;
 
   for (const [archKey, def] of Object.entries(ARCHETYPE_REGISTRY) as [CustomCardArchetype, ArchetypeDefinition][]) {
+    if (!isArchetypeAllowed(archKey)) continue;
     let score = 0;
 
     // 1. 能力交集打分 (每命中一个关键能力 +10 分)
@@ -640,7 +631,7 @@ function resolveWidgetsFromCapabilities(
         continue;
       }
     } else {
-      const isBaseSupport = ["takeaways", "sources", "custom_cards", "image_gallery"].includes(key);
+      const isBaseSupport = ["ai_answer", "related_links", "sources", "custom_cards"].includes(key);
       if (matchCount === 0 && !isBaseSupport) {
         continue;
       }
@@ -659,9 +650,9 @@ function resolveWidgetsFromCapabilities(
       }
 
       // custom_cards 是复合蓝图宿主，需要足够面积承载多分区内容：
-      // 矩阵/时间线类内容偏高 -> 100% 全宽；其余业务套件 -> 75% 焦点磁贴。
+      // 矩阵类内容偏高 -> 100% 全宽；其余业务套件 -> 75% 焦点磁贴。
       if (key === "custom_cards") {
-        finalSize = archetype === "timeline" || archetype === "parameter_matrix" ? 100 : 75;
+        finalSize = archetype === "parameter_matrix" ? 100 : 75;
       }
 
       // 优先级分层：下游排版引擎（tileLayoutEngine / bentoLayoutEngine / TileDesktopView）
@@ -692,24 +683,41 @@ function resolveWidgetsFromCapabilities(
   scoredWidgets.sort((a, b) => b.score - a.score);
 
   // 按相关度截断后提取 WidgetPlannedItem：
-  // "命中即上桌"会让桌面长期堆满弱相关磁贴，与"选择更精准"背道而驰。
   const resultList = scoredWidgets.slice(0, MAX_PLANNED_WIDGETS).map(s => s.item);
 
-  // 保证必备核心来源链：若被截断则挤掉末位弱相关组件，而不是让清单超编
+  // 保证三大核心基底锚点稳定上桌 (ai_answer, related_links, sources)
+  if (!resultList.some(w => w.type === "ai_answer")) {
+    resultList.unshift({
+      type: "ai_answer",
+      priority: 95,
+      size: 50,
+      flexible: true,
+      reason: "全网检索核心速答基底"
+    });
+  }
+  if (!resultList.some(w => w.type === "related_links")) {
+    resultList.push({
+      type: "related_links",
+      priority: 90,
+      size: 50,
+      flexible: true,
+      reason: "官方认证入口与导航直达"
+    });
+  }
   if (!resultList.some(w => w.type === "sources")) {
     const sourceItem: WidgetPlannedItem = {
       type: "sources",
-      priority: 60,
+      priority: 85,
       size: 50,
       flexible: false,
       reason: "信源存证与文献追溯"
     };
-    if (resultList.length >= MAX_PLANNED_WIDGETS) resultList.pop();
     resultList.push(sourceItem);
   }
 
-  // 保证用户指令：图片小组件保持启用
-  if (!resultList.some(w => w.type === "image_gallery")) {
+  // 仅在明确命中图片图集能力或视觉素材搜索时才纳入 image_gallery
+  const hasImageNeed = capSet.has("image_gallery") || capSet.has("resource_preview") || /(素材|图片|照片|图集|图库|壁纸|外观图)/i.test(query);
+  if (hasImageNeed && !resultList.some(w => w.type === "image_gallery")) {
     const imageGalleryItem: WidgetPlannedItem = {
       type: "image_gallery",
       priority: 74,
@@ -884,7 +892,7 @@ export async function planWidgetStrategy(options: {
     plannedWidgets.push({
       type: "custom_cards",
       priority: 90,
-      size: suggestedArchetype === "timeline" || suggestedArchetype === "parameter_matrix" ? 100 : 75,
+      size: suggestedArchetype === "parameter_matrix" ? 100 : 75,
       flexible: true,
       reason: `场景专属定制卡片 (${suggestedArchetype})`
     });
@@ -894,8 +902,15 @@ export async function planWidgetStrategy(options: {
     }
   }
 
-  // 保证用户指令：图片小组件保持启用
-  if (!plannedWidgets.some(w => w.type === "image_gallery")) {
+  // 严格依据 Agent Router 过滤黑名单组件
+  const canonicalIntent = normalizeIntent(intent);
+  plannedWidgets = plannedWidgets.filter(w => !isWidgetForbidden(w.type, canonicalIntent));
+  widgetOrder = widgetOrder.filter(k => !isWidgetForbidden(k, canonicalIntent));
+
+  // 仅在明确符合意图与能力时补充 image_gallery
+  const route = getRouteForIntent(canonicalIntent);
+  const shouldHaveImages = route.requiresImages || capabilities.includes("image_gallery") || capabilities.includes("resource_preview");
+  if (shouldHaveImages && !isWidgetForbidden("image_gallery", canonicalIntent) && !plannedWidgets.some(w => w.type === "image_gallery")) {
     plannedWidgets.push({
       type: "image_gallery",
       priority: 74,
@@ -903,13 +918,13 @@ export async function planWidgetStrategy(options: {
       flexible: false,
       reason: "全网检索图片素材与视觉图集"
     });
-  }
-  if (!widgetOrder.includes("image_gallery")) {
-    widgetOrder.push("image_gallery");
+    if (!widgetOrder.includes("image_gallery")) {
+      widgetOrder.push("image_gallery");
+    }
   }
 
   return {
-    intent,
+    intent: canonicalIntent,
     userGoal: resolvedUserGoal,
     suggestedArchetype,
     capabilities,

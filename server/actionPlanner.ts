@@ -192,7 +192,7 @@ export function generateAlgorithmicActionPlan(
   let userGoal: UserGoalType = "deep_learning";
   let goalStatement = `获取 “${query}” 的深度知识与权威解析`;
   let nextStepVerdict = `阅读核心结论并查阅官方信源`;
-  let suggestedArchetype: CustomCardArchetype = "action_checklist";
+  let suggestedArchetype: CustomCardArchetype = "parameter_matrix";
   let requiresActionWidget = false;
 
   // 1. Install & Setup
@@ -200,7 +200,7 @@ export function generateAlgorithmicActionPlan(
     userGoal = "install_setup";
     goalStatement = `用户希望获取 “${query}” 的安装部署指引与可执行命令`;
     nextStepVerdict = `在本地环境复制执行安装脚本并核验服务状态`;
-    suggestedArchetype = "action_checklist";
+    suggestedArchetype = "download_hub";
     requiresActionWidget = true;
   }
   // 2. Official Portal
@@ -224,7 +224,7 @@ export function generateAlgorithmicActionPlan(
     userGoal = "code_implementation";
     goalStatement = `用户希望获取 “${query}” 的代码实现示例与避坑指南`;
     nextStepVerdict = `复制经过验证的代码片段并导入项目中进行联调`;
-    suggestedArchetype = "action_checklist";
+    suggestedArchetype = "tool_discovery";
     requiresActionWidget = true;
   }
   // 5. Short Technology Entity

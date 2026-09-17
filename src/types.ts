@@ -218,25 +218,32 @@ export type ResultWidgetKey =
   | "weather"
   | "translation"
   | "troubleshooting"
+  | "sources"
+  | "comparison"
+  | "mindmap"
+  | "actions_toolbox"
   | "custom_cards"
   | string;
 
 /**
  * 可参与自动选型的小组件全集（前端注册中心已登记的模块 id）。
- * related_links / ai_answer 是恒启用的阅读流锚点；takeaways、image_gallery、search_engine、token_usage 与 troubleshooting
- * 由 Agent 依据搜索意图与能力模型自主决策启停。
+ * ai_answer / related_links / sources 是恒启用的三大阅读流与事实存证锚点；其余组件（如 weather, translation, troubleshooting, comparison, mindmap, image_gallery, takeaways, search_engine, token_usage, actions_toolbox, custom_cards 等）由 Agent 依据搜索意图与能力模型自主决策启停。
  * 此清单同时是排版 Agent 的组件白名单来源。
  */
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
-  "related_links",
   "ai_answer",
+  "related_links",
+  "sources",
   "takeaways",
   "image_gallery",
   "search_engine",
   "token_usage",
   "weather",
   "translation",
-  "troubleshooting"
+  "troubleshooting",
+  "comparison",
+  "mindmap",
+  "actions_toolbox"
 ];
 
 export interface WidgetStatusDetail {
@@ -282,15 +289,29 @@ export interface WidgetAction {
   isVerified?: boolean;
 }
 
-export type QueryIntent = 
-  | "install"          // 软件安装/环境配置/下载CLI (如 Docker 怎么安装, 怎么下载 Python)
-  | "compare"          // 多方案选型/对比优劣 (如 Docker 和 Podman 区别, React vs Vue)
-  | "tool_discovery"   // 工具发现/在线工具推荐/免安装体验 (如 有没有免费的图片压缩工具)
-  | "tutorial"         // 实操步骤/代码教程/进阶实战 (如 怎么写 Promise, Nginx 反向代理配置)
-  | "troubleshooting"  // 报错排查/异常修复/避坑 (如 npm 报错, 跨域 CORS 排查)
-  | "travel"           // 旅游攻略/行程路线/景点住宿 (如 日本旅游攻略, 成都3日游)
-  | "explain"          // 概念解释/原理科普 (如 什么是 Docker, 量子计算原理)
-  | "research";        // 深度研报/全产业链/学术探讨
+export type AgentIntent =
+  | "weather"
+  | "translation"
+  | "software_download"
+  | "resource_search"
+  | "study_tutorial"
+  | "github_project"
+  | "tech_comparison"
+  | "troubleshooting"
+  | "portal_navigation"
+  | "search_engine_portal"
+  | "concept_explanation"
+  | "general_knowledge"
+  | "travel"
+  | "research"
+  | "tool_discovery"
+  // Legacy alias compatibility
+  | "install"
+  | "compare"
+  | "tutorial"
+  | "explain";
+
+export type QueryIntent = AgentIntent;
 
 /**
  * 组件规划的宽度档位。
@@ -399,8 +420,6 @@ export interface WidgetQualityGuardReport {
 
 export type CustomCardArchetype = 
   | "parameter_matrix" 
-  | "timeline" 
-  | "action_checklist" 
   | "verdict_summary" 
   | "pros_cons" 
   | "quote_dossier"
