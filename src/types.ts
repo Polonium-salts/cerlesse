@@ -46,6 +46,7 @@ export interface SearchImage {
 export interface ComparisonDimension {
   dimension: string; // e.g. "技术路线与核心原理", "应用场景", "优劣势分析", "发展现状与生态"
   summary: string;
+  details?: string[] | string;
   sourcesBreakdown: {
     sourceTitle: string;
     sourceUrl: string;
@@ -216,12 +217,13 @@ export type ResultWidgetKey =
   | "token_usage"
   | "weather"
   | "translation"
+  | "troubleshooting"
   | "custom_cards"
   | string;
 
 /**
  * 可参与自动选型的小组件全集（前端注册中心已登记的模块 id）。
- * related_links / ai_answer 是恒启用的阅读流锚点；takeaways、image_gallery、search_engine 与 token_usage
+ * related_links / ai_answer 是恒启用的阅读流锚点；takeaways、image_gallery、search_engine、token_usage 与 troubleshooting
  * 由 Agent 依据搜索意图与能力模型自主决策启停。
  * 此清单同时是排版 Agent 的组件白名单来源。
  */
@@ -233,7 +235,8 @@ export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "search_engine",
   "token_usage",
   "weather",
-  "translation"
+  "translation",
+  "troubleshooting"
 ];
 
 export interface WidgetStatusDetail {
@@ -669,7 +672,69 @@ export interface SearchSynthesisResult {
   customCards?: CustomCardData[];
   actionPlan?: ActionPlan;
   widgetPlan?: WidgetPlan;
+  troubleshootingPlan?: TroubleshootingPlan;
   tokenUsage?: TokenUsageStats;
+}
+
+export interface TroubleshootingCheckItem {
+  id: string;
+  title: string;
+  description?: string;
+  command?: string;
+  expectedResult?: string;
+  status?: "pending" | "passed" | "failed" | "warning";
+}
+
+export interface TroubleshootingFixStep {
+  id: string;
+  order: number;
+  title: string;
+  description: string;
+  command?: string;
+  codeSnippet?: string;
+  shell?: "bash" | "powershell" | "cmd" | "sh" | "terminal" | string;
+  riskLevel?: "low" | "medium" | "high";
+  requiresRestart?: boolean;
+  requiresSudo?: boolean;
+  expectedOutcome?: string;
+}
+
+export interface TroubleshootingSolution {
+  id: string;
+  title: string;
+  description: string;
+  isPrimary?: boolean;
+  confidence?: number;
+  tags?: string[];
+  steps: TroubleshootingFixStep[];
+  rollbackSteps?: string[];
+}
+
+export interface TroubleshootingVerificationItem {
+  id: string;
+  title: string;
+  command?: string;
+  expectedResult?: string;
+  checked?: boolean;
+}
+
+export interface TroubleshootingPlan {
+  errorName: string;
+  errorCode?: string;
+  phenomenon: string;
+  rootCause: string;
+  severity?: "critical" | "high" | "medium" | "low";
+  environment?: {
+    platform?: string;
+    runtime?: string;
+    affectedVersions?: string;
+  };
+  prerequisites?: string[];
+  diagnosticChecks: TroubleshootingCheckItem[];
+  solutions: TroubleshootingSolution[];
+  verificationChecklist: TroubleshootingVerificationItem[];
+  cautionNotes?: string[];
+  relatedSources?: Array<{ title: string; url: string }>;
 }
 
 export interface OpenRouterModel {
@@ -860,3 +925,5 @@ export interface CustomCardData {
   travelData?: TravelItineraryData;
   schema?: WidgetSchema;
 }
+
+export type { TileWidth } from "./lib/tileLayoutEngine.js";

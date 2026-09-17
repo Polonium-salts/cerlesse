@@ -300,15 +300,17 @@ export async function planWidgetLayout(
     ? [...baseStrategy.enabledWidgets]
     : [...baseStrategy.componentOrder];
 
+  if (!enabledKeys.includes("image_gallery")) {
+    enabledKeys.push("image_gallery");
+  }
+
   const baseOrder: ResultWidgetKey[] = [
     ...baseStrategy.componentOrder.filter((k) => enabledKeys.includes(k)),
     ...enabledKeys.filter((k) => !baseStrategy.componentOrder.includes(k))
   ];
   let safeOrder = baseOrder.length > 0 ? baseOrder : [...enabledKeys];
-
-  // 默认保持官网跳转组件在最上方
-  if (safeOrder.includes("related_links")) {
-    safeOrder = ["related_links", ...safeOrder.filter((k) => k !== "related_links")];
+  if (!safeOrder.includes("image_gallery")) {
+    safeOrder.push("image_gallery");
   }
 
   // 2.2 跨度求解：优先采纳小组件构建 Agent 的真实尺寸意图，其次回落基线栅格
@@ -352,11 +354,9 @@ export async function planWidgetLayout(
   }
 
   // 视觉焦点仅决定阅读序（求解器会把它排在最前），宽度一律回归清单声明的四档。
-  // related_links 是置顶焦点，但它的宽度就是清单里的 50%，不因焦点身份被额外撑宽 ——
-  // 否则 6+6=12 的整行对齐会被打破。
-  let emphasized: ResultWidgetKey = safeOrder.includes("related_links")
-    ? "related_links"
-    : (enabledKeys.includes(baseStrategy.emphasizedWidget) ? baseStrategy.emphasizedWidget : safeOrder[0]);
+  let emphasized: ResultWidgetKey = enabledKeys.includes(baseStrategy.emphasizedWidget)
+    ? baseStrategy.emphasizedWidget
+    : safeOrder[0];
 
   // ---------------------------------------------------------------
   // 相位 3：大模型语义精修（可降级，不影响正确性）

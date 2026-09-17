@@ -1,0 +1,18 @@
+{
+  "id": "verification_checklist",
+  "name": "排查与核验清单",
+  "version": "1.0.0",
+  "description": "故障诊断、环境依赖检查与实操交互式核验避坑清单",
+  "category": "action",
+  "tags": ["排查", "诊断", "核验", "清单", "checklist", "troubleshooting"],
+  "icon": "ShieldCheck",
+  "grid": {
+    "width": 75,
+    "supportedWidths": [50, 75, 100],
+    "ratio": "4:3",
+    "minWidth": 50
+  },
+  "theme": {
+    "accentColor": "#10b981"
+  }
+}

@@ -6,6 +6,7 @@ import {
   formatAgentWidgetGuidancePrompt,
   type CanonicalCapability
 } from "../src/widgets/capabilityTaxonomy.js";
+import { scoreTroubleshootingTrigger } from "../src/widgets/triggers/troubleshooting.js";
 
 /**
  * 标准业务场景预置核心能力映射表 (Semantic Intent to Canonical Capability Taxonomy)
@@ -304,17 +305,19 @@ export function analyzeIntentAlgorithmically(query: string, results: SearchResul
     };
   }
 
-  // 7. 故障排查与报错 (Troubleshooting)
-  if (/(报错|错误|失败|failed|error|bug|crash|崩溃|排查|无法启动|解决办法|code \d+)/i.test(cleanQ)) {
+  // 7. 故障排查与报错 (Troubleshooting) - 多维启发式评分模型
+  const tbScore = scoreTroubleshootingTrigger(cleanQ, results);
+  if (tbScore.triggered) {
+    const errorEntity = tbScore.errorCodes[0] || tbScore.environmentContext?.runtime || cleanQ;
     return {
       intent: "troubleshooting",
       intents: ["troubleshooting", "diagnose", "fix", "verify"],
-      entity: cleanQ,
+      entity: errorEntity,
       goal: "troubleshoot",
       needs: [...INTENT_CAPABILITIES_MAP.troubleshooting],
       requiredCapabilities: [...INTENT_CAPABILITIES_MAP.troubleshooting],
       suggestedLayout: "composite_card",
-      confidence: 0.89
+      confidence: Math.max(0.85, tbScore.confidence)
     };
   }
 

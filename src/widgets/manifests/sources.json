@@ -1,0 +1,18 @@
+{
+  "id": "sources",
+  "name": "权威信源存证",
+  "version": "1.0.0",
+  "description": "全网引用文献溯源、权威认证标识与可信证据链",
+  "category": "portal",
+  "tags": ["信源", "文献", "引用", "存证", "sources", "citations"],
+  "icon": "BookOpen",
+  "grid": {
+    "width": 50,
+    "supportedWidths": [25, 50, 75, 100],
+    "ratio": "1:1",
+    "minWidth": 25
+  },
+  "theme": {
+    "accentColor": "#0d9488"
+  }
+}

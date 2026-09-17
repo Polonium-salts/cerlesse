@@ -1,6 +1,6 @@
 /**
  * 官方小组件注册入口 (Official Widget Registration Entry)
- * 当前系统加载与登记的官方小组件：官网跳转、AI 智能回答、核心要点、相关图片
+ * 当前系统加载与登记的官方小组件全部模块
  */
 import { WidgetRegistry } from "../registry.js";
 import { OFFICIAL_WIDGET_MODULES } from "../modules/index.js";
@@ -13,7 +13,14 @@ export {
   takeawaysModule,
   imageGalleryModule,
   searchEngineModule,
-  tokenUsageModule
+  tokenUsageModule,
+  weatherModule,
+  translationModule,
+  comparisonModule,
+  sourcesModule,
+  mindmapModule,
+  actionsToolboxModule,
+  verificationChecklistModule
 } from "../modules/index.js";
 
 /** 初始化并自动向注册中心登记小组件模块 */

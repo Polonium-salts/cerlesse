@@ -1,6 +1,10 @@
 import type { ComponentType } from "react";
 import {
   Activity,
+  AlertTriangle,
+  ArrowRightLeft,
+  BookOpen,
+  Bug,
   CheckCircle2,
   CloudSun,
   Coins,
@@ -21,8 +25,10 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Terminal,
   TrendingUp,
   Workflow,
+  Wrench,
   Zap
 } from "lucide-react";
 
@@ -42,6 +48,10 @@ import {
  */
 const ICON_REGISTRY: Record<string, ComponentType<{ className?: string }>> = {
   Activity,
+  AlertTriangle,
+  ArrowRightLeft,
+  BookOpen,
+  Bug,
   CheckCircle2,
   CloudSun,
   Coins,
@@ -62,8 +72,10 @@ const ICON_REGISTRY: Record<string, ComponentType<{ className?: string }>> = {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Terminal,
   TrendingUp,
   Workflow,
+  Wrench,
   Zap
 };
 

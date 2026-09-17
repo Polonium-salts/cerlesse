@@ -382,6 +382,65 @@ function composeWeatherSuite(options: ComposeOptions): WidgetBlueprint {
 }
 
 /**
+ * 故障排查专属卡片套件 (Troubleshooting Suite Composer)
+ */
+function composeTroubleshootingSuite(options: ComposeOptions): WidgetBlueprint {
+  const { results, intentAnalysis } = options;
+  const entity = intentAnalysis.entity || "运行时异常";
+
+  const components: BlueprintComponent[] = [
+    {
+      capability: "error_diagnosis",
+      type: "checklist",
+      data: {
+        title: `错误诊断: ${entity}`,
+        items: [
+          { text: "确认依赖版本兼容性与包锁文件一致性", checked: false },
+          { text: "排查文件系统读写权限与系统端口占用", checked: false },
+          { text: "检查网络代理、镜像源配置及 SSL 证书链路", checked: false }
+        ]
+      }
+    },
+    {
+      capability: "fix_command",
+      type: "quick_action",
+      data: {
+        label: "通用排障与清理重装指令",
+        command: "npm cache clean --force && npm install --legacy-peer-deps",
+        shell: "bash"
+      }
+    },
+    {
+      capability: "troubleshooting_audit",
+      type: "action_checklist",
+      data: {
+        title: "分步排查与验证流程",
+        steps: [
+          "核对运行环境版本 (Runtime & OS Architecture)",
+          "备份关键配置文件及工作区脏数据",
+          "执行修复指令并重新构建",
+          "验证服务运行状态与退出码"
+        ]
+      }
+    }
+  ];
+
+  return {
+    blueprintId: `bp_troubleshoot_${Date.now()}`,
+    title: `${entity} 故障诊断与排查方案`,
+    subtitle: "根因定位 · 依赖核验 · 自动化修复指令",
+    entity,
+    intent: "troubleshooting",
+    goal: "troubleshoot",
+    layout: "composite_card",
+    size: 75,
+    themeColor: "amber",
+    components,
+    matchedWidgetIds: ["troubleshooting", "actions_toolbox", "verification_checklist"]
+  };
+}
+
+/**
  * 通用/兜底任务组合器 (Generic Knowledge Synthesis Suite Composer)
  */
 function composeGenericSuite(options: ComposeOptions): WidgetBlueprint {
@@ -448,6 +507,8 @@ export function composeWidgetsForTask(options: ComposeOptions): WidgetBlueprint 
       return composeGitHubSuite(safeOptions);
     case "weather":
       return composeWeatherSuite(safeOptions);
+    case "troubleshooting":
+      return composeTroubleshootingSuite(safeOptions);
     default:
       return composeGenericSuite(safeOptions);
   }

@@ -1,4 +1,4 @@
-import { SearchResult, ComparisonDimension, MindMapNode, SearchSynthesisResult, AgentPlan, OpenRouterModel, DetectedLanguage } from "../src/types.js";
+import { SearchResult, ComparisonDimension, MindMapNode, SearchSynthesisResult, AgentPlan, OpenRouterModel, DetectedLanguage, TroubleshootingPlan } from "../src/types.js";
 
 /**
  * 全面基于 OpenRouter 官方免费模型路由集合的规范定义
@@ -199,6 +199,7 @@ export async function synthesizeWithOpenRouter(options: SynthesisOptions): Promi
   comparisonTable: ComparisonDimension[];
   mindMap: MindMapNode;
   followUpQuestions: string[];
+  troubleshootingPlan?: TroubleshootingPlan;
   modelUsed: string;
   isMockFallback?: boolean;
 }> {
@@ -349,6 +350,7 @@ Respond with pure JSON only, conforming exactly to this structure:
     comparisonTable: Array.isArray(parsed.comparisonTable) ? parsed.comparisonTable : [],
     mindMap: parsed.mindMap && parsed.mindMap.label ? parsed.mindMap : generateFallbackMindMap(options.query, options.results, targetLang.code),
     followUpQuestions: Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0 ? parsed.followUpQuestions : defaultFollowUps,
+    troubleshootingPlan: parsed.troubleshootingPlan,
     modelUsed: initialModel,
     isMockFallback: false
   };
@@ -408,6 +410,7 @@ export function generateAlgorithmicSynthesis(
   comparisonTable: ComparisonDimension[];
   mindMap: MindMapNode;
   followUpQuestions: string[];
+  troubleshootingPlan?: TroubleshootingPlan;
   modelUsed: string;
   isMockFallback: boolean;
 } {

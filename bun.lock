@@ -7,6 +7,7 @@
       "dependencies": {
         "@google/genai": "^2.4.0",
         "@openai/agents": "^0.18.0",
+        "@orama/orama": "^3.1.18",
         "@tailwindcss/vite": "^4.1.14",
         "@vitejs/plugin-react": "^5.0.4",
         "class-variance-authority": "^0.7.1",
@@ -162,6 +163,8 @@
     "@openai/agents-openai": ["@openai/agents-openai@0.18.0", "", { "dependencies": { "@openai/agents-core": "0.18.0", "debug": "^4.4.0", "openai": "^7.2.0" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-dBE5NNVbkhEIsjZLUDjA8Gr8U1wGN6LTdP7Su4mY1djcxtIBaojQ/bjbpDd0EyqD5OkNTu0ziYyUyyrIfIGurQ=="],
 
     "@openai/agents-realtime": ["@openai/agents-realtime@0.18.0", "", { "dependencies": { "@openai/agents-core": "0.18.0", "@types/ws": "^8.18.1", "debug": "^4.4.0", "ws": "^8.21.0" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-joIG5Vj1BKHxx9a+UwI+pPEuiGh0zhRecVb1yYMMKSW0Oho9ntPi1+LM7KpT2mwv6M9Y11XNtuoaseolFzxwBQ=="],
+
+    "@orama/orama": ["@orama/orama@3.1.18", "", {}, "sha512-a61ljmRVVyG5MC/698C8/FfFDw5a8LOIvyOLW5fztgUXqUpc1jOfQzOitSCbge657OgXXThmY3Tk8fpiDb4UcA=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

@@ -24,14 +24,14 @@ interface MuuriWidgetGridProps {
  * 具备特性：
  * 1. layout.fillGaps: true 开启自动空隙回填，让小卡片自动钻入大卡片留下的空缺；
  * 2. 响应式分级宽度 (25% / 50% / 75% / 100%)，支持大卡片与小卡片自由穿插；
- * 3. 拖拽重排与磁贴自由拖放（支持手柄 .tile-drag-handle）；
+ * 3. 固定静止展示，禁止任意拖动错位，保持布局整洁稳定；
  * 4. 搭载平滑弹簧/贝塞尔动画曲线，搜索结果切换时自然浮动过渡；
  * 5. ResizeObserver 实时监听子项物理高度并触发布局重算。
  */
 export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
   items,
   fillGaps = true,
-  dragEnabled = true,
+  dragEnabled = false,
   columnGapPx = 12,
   rowGapPx = 12,
   onOrderChange
@@ -53,31 +53,24 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
         },
         layoutDuration: 380,
         layoutEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
-        dragEnabled: dragEnabled,
-        dragStartPredicate: {
-          distance: 10,
-          delay: 0,
-          handle: ".tile-drag-handle"
-        },
-        dragRelease: {
-          duration: 300,
-          easing: "cubic-bezier(0.22, 1, 0.36, 1)"
-        },
-        dragSort: true
+        dragEnabled: Boolean(dragEnabled),
+        dragSort: Boolean(dragEnabled)
       });
 
       gridInstanceRef.current = grid;
       setIsReady(true);
 
-      // 拖拽排序后通知父组件
-      grid.on("dragEnd", () => {
-        const currentItems = grid.getItems();
-        const order = currentItems.map(it => {
-          const el = it.getElement();
-          return el.getAttribute("data-muuri-id") || "";
-        }).filter(Boolean);
-        onOrderChange?.(order);
-      });
+      // 拖拽排序后通知父组件 (若启用)
+      if (dragEnabled) {
+        grid.on("dragEnd", () => {
+          const currentItems = grid.getItems();
+          const order = currentItems.map(it => {
+            const el = it.getElement();
+            return el.getAttribute("data-muuri-id") || "";
+          }).filter(Boolean);
+          onOrderChange?.(order);
+        });
+      }
 
       return () => {
         grid.destroy();

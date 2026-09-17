@@ -1,0 +1,37 @@
+{
+  "id": "troubleshooting",
+  "name": "故障排查与修复流程",
+  "version": "1.0.0",
+  "description": "结构化错误现象分析、根因诊断、分步修复指令与交互式核验",
+  "category": "action",
+  "tags": ["排错", "故障", "诊断", "报错", "修复", "troubleshooting", "debug", "error", "避坑"],
+  "icon": "AlertTriangle",
+  "grid": {
+    "width": 75,
+    "supportedWidths": [50, 75, 100],
+    "ratio": "4:3",
+    "minWidth": 50
+  },
+  "theme": {
+    "accentColor": "#ef4444"
+  },
+  "agentHint": {
+    "functionality": "把错误现象、根因分析、前置检查、分步修复命令与交互式核验组织成闭环流程的小组件",
+    "bestFor": [
+      "用户遇到程序报错、安装失败、运行异常、服务崩溃或依赖冲突",
+      "需要清晰的排障步骤、直接可执行的命令行修复与结果核验",
+      "常见编译报错、网络连接故障、权限错误与配置缺失"
+    ],
+    "dataRequirements": [
+      "包含错误现象或代码",
+      "包含明确的根因解释",
+      "提供可分步执行的排查或修复指令"
+    ],
+    "selectionHeuristics": "当用户查询涉及报错、安装失败、程序崩溃或排错指令时最高优先级推荐；若仅为常规概念科普则降级",
+    "triggerKeywords": ["报错", "解决", "异常", "排错", "修复", "失败", "error", "failed", "bug", "crash", "崩溃", "无法启动"],
+    "antiPatterns": [
+      "纯概念科普名词解释（无对应报错现象）",
+      "正版软件客户端下载（无安装报错）"
+    ]
+  }
+}

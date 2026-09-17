@@ -7,6 +7,12 @@ import { searchEngineModule } from "./searchEngine.js";
 import { tokenUsageModule } from "./tokenUsage.js";
 import { weatherModule } from "./weather.js";
 import { translationModule } from "./translation.js";
+import { comparisonModule } from "./comparison.js";
+import { sourcesModule } from "./sources.js";
+import { mindmapModule } from "./mindmap.js";
+import { actionsToolboxModule } from "./actionsToolbox.js";
+import { verificationChecklistModule } from "./verificationChecklist.js";
+import { troubleshootingModule } from "./troubleshooting.js";
 
 /**
  * 小组件模块目录 (Widget Module Catalog)
@@ -19,7 +25,13 @@ export {
   searchEngineModule,
   tokenUsageModule,
   weatherModule,
-  translationModule
+  translationModule,
+  comparisonModule,
+  sourcesModule,
+  mindmapModule,
+  actionsToolboxModule,
+  verificationChecklistModule,
+  troubleshootingModule
 };
 
 /** 全部小组件模块清单 */
@@ -31,5 +43,11 @@ export const OFFICIAL_WIDGET_MODULES: WidgetModule[] = [
   searchEngineModule,
   tokenUsageModule,
   weatherModule,
-  translationModule
+  translationModule,
+  comparisonModule,
+  sourcesModule,
+  mindmapModule,
+  actionsToolboxModule,
+  verificationChecklistModule,
+  troubleshootingModule
 ];

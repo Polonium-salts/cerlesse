@@ -1,0 +1,18 @@
+{
+  "id": "actions_toolbox",
+  "name": "行动工具箱",
+  "version": "1.0.0",
+  "description": "一键运行 CLI、环境配置脚本、命令复制与实用工具链",
+  "category": "action",
+  "tags": ["工具", "命令", "脚本", "CLI", "actions", "toolbox"],
+  "icon": "Terminal",
+  "grid": {
+    "width": 50,
+    "supportedWidths": [25, 50, 75, 100],
+    "ratio": "1:1",
+    "minWidth": 25
+  },
+  "theme": {
+    "accentColor": "#f59e0b"
+  }
+}

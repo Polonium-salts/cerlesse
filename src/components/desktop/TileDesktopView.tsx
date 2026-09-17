@@ -9,7 +9,6 @@ import {
   Columns3,
   ArrowLeftRight,
   Sparkles,
-  GripVertical,
   LayoutGrid
 } from "lucide-react";
 import {
@@ -155,77 +154,26 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     }
   }, [enabledWidgets]);
 
-  // 1. 整理当前待呈现在桌面的组件 ID 列表（严格根据搜索内容意图动态选型，自动剔除与搜索无关或无数据的组件）
+  // 1. 整理当前待呈现在桌面的组件 ID 列表（严格根据 Agent 检索与重排决策呈现，杜绝前端私自正则增删组件）
   const activeKeys = useMemo(() => {
+    // 优先采用 Agent 规划并验证后的小组件序列
     const rawList = enabledWidgets && enabledWidgets.length > 0
       ? [...enabledWidgets]
-      : (strategy.componentOrder && strategy.componentOrder.length > 0 
-          ? [...strategy.componentOrder] 
-          : resolveDynamicCapabilityWidgets(strategy.intentType || "balanced"));
+      : (widgetPlan?.widgetOrder && widgetPlan.widgetOrder.length > 0
+          ? [...widgetPlan.widgetOrder]
+          : (strategy.componentOrder && strategy.componentOrder.length > 0 
+              ? [...strategy.componentOrder] 
+              : resolveDynamicCapabilityWidgets(strategy.intentType || "balanced")));
     let list = [...rawList.filter(Boolean)];
     const query = (activeResult?.query || "").trim().toLowerCase();
 
-    // 气象组件意图判定：仅当搜索词命中气象特征或由 Agent 显式规划时呈现
-    const hasWeatherIntent = /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(query);
-    const isWeatherPlanned = widgetPlan?.widgets?.some(w => (typeof w === "string" ? w : w?.type) === "weather");
-    if ((hasWeatherIntent || isWeatherPlanned) && !list.includes("weather") && !hiddenTileIds.has("weather")) {
-      list.unshift("weather");
-    } else if (!hasWeatherIntent && !isWeatherPlanned) {
-      list = list.filter(k => k !== "weather");
-    }
-
-    // 翻译组件判定：仅当搜索词命中翻译需求或由 Agent 显式规划时呈现
-    const hasTranslationIntent = /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|双语|查词|音标)/i.test(query);
-    const isTranslationPlanned = widgetPlan?.widgets?.some(w => (typeof w === "string" ? w : w?.type) === "translation");
-    if ((hasTranslationIntent || isTranslationPlanned) && !list.includes("translation") && !hiddenTileIds.has("translation")) {
-      list.unshift("translation");
-    } else if (!hasTranslationIntent && !isTranslationPlanned) {
-      list = list.filter(k => k !== "translation");
-    }
-
-    // Token 消耗组件判定：仅当搜索词明确涉及 Token/模型消耗或由 Agent 显式规划时呈现，默认不加载
-    const hasTokenIntent = /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(query);
-    const isTokenPlanned = widgetPlan?.widgets?.some(w => (typeof w === "string" ? w : w?.type) === "token_usage");
-    if (!hasTokenIntent && !isTokenPlanned) {
-      list = list.filter(k => k !== "token_usage");
-    }
-
-    // 图片组件判定：搜索图片或检索结果确实包含有效图片、或由 Agent 显式规划时保留
-    const hasImages = Boolean(activeResult.relatedImages && activeResult.relatedImages.length > 0);
-    const hasImageIntent = /(图片|壁纸|图库|照片|高清图|截图|image|photo|wallpaper|gallery)/i.test(query);
-    const isImagePlanned = widgetPlan?.widgets?.some(w => (typeof w === "string" ? w : w?.type) === "image_gallery");
-    if ((hasImageIntent || hasImages || isImagePlanned) && !list.includes("image_gallery") && !hiddenTileIds.has("image_gallery")) {
-      list.push("image_gallery");
-    } else if (!hasImageIntent && !hasImages && !isImagePlanned) {
-      list = list.filter(k => k !== "image_gallery");
-    }
-
-    // 核心结论要点：只有存在真实 keyTakeaways 时才保留
+    // 核心结论要点：只有存在真实 keyTakeaways 时才保留（防空壳）
     const hasTakeaways = Boolean(activeResult.keyTakeaways && activeResult.keyTakeaways.length > 0);
     if (!hasTakeaways) {
       list = list.filter(k => k !== "takeaways");
     }
 
-    // 智能互补保障：若有 75% 宽度的组件（例如天气或图片），且列表中缺少 25% 宽度的组件，且存在核心要点，纳入互补
-    const has75Widget = list.some(k => k === "image_gallery" || k === "weather");
-    const has25Widget = list.some(k => k === "takeaways" || k === "token_usage");
-    if (has75Widget && !has25Widget && !hiddenTileIds.has("takeaways") && hasTakeaways) {
-      list.push("takeaways");
-    }
-
-    // 搜索引擎组件保障：如果查询包含搜索引擎相关意图，或由规划器点名，确保纳入桌面
-    const hasSearchEngine = list.some(k => k === "search_engine");
-    const hasSearchIntent = /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query);
-    const isSearchEnginePlanned = widgetPlan?.widgets?.some(w => (typeof w === "string" ? w : w?.type) === "search_engine");
-    if (!hasSearchEngine && !hiddenTileIds.has("search_engine")) {
-      if (hasSearchIntent || isSearchEnginePlanned || strategy.intentType === "tool_discovery") {
-        list.push("search_engine");
-      }
-    } else if (!hasSearchIntent && !isSearchEnginePlanned && strategy.intentType !== "tool_discovery" && strategy.intentType !== "official_portal") {
-      list = list.filter(k => k !== "search_engine");
-    }
-
-    // 过滤与当前搜索词不相关的 custom_cards，去重
+    // 过滤与当前搜索词不相关的 custom_cards
     const relevantCustomCards = customCards.filter(c => {
       if (c.isPinned) return true;
       const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
@@ -239,10 +187,16 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       list = list.filter(k => k !== "custom_cards");
     }
 
-    // 过滤掉未在注册中心登记的小组件，去重
-    const uniqueKeys = Array.from(new Set(list));
+    // 保证用户指令：图片小组件保持启用（除非用户在当前会话中显式关闭）
+    if (!hiddenTileIds.has("image_gallery") && !list.includes("image_gallery")) {
+      list.push("image_gallery");
+    }
+
+    // 过滤用户已显式隐藏的组件，并确保注册中心有对应模块
+    const visibleList = list.filter(k => !hiddenTileIds.has(String(k)));
+    const uniqueKeys = Array.from(new Set(visibleList));
     return uniqueKeys.filter((k) => k === "custom_cards" || Boolean(resolveWidgetModule(String(k))));
-  }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, activeResult.relatedImages, customCards, widgetPlan]);
+  }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, customCards, widgetPlan]);
 
   // 监听各个小组件实际内容高度，当内容变化时自动扩充磁贴高度以一次性显示全部内容
   useEffect(() => {
@@ -355,31 +309,13 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       const module = resolveWidgetModule(keyStr);
       if (!module) continue;
       const isEmphasized = key === agentFocusKey || key === strategy.layoutPlan?.featured;
-      let priority = (planned?.priority ?? 50) + (isEmphasized ? 30 : 0);
-      const query = activeResult?.query || "";
-      
-      // 依据具体搜索结果意图动态设定优先级与展示尺寸 (Content Decision & Size Decision)
-      if (keyStr === "weather") {
-        priority = /(天气|气象|气温|下雨|温度|预报|weather|forecast)/i.test(query) ? 100 : 70;
-      } else if (keyStr === "image_gallery") {
-        priority = /(图片|壁纸|图库|照片|image|photo|wallpaper)/i.test(query) ? 98 : 65;
-      } else if (keyStr === "search_engine") {
-        priority = /(google|bing|baidu|百度|必应|谷歌|搜索引擎|search|engine|搜一下)/i.test(query) ? 95 : 60;
-      } else if (keyStr === "related_links") {
-        priority = (strategy.intentType === "official_portal" || strategy.intentType === "install" || /(官网|官方|下载|主页|portal|official|download)/i.test(query)) ? 92 : 55;
-      } else if (keyStr === "ai_answer") {
-        priority = 85;
-      } else if (keyStr === "takeaways") {
-        priority = 80;
-      } else if (keyStr === "token_usage") {
-        priority = 30;
-      }
+      const priority = (planned?.priority ?? 50) + (isEmphasized ? 30 : 0);
 
-      // 尺寸决策：图片小组件 75%，天气 75%，搜索引擎直达 50%，Token 消耗 25%
-      const agentSize = keyStr === "image_gallery" || keyStr === "weather" ? 75 : keyStr === "search_engine" ? 50 : keyStr === "token_usage" ? 25 : tileWidthFromSpan(agentSpans[keyStr]);
-      const moduleSize = module?.width;
+      // 尺寸决策：优先采用用户/Agent 动态 Span 设定，其次为 Agent 规划尺寸，兜底为组件模块默认宽度
       const plannedSize = tileWidthFromPlannedSize(planned?.size);
-      const size: TileWidth = keyStr === "image_gallery" || keyStr === "weather" ? 75 : keyStr === "search_engine" ? 50 : keyStr === "token_usage" ? 25 : (agentSize || moduleSize || plannedSize || 50);
+      const agentSpanSize = tileWidthFromSpan(agentSpans[keyStr]);
+      const moduleSize = module?.width;
+      const size: TileWidth = agentSpanSize || plannedSize || moduleSize || 50;
 
       const measuredHeight = contentHeights[keyStr];
 
@@ -528,14 +464,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       priority: input.priority,
       node: (
         <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-full shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
-          {/* 磁贴拖拽把手 (Muuri Drag Handle) */}
-          <div
-            className="tile-drag-handle absolute top-2.5 left-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-primary rounded-xl cursor-grab active:cursor-grabbing shadow-xs"
-            title="按住拖动磁贴重排"
-          >
-            <GripVertical className="w-3.5 h-3.5" />
-          </div>
-
           {/* 75% 与 25% 互补磁贴左右排位切换把手 */}
           {(input.size === 75 || input.size === 25) && (
             <Button
@@ -707,7 +635,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         <MuuriWidgetGrid
           items={muuriItems}
           fillGaps={true}
-          dragEnabled={true}
+          dragEnabled={false}
           columnGapPx={TILE_COLUMN_GAP_PX}
           rowGapPx={TILE_ROW_GAP_PX}
         />

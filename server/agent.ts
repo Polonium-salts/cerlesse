@@ -63,10 +63,8 @@ export interface AgentRunOptions {
  * 「绝不出现空壳与无关磁贴」的硬门槛也就形同虚设。
  */
 function shouldFetchRelatedImages(query: string, results: SearchResult[]): boolean {
-  if (IMAGE_INTENT_PATTERN.test(query)) return true;
-  if (results.filter((r) => Boolean(r.thumbnail)).length >= 1) return true;
-  // 具备实体、概念或话题属性的常规检索均在后台并发预取图片，确保相关图片组件具备充分数据支持
-  return query.trim().length >= 2;
+  // 用户要求图片小组件保持启用，因此常规检索均在后台并发预取图片
+  return query.trim().length >= 1;
 }
 
 export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSynthesisResult> {
@@ -240,6 +238,7 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       query,
       results: filteredResults,
       apiKey: options.openRouterApiKey,
+      model: selectedModel,
       targetLanguage: targetLang.code
     });
   } catch (err) {
@@ -248,32 +247,13 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       intent: "explain",
       userGoal: query,
       suggestedArchetype: "download_hub",
-      capabilities: ["related_links", "ai_answer"],
+      capabilities: ["ai_answer", "related_links"],
       widgets: [
-        { type: "related_links", priority: 100, size: 50, reason: "权威官网入口直达置顶" },
-        { type: "ai_answer", priority: 85, size: 50, reason: "AI 智能综合回答精简呈现" },
-        { type: "takeaways", priority: 75, size: 25, reason: "核心要点" }
+        { type: "ai_answer", priority: 95, size: 50, reason: "核心 AI 智能回答与深度推理" },
+        { type: "takeaways", priority: 80, size: 25, reason: "核心要点" }
       ],
       primaryActions: []
     };
-  }
-
-  // 确保 related_links 与 ai_answer 包含在候选规划中，且 related_links 始终置顶
-  if (!widgetPlan.widgets.some(w => w.type === "related_links")) {
-    widgetPlan.widgets.unshift({
-      type: "related_links",
-      priority: 100,
-      size: 50,
-      reason: "权威官网与多链接安全直达置顶"
-    });
-  }
-  if (!widgetPlan.widgets.some(w => w.type === "ai_answer")) {
-    widgetPlan.widgets.push({
-      type: "ai_answer",
-      priority: 85,
-      size: 50,
-      reason: "核心 AI 智能回答与深度推理"
-    });
   }
 
   updateStep(
@@ -394,96 +374,38 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     layoutStrategy = layoutRes.strategy;
   } catch (err) {
     console.warn("[Search Agent] Layout agent fallback:", err);
-    // 保证 related_links 位于首位（官网跳转组件默认保持在最上方）
-    const componentOrder: ResultWidgetKey[] = ["related_links", "ai_answer"];
-    if (customCards.length > 0) componentOrder.push("custom_cards");
-    if (synthesisRes.keyTakeaways && synthesisRes.keyTakeaways.length > 0) componentOrder.push("takeaways");
-    if (/(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query)) {
-      componentOrder.push("search_engine");
-    }
-    if (synthesisRes.comparisonTable && synthesisRes.comparisonTable.length > 0) componentOrder.push("comparison");
-    if (synthesisRes.mindMap && synthesisRes.mindMap.children && synthesisRes.mindMap.children.length > 0) componentOrder.push("mindmap");
+    const fallbackOrder: ResultWidgetKey[] = widgetPlan.widgetOrder.length > 0
+      ? [...widgetPlan.widgetOrder]
+      : widgetPlan.widgets.map(w => typeof w === "string" ? w : w.type);
 
     layoutStrategy = {
-      intentType: "balanced",
-      intentLabel: "官网直达与清晰搜索阅读流",
-      explanation: "搜索 Agent 依据内容实用性自适应编排：官网跳转置顶呈现",
-      componentOrder,
-      emphasizedWidget: "related_links",
-      enabledWidgets: componentOrder,
+      intentType: (widgetPlan.intent as any) || "balanced",
+      intentLabel: "自适应小组件阅读流",
+      explanation: "搜索 Agent 依据语义检索与小组件技能自适应编排",
+      componentOrder: fallbackOrder,
+      emphasizedWidget: fallbackOrder[0],
+      enabledWidgets: fallbackOrder,
       disabledWidgets: [],
       gridConfig: {} as any
     };
   }
 
-  // 严格确保 related_links 位于启用列表中并置顶，ai_answer 紧随其后
-  if (!layoutStrategy.enabledWidgets?.includes("related_links")) {
-    layoutStrategy.enabledWidgets = ["related_links", ...(layoutStrategy.enabledWidgets || [])];
+  // 严格信赖 Agent 规划与排版决策，杜绝硬编码强制置顶或默认注入
+  if (!layoutStrategy.enabledWidgets || layoutStrategy.enabledWidgets.length === 0) {
+    layoutStrategy.enabledWidgets = widgetPlan.widgetOrder.length > 0
+      ? [...widgetPlan.widgetOrder]
+      : widgetPlan.widgets.map(w => typeof w === "string" ? w : w.type);
   }
-  if (!layoutStrategy.enabledWidgets?.includes("ai_answer")) {
-    layoutStrategy.enabledWidgets.push("ai_answer");
+  if (!layoutStrategy.componentOrder || layoutStrategy.componentOrder.length === 0) {
+    layoutStrategy.componentOrder = [...layoutStrategy.enabledWidgets];
   }
-
-  // 垂直意图强匹配处理（搜索引擎、翻译、天气、Token统计）：严格根据 Agent 规划与搜索意图动态激活，绝不默认加载
-  const hasSearchEngineIntent = /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query);
-  const isSearchEnginePlanned = widgetPlan.widgets.some(w => (typeof w === "string" ? w : w.type) === "search_engine");
-  if (hasSearchEngineIntent || isSearchEnginePlanned) {
-    if (!layoutStrategy.enabledWidgets?.includes("search_engine")) {
-      layoutStrategy.enabledWidgets = [...(layoutStrategy.enabledWidgets || []), "search_engine"];
-    }
-    if (!layoutStrategy.componentOrder?.includes("search_engine")) {
-      layoutStrategy.componentOrder.push("search_engine");
-    }
-  } else if (layoutStrategy.intentType !== "tool_discovery" && layoutStrategy.intentType !== "official_portal") {
-    layoutStrategy.enabledWidgets = layoutStrategy.enabledWidgets?.filter(k => k !== "search_engine");
-    layoutStrategy.componentOrder = layoutStrategy.componentOrder?.filter(k => k !== "search_engine");
-  }
-
-  const hasTranslationIntent = /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|双语|查词|音标)/i.test(query);
-  const isTranslationPlanned = widgetPlan.widgets.some(w => (typeof w === "string" ? w : w.type) === "translation");
-  if (hasTranslationIntent || isTranslationPlanned) {
-    if (!layoutStrategy.enabledWidgets?.includes("translation")) {
-      layoutStrategy.enabledWidgets = ["translation", ...(layoutStrategy.enabledWidgets || [])];
-    }
-    if (!layoutStrategy.componentOrder?.includes("translation")) {
-      layoutStrategy.componentOrder.unshift("translation");
-    }
-  } else {
-    layoutStrategy.enabledWidgets = layoutStrategy.enabledWidgets?.filter(k => k !== "translation");
-    layoutStrategy.componentOrder = layoutStrategy.componentOrder?.filter(k => k !== "translation");
-  }
-
-  const hasWeatherIntent = /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(query);
-  const isWeatherPlanned = widgetPlan.widgets.some(w => (typeof w === "string" ? w : w.type) === "weather");
-  if (hasWeatherIntent || isWeatherPlanned) {
-    if (!layoutStrategy.enabledWidgets?.includes("weather")) {
-      layoutStrategy.enabledWidgets = ["weather", ...(layoutStrategy.enabledWidgets || [])];
-    }
-    if (!layoutStrategy.componentOrder?.includes("weather")) {
-      layoutStrategy.componentOrder.unshift("weather");
-    }
-  } else {
-    layoutStrategy.enabledWidgets = layoutStrategy.enabledWidgets?.filter(k => k !== "weather");
-    layoutStrategy.componentOrder = layoutStrategy.componentOrder?.filter(k => k !== "weather");
-  }
-
-  const hasTokenIntent = /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(query);
-  const isTokenPlanned = widgetPlan.widgets.some(w => (typeof w === "string" ? w : w.type) === "token_usage");
-  if (!hasTokenIntent && !isTokenPlanned) {
-    layoutStrategy.enabledWidgets = layoutStrategy.enabledWidgets?.filter(k => k !== "token_usage");
-    layoutStrategy.componentOrder = layoutStrategy.componentOrder?.filter(k => k !== "token_usage");
-  }
-  layoutStrategy.componentOrder = [
-    "related_links",
-    ...layoutStrategy.componentOrder.filter(k => k !== "related_links")
-  ];
 
   updateStep(
     "layout",
     targetLang.code === "en" ? "Adaptive Widget Grid Orchestration" : "自适应 12 栅格小组件排版决策",
     targetLang.code === "en"
       ? `Activated ${layoutStrategy.enabledWidgets?.length || 0} widgets in optimal reading sequence.`
-      : `已完成排版，启动 ${layoutStrategy.enabledWidgets?.length || 0} 个核心小组件，官网跳转组件置顶呈现。`,
+      : `已完成排版，依据任务意图自适应编排 ${layoutStrategy.enabledWidgets?.length || 0} 个核心小组件。`,
     "completed",
     [
       `视觉焦点: ${layoutStrategy.emphasizedWidget || "related_links"}`,
@@ -524,6 +446,7 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     comparisonTable: synthesisRes.comparisonTable,
     mindMap: synthesisRes.mindMap,
     followUpQuestions: synthesisRes.followUpQuestions || [],
+    troubleshootingPlan: synthesisRes.troubleshootingPlan,
     modelUsed: synthesisRes.modelUsed || selectedModel,
     executionTimeMs,
     isMockFallback: synthesisRes.isMockFallback,

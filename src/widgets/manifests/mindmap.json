@@ -1,0 +1,18 @@
+{
+  "id": "mindmap",
+  "name": "知识架构拓扑",
+  "version": "1.0.0",
+  "description": "交互式知识树、认知网络与多维概念全景导图",
+  "category": "analysis",
+  "tags": ["思维导图", "架构", "拓扑", "路线图", "mindmap"],
+  "icon": "Workflow",
+  "grid": {
+    "width": 75,
+    "supportedWidths": [50, 75, 100],
+    "ratio": "16:9",
+    "minWidth": 50
+  },
+  "theme": {
+    "accentColor": "#8b5cf6"
+  }
+}

@@ -479,9 +479,9 @@ export const OFFICIAL_WIDGET_PROFILES: Record<string, WidgetPracticalityMeta> = 
       "百科介绍类检索希望直观看到实物、场景与效果图"
     ],
     dataRequirements: ["检索结果含可公开访问的图片缩略图或研报内嵌配图", "图片与查询主题相关且可正常加载"],
-    selectionHeuristics: "当查询对象具备明确视觉形态（实物/人物/地点/界面/图表）且信源含图片时实用性最高；纯抽象概念推演、代码报错排查、无任何图片信源的任务不推荐。",
+    selectionHeuristics: "用户要求图片小组件始终保持启用，以自适应网格墙呈现检索配图、外观对照与视觉图集。",
     triggerKeywords: ["图片", "照片", "图集", "壁纸", "素材", "外观", "长什么样", "图片搜索"],
-    antiPatterns: ["纯抽象概念解释、术语定义与代码报错排查", "检索结果中不含任何可用图片信源的长文研报"]
+    antiPatterns: []
   },
   search_engine: {
     id: "search_engine",
@@ -511,6 +511,21 @@ export const OFFICIAL_WIDGET_PROFILES: Record<string, WidgetPracticalityMeta> = 
     dataRequirements: ["待翻译词句或目标语言"],
     selectionHeuristics: "当搜索词涉及中英日韩等翻译或双语查词时，实用性极高，Agent 应优先启用该组件并置于前列。",
     triggerKeywords: ["翻译", "英文", "英语", "日语", "韩语", "德语", "法语", "西语", "俄语", "translate", "translation", "怎么说", "什么意思"]
+  },
+  troubleshooting: {
+    id: "troubleshooting",
+    name: "故障排查与修复流程",
+    category: "action",
+    tags: ["排错", "故障", "诊断", "报错", "修复", "避坑", "错误码", "troubleshooting", "debug", "error"],
+    functionality: "结构化呈现错误现象、根因诊断分析、前置检查项、多套分步修复执行指令与交互式验证清单",
+    bestFor: [
+      "用户遇到软件运行报错、依赖冲突、系统崩溃、构建失败、服务异常",
+      "需要清晰的根因排查步骤、可直接复制运行的修复命令及交互式自检",
+      "网络错误、端口冲突、权限不足、版本兼容性故障"
+    ],
+    dataRequirements: ["包含具体错误信息、报错代码或故障现象", "包含可行排查指令或解决方案"],
+    selectionHeuristics: "当搜索涉及报错、无法启动、异常退出、构建失败或排错诊断诉求时实用性最高，Agent 应优先激活并排在显要位置。",
+    triggerKeywords: ["报错", "解决", "异常", "排查", "排错", "崩溃", "无法启动", "失败", "error", "failed", "bug", "crash", "debug", "troubleshoot"]
   }
 };
 

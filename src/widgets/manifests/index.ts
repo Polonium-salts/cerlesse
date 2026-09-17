@@ -9,6 +9,12 @@ import searchEngine from "./search_engine.json";
 import tokenUsage from "./token_usage.json";
 import weather from "./weather.json";
 import translation from "./translation.json";
+import comparison from "./comparison.json";
+import sources from "./sources.json";
+import mindmap from "./mindmap.json";
+import actionsToolbox from "./actions_toolbox.json";
+import verificationChecklist from "./verification_checklist.json";
+import troubleshooting from "./troubleshooting.json";
 
 /**
  * 小组件插件清单聚合层 (Widget Manifest Catalog)
@@ -58,7 +64,13 @@ export const WIDGET_MANIFESTS: WidgetManifest[] = [
   searchEngine,
   tokenUsage,
   weather,
-  translation
+  translation,
+  comparison,
+  sources,
+  mindmap,
+  actionsToolbox,
+  verificationChecklist,
+  troubleshooting
 ].map(asManifest);
 
 /** id → 清单 索引 */

@@ -16,6 +16,8 @@ import { synthesizeToolActions } from "./toolRegistry.js";
 import { analyzeWidgetIntent, INTENT_CAPABILITIES_MAP } from "./widgetIntentAnalyzer.js";
 import { normalizeCapabilities, INTENT_TAXONOMY_ALIGNMENT, GENERIC_INTENTS, INTENT_CONFIDENCE_OVERRIDE_THRESHOLD, INTENT_GOAL_LABELS, ARCHETYPE_PROFILES, OFFICIAL_WIDGET_PROFILES, type CanonicalCapability } from "../src/widgets/capabilityTaxonomy.js";
 import { composeWidgetsForTask } from "./widgetComposer.js";
+import { retrieveWidgets } from "../src/widgets/widgetRetriever.js";
+import { selectAndReRankWidgets } from "./widgetSelector.js";
 
 // ==========================================
 // 1. Archetype Capability Registry (原型能力与标签库)
@@ -455,6 +457,26 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     width: 75,
     flexible: true,
     isActionOriented: false
+  },
+  troubleshooting: {
+    type: "troubleshooting",
+    capabilities: [
+      "error_diagnosis",
+      "fix_command",
+      "troubleshooting_audit",
+      "verification_checklist",
+      "prerequisites_check",
+      "cli_execution",
+      "copy_text",
+      "quick_action"
+    ],
+    tags: ["排错流程", "报错排查", "根因分析", "分步修复", "核验清单", "避坑指南"],
+    description: "结构化错误现象分析、根因诊断、分步修复执行指令与交互式验证清单",
+    selectionHeuristics: "当用户遇到报错、系统崩溃、构建失败、依赖冲突或排错修复诉求时实用性最高，必须优先置顶展示",
+    basePriority: 96,
+    width: 75,
+    flexible: true,
+    isActionOriented: true
   }
 };
 
@@ -599,11 +621,15 @@ function resolveWidgetsFromCapabilities(
     if (key === "weather" && (capSet.has("weather_current") || capSet.has("weather_forecast") || /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(query))) {
       dynamicScore += 45;
     }
+    if (key === "troubleshooting" && (capSet.has("error_diagnosis") || capSet.has("fix_command") || capSet.has("troubleshooting_audit") || /(报错|错误|失败|failed|error|bug|crash|崩溃|无法启动|解决办法|code \d+)/i.test(query))) {
+      dynamicScore += 48;
+    }
 
-    // 垂直专属组件（天气、翻译、搜索引擎直达、Token监控）：必须满足能力交集或强领域正则命中，严禁无脑默认收录
+    // 垂直专属组件（天气、翻译、排错流程、搜索引擎直达、Token监控）：必须满足能力交集或强领域正则命中，严禁无脑默认收录
     const isDomainQueryMatch =
       (key === "weather" && (capSet.has("weather_current") || capSet.has("weather_forecast") || /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(query))) ||
       (key === "translation" && (capSet.has("language_translation") || capSet.has("text_translation") || /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|双语|查词|音标)/i.test(query))) ||
+      (key === "troubleshooting" && (capSet.has("error_diagnosis") || capSet.has("fix_command") || capSet.has("troubleshooting_audit") || /(报错|错误|失败|failed|error|bug|crash|崩溃|无法启动|解决办法|code \d+)/i.test(query))) ||
       (key === "search_engine" && (capSet.has("search_engine_redirect") || capSet.has("external_search_query") || /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query))) ||
       (key === "token_usage" && (capSet.has("token_metrics") || capSet.has("cost_analysis") || /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(query)));
 
@@ -614,7 +640,7 @@ function resolveWidgetsFromCapabilities(
         continue;
       }
     } else {
-      const isBaseSupport = ["takeaways", "sources", "custom_cards"].includes(key);
+      const isBaseSupport = ["takeaways", "sources", "custom_cards", "image_gallery"].includes(key);
       if (matchCount === 0 && !isBaseSupport) {
         continue;
       }
@@ -682,6 +708,18 @@ function resolveWidgetsFromCapabilities(
     resultList.push(sourceItem);
   }
 
+  // 保证用户指令：图片小组件保持启用
+  if (!resultList.some(w => w.type === "image_gallery")) {
+    const imageGalleryItem: WidgetPlannedItem = {
+      type: "image_gallery",
+      priority: 74,
+      size: 75,
+      flexible: false,
+      reason: "全网检索图片素材与视觉图集"
+    };
+    resultList.push(imageGalleryItem);
+  }
+
   return resultList;
 }
 
@@ -718,6 +756,7 @@ export async function planWidgetStrategy(options: {
   targetLanguage?: string;
   env?: Record<string, string | undefined>;
   apiKey?: string;
+  model?: string;
 }): Promise<WidgetPlan> {
   const { query, results, env, apiKey } = options;
 
@@ -806,9 +845,68 @@ export async function planWidgetStrategy(options: {
   // 6. 生成可执行的真实 Tool Registry 动作
   const primaryActions: WidgetAction[] = synthesizeToolActions(query, results, intent as any);
 
-  // 7. 纯能力驱动：匹配与加权排列小组件集 (Widget Planned Items with Priority & Size)
-  const plannedWidgets = resolveWidgetsFromCapabilities(capabilities, suggestedArchetype, resolvedUserGoal, query);
-  const widgetOrder = plannedWidgets.map(w => w.type);
+  // 7. Widget Registry → 语义召回 (Orama) → Agent 重排 (WidgetSelector) → 规则校验 (Zod)
+  let plannedWidgets: WidgetPlannedItem[] = [];
+  let widgetOrder: ResultWidgetKey[] = [];
+
+  try {
+    const candidates = await retrieveWidgets(query, {
+      intent,
+      capabilities,
+      signals: {
+        sourceCount: results.length,
+        hasOfficial: results.some(r => r.isOfficial),
+        hasMultipleEntities: /(与|和|vs|对比|区别|选型|相比)/i.test(query),
+        hasCodeSnippet: /(代码|code|python|js|ts|rust|golang|npm|pip|docker)/i.test(query),
+        hasInstallCommand: /(install|下载|安装|部署|docker|brew)/i.test(query)
+      }
+    });
+
+    const selectorResult = await selectAndReRankWidgets({
+      query,
+      intent,
+      userGoal: resolvedUserGoal,
+      candidates,
+      apiKey: options.apiKey,
+      model: options.model
+    });
+
+    plannedWidgets = selectorResult.plannedWidgets;
+    widgetOrder = selectorResult.widgetOrder;
+  } catch (err) {
+    console.warn("[WidgetPlanner] Error in semantic retrieval / re-ranking, falling back to capability baseline:", err);
+    plannedWidgets = resolveWidgetsFromCapabilities(capabilities, suggestedArchetype, resolvedUserGoal, query);
+    widgetOrder = plannedWidgets.map(w => w.type);
+  }
+
+  // 场景定制卡片 (custom_cards)：若蓝图生成了定制组件且尚未包含，加入规划
+  if (blueprint.components && blueprint.components.length > 0 && !plannedWidgets.some(w => w.type === "custom_cards")) {
+    plannedWidgets.push({
+      type: "custom_cards",
+      priority: 90,
+      size: suggestedArchetype === "timeline" || suggestedArchetype === "parameter_matrix" ? 100 : 75,
+      flexible: true,
+      reason: `场景专属定制卡片 (${suggestedArchetype})`
+    });
+    plannedWidgets.sort((a, b) => (b.priority || 50) - (a.priority || 50));
+    if (!widgetOrder.includes("custom_cards")) {
+      widgetOrder.push("custom_cards");
+    }
+  }
+
+  // 保证用户指令：图片小组件保持启用
+  if (!plannedWidgets.some(w => w.type === "image_gallery")) {
+    plannedWidgets.push({
+      type: "image_gallery",
+      priority: 74,
+      size: 75,
+      flexible: false,
+      reason: "全网检索图片素材与视觉图集"
+    });
+  }
+  if (!widgetOrder.includes("image_gallery")) {
+    widgetOrder.push("image_gallery");
+  }
 
   return {
     intent,

@@ -136,6 +136,11 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["troubleshooting", "fact_check", "install", "news_trend"],
     isActionOriented: true
   },
+  troubleshooting: {
+    capabilities: ["error_diagnosis", "fix_command", "troubleshooting_audit", "verification_checklist", "prerequisites_check", "cli_execution"],
+    intentFit: ["troubleshooting", "install"],
+    isActionOriented: true
+  },
   comparison: {
     capabilities: ["cross_compare", "dimension_pk", "feature_matrix"],
     intentFit: ["comparison", "tool_discovery"],
@@ -317,11 +322,10 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     iconName: "Images",
     width: 75,
     minWidth: 75,
-    basePriority: 7,
+    basePriority: 80,
     category: "secondary",
-    // 硬门槛：要么信源确实带图，要么用户就是在找图片（此时空态会给出图片搜索入口）。
-    // 两者都不满足就直接出局，绝不在无关任务上留下空壳图片墙。
-    requiresData: (s) => (s.imageCount ?? 0) > 0 || s.imageIntent === true
+    // 保持启用：聚合全网检索图片素材与视觉图集
+    requiresData: () => true
   },
   comparison: {
     id: "comparison",
@@ -507,28 +511,17 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     category: "primary",
     // 门槛：仅在涉及翻译、词典、多语言互译查词时加载，绝不默认加载
     requiresData: (s) => Boolean(s.translationIntent)
+  },
+  troubleshooting: {
+    id: "troubleshooting",
+    label: "故障排查与修复流程",
+    iconName: "AlertTriangle",
+    width: 75,
+    minWidth: 50,
+    basePriority: 28,
+    category: "primary"
   }
 };
-
-/**
- * 恒启用的阅读流锚点：官网直达入口与 AI 综合回答始终在桌面上。
- * 其余小组件必须经「能力 + 意图 + 内容信号」三重校验后才能被自动选型。
- */
-const ANCHOR_WIDGET_KEYS: ResultWidgetKey[] = ["related_links", "ai_answer"];
-
-/**
- * 可由 Agent 自主启停的小组件清单（全部已在前端注册中心登记，能真正渲染）。
- * 未登记为模块的 key（comparison / mindmap / sources …）即使被能力规划器提及，
- * 也不会进入启用集 —— 启用无法渲染的组件只会浪费栅格。
- */
-export const AUTO_SELECTABLE_WIDGET_KEYS: ResultWidgetKey[] = [
-  "takeaways",
-  "image_gallery",
-  "search_engine",
-  "token_usage",
-  "weather",
-  "translation"
-];
 
 /**
  * 语义意图 → 展示标签（排版决策单的对外说明文案）。
@@ -557,67 +550,53 @@ function buildIntentLabel(intent: LayoutIntentType, isEn: boolean): string {
 }
 
 /**
- * 能力选型求解器：从可自主启停的组件里，挑出本次任务真正该上桌的那些。
- *
- * 入选条件（满足其一）：
- *   1. 内容信号满足组件的 `requiresData` 就绪条件，且其 intentFit 命中当前意图；
- *   2. 小组件构建 Agent（WidgetPlan）已显式点名该组件；
- *   3. 搜索引擎关键词命中且为搜索引擎直达任务。
- * 硬门槛：`requiresData` 不就绪者一律出局，避免出现空壳磁贴。
+ * 能力选型求解器：从注册中心和 Agent 规划中提取本次任务真正上桌的小组件。
+ * 遵循检索与重排契约：若已有 Agent 规划，直接尊重 Agent 点名清单；
+ * 仅在纯客户端兜底时才执行轻量规则推导。
  */
 export function selectAgentWidgets(params: {
   intent: LayoutIntentType;
   signals: ContentSignals;
   plannedKeys?: ResultWidgetKey[];
 }): ResultWidgetKey[] {
-  const planned = new Set((params.plannedKeys || []).map(String));
   const hasAgentPlan = params.plannedKeys && params.plannedKeys.length > 0;
 
-  const chosen = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) => {
-    const def = WIDGET_REGISTRY[key];
-    const isSearchEngineHit = key === "search_engine" && params.signals.searchEngineIntent === true;
-    const isTranslationHit = key === "translation" && params.signals.translationIntent === true;
-    const isWeatherHit = key === "weather" && params.signals.weatherIntent === true;
-    const isImageHit = key === "image_gallery" && ((params.signals.imageCount ?? 0) > 0 || params.signals.imageIntent === true);
-    const isTakeawaysHit = key === "takeaways" && params.signals.takeawayCount > 0;
-    const isTokenHit = key === "token_usage" && params.signals.tokenUsageIntent === true;
-
-    // 1. 如果有 Agent 服务端规划结果，严格遵循 Agent 规划与强意图触发，杜绝默认全量加载
-    if (hasAgentPlan) {
-      const isPlanned = planned.has(String(key));
-      // 若组件由 Agent 规划选中：必须满足基本数据门槛（如果有的话）
-      if (isPlanned) {
-        if (def?.requiresData && !def.requiresData(params.signals)) {
-          // 容错：若虽未触发关键词但 Agent 判定确实需要且数据就绪
-          return true;
-        }
-        return true;
-      }
-      // 若 Agent 未显式规划，仅当强意图命中时才补充呈现
-      return isSearchEngineHit || isTranslationHit || isWeatherHit;
+  // 1. 如果有 Agent 服务端规划结果，严格遵循 Agent 规划，杜绝默认全量加载或硬编码过滤
+  if (hasAgentPlan) {
+    const list = [...(params.plannedKeys || [])];
+    if (!list.includes("image_gallery")) {
+      list.push("image_gallery");
     }
+    return list.filter((key) => {
+      // 仅当明确存在零数据且无法渲染时剔除空壳
+      if (key === "takeaways" && params.signals.takeawayCount === 0) return false;
+      return true;
+    });
+  }
 
-    // 2. 兜底场景（无 Agent 规划时的本地轻量决策）：严格依照数据门槛与意图信号决定，杜绝默认加载全部
+  // 2. 兜底场景（无 Agent 规划时的本地轻量决策）：严格依照数据门槛与意图信号决定
+  const allKeys = Object.keys(WIDGET_REGISTRY) as ResultWidgetKey[];
+  const chosen = allKeys.filter((key) => {
+    // 用户指定要求：图片小组件保持启用
+    if (key === "image_gallery") return true;
+
+    const def = WIDGET_REGISTRY[key];
     if (def?.requiresData && !def.requiresData(params.signals)) return false;
 
-    if (key === "weather") return isWeatherHit;
-    if (key === "translation") return isTranslationHit;
-    if (key === "search_engine") return isSearchEngineHit;
-    if (key === "token_usage") return isTokenHit;
-    if (key === "image_gallery") return isImageHit;
-    if (key === "takeaways") return isTakeawaysHit;
+    if (key === "weather") return Boolean(params.signals.weatherIntent);
+    if (key === "translation") return Boolean(params.signals.translationIntent);
+    if (key === "search_engine") return Boolean(params.signals.searchEngineIntent);
+    if (key === "token_usage") return Boolean(params.signals.tokenUsageIntent);
+    if (key === "takeaways") return params.signals.takeawayCount > 0;
 
-    const fitsIntent = WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;
-    return fitsIntent;
+    return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;
   });
 
-  // 构建 Agent 显式点名者优先，其次按组件基类优先级排序
-  return chosen.sort((a, b) => {
-    const pa = planned.has(String(a)) ? 1 : 0;
-    const pb = planned.has(String(b)) ? 1 : 0;
-    if (pa !== pb) return pb - pa;
-    return (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0);
-  });
+  if (!chosen.includes("image_gallery")) {
+    chosen.push("image_gallery");
+  }
+
+  return chosen.sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0));
 }
 
 /**
@@ -625,14 +604,18 @@ export function selectAgentWidgets(params: {
  * Eliminates static hardcoded fallback templates.
  */
 export function resolveDynamicCapabilityWidgets(intent: LayoutIntentType = "balanced"): ResultWidgetKey[] {
-  const selectable = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) => {
-    // 垂直功能组件（天气、翻译、搜索引擎直达、Token监控）仅在专属意图匹配时加载，普通均衡流不预载
+  const allKeys = Object.keys(WIDGET_REGISTRY) as ResultWidgetKey[];
+  const selectable = allKeys.filter((key) => {
+    if (key === "image_gallery") return true;
     if (["weather", "translation", "search_engine", "token_usage"].includes(key)) {
       return (WIDGET_CAPABILITY_REGISTRY[key]?.intentFit || []).includes(intent);
     }
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false;
   });
-  return [...ANCHOR_WIDGET_KEYS, ...selectable];
+  if (!selectable.includes("image_gallery")) {
+    selectable.push("image_gallery");
+  }
+  return selectable.length > 0 ? selectable : ["ai_answer", "takeaways", "image_gallery"];
 }
 
 /**
@@ -644,9 +627,13 @@ export function auditLayoutGuardrail(intent: LayoutIntentType, enabledWidgets: R
   remediatedWidgets: ResultWidgetKey[];
   violations: string[];
 } {
+  const result = [...enabledWidgets];
+  if (!result.includes("image_gallery")) {
+    result.push("image_gallery");
+  }
   return {
     passed: true,
-    remediatedWidgets: enabledWidgets,
+    remediatedWidgets: result,
     violations: []
   };
 }
@@ -917,28 +904,15 @@ export function createLayoutPlan(params: {
     plannedKeys: params.plannedKeys
   });
 
-  // 锚点恒启用：若存在特定直达意图（如搜索直达或多语言翻译），则将其前置突显
-  let enabled: ResultWidgetKey[];
-  if (selected.includes("translation") && signals.translationIntent) {
-    enabled = ["translation", ...ANCHOR_WIDGET_KEYS, ...selected.filter((k) => k !== "translation")];
-  } else if (selected.includes("search_engine") && signals.searchEngineIntent) {
-    enabled = ["search_engine", ...ANCHOR_WIDGET_KEYS, ...selected.filter((k) => k !== "search_engine")];
-  } else {
-    enabled = [...ANCHOR_WIDGET_KEYS, ...selected];
+  let enabled: ResultWidgetKey[] = selected;
+  if (!enabled || enabled.length === 0) {
+    enabled = ["ai_answer"];
   }
 
-  const featured: ResultWidgetKey =
-    selected.includes("translation") && signals.translationIntent
-      ? "translation"
-      : selected.includes("search_engine") && signals.searchEngineIntent
-      ? "search_engine"
-      : "related_links";
+  const featured: ResultWidgetKey = enabled[0] || "ai_answer";
 
-  const width: Partial<Record<ResultWidgetKey, TileWidth>> = {
-    related_links: WIDGET_REGISTRY.related_links.width,
-    ai_answer: WIDGET_REGISTRY.ai_answer.width
-  };
-  for (const key of selected) {
+  const width: Partial<Record<ResultWidgetKey, TileWidth>> = {};
+  for (const key of enabled) {
     width[key] = WIDGET_REGISTRY[key]?.width || 50;
   }
 
@@ -1016,23 +990,22 @@ export function determineClientWidgetActivation(params: {
     tokenUsageIntent: /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(q)
   };
 
-  const plannedKeys = (params.widgetPlan?.widgets || [])
-    .map((w) => (typeof w === "string" ? w : w?.type) as ResultWidgetKey)
-    .filter(Boolean);
+  const plannedKeys = params.widgetPlan?.widgetOrder && params.widgetPlan.widgetOrder.length > 0
+    ? params.widgetPlan.widgetOrder
+    : (params.widgetPlan?.widgets || [])
+        .map((w) => (typeof w === "string" ? w : w?.type) as ResultWidgetKey)
+        .filter(Boolean);
 
   const plan = createLayoutPlan({ intent, signals, targetLanguage, plannedKeys });
 
   // Apply layout quality guardrail
   const guardReport = auditLayoutGuardrail(intent, plan.enabled);
-  if (!guardReport.passed) {
-    plan.enabled = guardReport.remediatedWidgets;
-    // ensure order includes remediated items
-    guardReport.remediatedWidgets.forEach((w) => {
-      if (!plan.order.includes(w)) {
-        plan.order.push(w);
-      }
-    });
-  }
+  plan.enabled = guardReport.remediatedWidgets;
+  guardReport.remediatedWidgets.forEach((w) => {
+    if (!plan.order.includes(w)) {
+      plan.order.push(w);
+    }
+  });
 
   // Construct 12-column grid configuration based on semantic width
   const gridConfig: Record<string, WidgetGridPlacement> = {};
