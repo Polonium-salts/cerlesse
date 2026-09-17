@@ -1,0 +1,49 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "token_usage",
+  "name": "Token 消耗统计",
+  "version": "1.0.0",
+  "description": "显示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
+  "category": "analytics",
+  "tags": [
+    "Token",
+    "消耗统计",
+    "吞吐效率",
+    "大模型度量",
+    "成本监控",
+    "性能度量"
+  ],
+  "agentHint": {
+    "functionality": "可视化展示当前搜索任务的大模型 Token 消耗（Prompt 提示词与 Output 补全生成）、生成速率与模型成本估算",
+    "bestFor": [
+      "监控本次检索与生成过程消耗的 Token 规模",
+      "评估 AI 生成吞吐速度 (Tokens/s) 与响应耗时",
+      "对比不同模型与提示词上下文的输入输出开销"
+    ],
+    "dataRequirements": [
+      "本次搜索结果的 Token 统计指标或推导数据"
+    ],
+    "selectionHeuristics": "当用户关注 Token 使用量、生成成本或 AI 性能分析时启用，采用 25% 紧凑磁贴形态呈现。",
+    "triggerKeywords": [
+      "token",
+      "消耗",
+      "开销",
+      "成本",
+      "字数",
+      "吞吐",
+      "速度",
+      "模型用量"
+    ]
+  },
+  "icon": "Coins",
+  "grid": {
+    "width": 25,
+    "supportedWidths": [25, 50],
+    "ratio": "4:3",
+    "minWidth": 25
+  },
+  "theme": {
+    "accentColor": "#10b981",
+    "flipAnimation": "3d-flip"
+  }
+}

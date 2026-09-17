@@ -135,7 +135,7 @@ export const TakeawaysWidget: React.FC<TakeawaysWidgetProps> = ({
         </div>
       }
       className="w-full h-full border-border/80 bg-card"
-      contentClassName="overflow-y-auto"
+      contentClassName="flex flex-col gap-3"
     >
       {items.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center border border-dashed border-border rounded-xl">
@@ -145,7 +145,7 @@ export const TakeawaysWidget: React.FC<TakeawaysWidgetProps> = ({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col h-full gap-3">
+        <div className="flex flex-col gap-3">
           {/* 掌握进度 */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between text-[11px] text-muted-foreground">

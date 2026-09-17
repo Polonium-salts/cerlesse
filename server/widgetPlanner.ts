@@ -267,7 +267,7 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     basePriority: 74,
     // 与 src/widgets/manifests/image_gallery.json 的 grid.width 保持一致（75% 主宽，9 格）
     width: 75,
-    flexible: true,
+    flexible: false,
     isActionOriented: false
   },
   sources: {
@@ -367,6 +367,93 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     basePriority: 30,
     width: 100,
     flexible: false,
+    isActionOriented: false
+  },
+  search_engine: {
+    type: "search_engine",
+    capabilities: [
+      "search_engine_redirect",
+      "external_search_query",
+      "web_search_portal",
+      "engine_launcher",
+      "quick_links"
+    ],
+    tags: ["搜索引擎", "搜索跳转", "Google", "Bing", "百度", "快捷搜索", "外部检索"],
+    description: "提供主流搜索引擎（Google、Bing、百度等）快速搜索栏，支持直接输入并一键跳转检索结果页",
+    selectionHeuristics: "当搜索词涉及 Google、Bing、百度等搜索引擎或用户希望直接外部跳转检索时实用性最高",
+    basePriority: 92,
+    width: 50,
+    flexible: true,
+    isActionOriented: true
+  },
+  translation: {
+    type: "translation",
+    capabilities: [
+      "language_translation",
+      "text_translation",
+      "bilingual_comparison",
+      "pronunciation_guide",
+      "dictionary_lookup"
+    ],
+    tags: ["翻译", "双语", "多语言", "词典", "英译中", "中译英", "Translate", "发音"],
+    description: "多语言智能翻译与双语词典，支持中英日韩互译、音标发音、例句对照与一键复制",
+    selectionHeuristics: "当搜索词涉及翻译、外语查词、中译英、日译中等语言转换诉求时实用性最高，必须优先置顶展示",
+    basePriority: 96,
+    width: 50,
+    flexible: true,
+    isActionOriented: true
+  },
+  token_usage: {
+    type: "token_usage",
+    capabilities: [
+      "token_metrics",
+      "cost_analysis",
+      "latency_telemetry",
+      "throughput_stats",
+      "model_monitoring"
+    ],
+    tags: ["Token", "消耗统计", "吞吐效率", "大模型度量", "成本监控", "性能度量"],
+    description: "展示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
+    selectionHeuristics: "当用户关注 Token 使用量、生成成本或 AI 性能分析时启用，采用 25% 紧凑磁贴形态呈现",
+    basePriority: 80,
+    width: 25,
+    flexible: false,
+    isActionOriented: false
+  },
+  ai_answer: {
+    type: "ai_answer",
+    capabilities: [
+      "direct_answer",
+      "definition_snippet",
+      "instant_verdict",
+      "overview_synthesis",
+      "summary_points",
+      "bullet_conclusions"
+    ],
+    tags: OFFICIAL_WIDGET_PROFILES.ai_answer?.tags || ["AI回答", "全网总结", "深度要点", "问答", "结论"],
+    description: OFFICIAL_WIDGET_PROFILES.ai_answer?.functionality || "基于全网检索多路信源进行深度综合与推理，输出格式化回答与核心决策结论",
+    selectionHeuristics: OFFICIAL_WIDGET_PROFILES.ai_answer?.selectionHeuristics || "用户查询属于知识探索、综合分析或需要研报结论时实用性最高",
+    basePriority: 90,
+    width: 50,
+    flexible: true,
+    isActionOriented: false
+  },
+  weather: {
+    type: "weather",
+    capabilities: [
+      "weather_current",
+      "weather_forecast",
+      "weather_indices",
+      "air_quality",
+      "clothing_advice",
+      "location_map"
+    ],
+    tags: ["天气预报", "气象", "实时天气", "气温", "预报", "降水", "生活指数"],
+    description: "实时气温实况、未来天气走势预报与生活气象指数",
+    selectionHeuristics: "当搜索词涉及天气、气象、气温、下雨、穿衣指数等时实用性最高",
+    basePriority: 94,
+    width: 75,
+    flexible: true,
     isActionOriented: false
   }
 };
@@ -503,16 +590,47 @@ function resolveWidgetsFromCapabilities(
     if (key === "verification_checklist" && (capSet.has("install_step") || capSet.has("checklist") || capSet.has("troubleshooting_audit"))) {
       dynamicScore += 18;
     }
+    if (key === "search_engine" && (capSet.has("search_engine_redirect") || capSet.has("external_search_query") || /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query))) {
+      dynamicScore += 35;
+    }
+    if (key === "translation" && (capSet.has("language_translation") || capSet.has("text_translation") || /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|双语|查词|音标)/i.test(query))) {
+      dynamicScore += 45;
+    }
+    if (key === "weather" && (capSet.has("weather_current") || capSet.has("weather_forecast") || /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(query))) {
+      dynamicScore += 45;
+    }
 
-    // 仅收录具备能力交集或作为基础信息锚点 (如 takeaways, sources) 的组件
-    const isAnchorWidget = ["takeaways", "sources", "custom_cards", "actions_toolbox"].includes(key);
-    if (matchCount > 0 || isAnchorWidget) {
+    // 垂直专属组件（天气、翻译、搜索引擎直达、Token监控）：必须满足能力交集或强领域正则命中，严禁无脑默认收录
+    const isDomainQueryMatch =
+      (key === "weather" && (capSet.has("weather_current") || capSet.has("weather_forecast") || /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(query))) ||
+      (key === "translation" && (capSet.has("language_translation") || capSet.has("text_translation") || /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|双语|查词|音标)/i.test(query))) ||
+      (key === "search_engine" && (capSet.has("search_engine_redirect") || capSet.has("external_search_query") || /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query))) ||
+      (key === "token_usage" && (capSet.has("token_metrics") || capSet.has("cost_analysis") || /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(query)));
+
+    const isSpecializedWidget = ["weather", "translation", "search_engine", "token_usage"].includes(key);
+
+    if (isSpecializedWidget) {
+      if (matchCount === 0 && !isDomainQueryMatch) {
+        continue;
+      }
+    } else {
+      const isBaseSupport = ["takeaways", "sources", "custom_cards"].includes(key);
+      if (matchCount === 0 && !isBaseSupport) {
+        continue;
+      }
+    }
       // 尺寸随"对口程度"伸缩：用能力特异性而非命中条数决定面积，
       // 避免一个泛化组件仅靠堆命中数就吃掉首屏大块版面。
-      let finalSize = scaleTileWidth(
-        def.width,
-        specificity >= 2.2 ? 1 : specificity > 0 && specificity <= 0.8 ? -1 : 0
-      );
+      let finalSize = def.flexible
+        ? scaleTileWidth(
+            def.width,
+            specificity >= 2.2 ? 1 : specificity > 0 && specificity <= 0.8 ? -1 : 0
+          )
+        : def.width;
+
+      if (key === "image_gallery") {
+        finalSize = 75;
+      }
 
       // custom_cards 是复合蓝图宿主，需要足够面积承载多分区内容：
       // 矩阵/时间线类内容偏高 -> 100% 全宽；其余业务套件 -> 75% 焦点磁贴。
@@ -542,7 +660,6 @@ function resolveWidgetsFromCapabilities(
         },
         score: dynamicScore
       });
-    }
   }
 
   // 按综合动态得分从高到低排列（同一层级内）

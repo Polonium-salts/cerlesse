@@ -158,7 +158,22 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
   },
   takeaways: {
     capabilities: ["bullet_conclusions", "high_density_takeaways"],
-    intentFit: ["deep_research", "quick_definition", "travel", "comparison", "balanced"],
+    // 只要检索结果提炼出关键结论 (takeawayCount > 0)，对任意意图均有高实用价值，也是 75% 组件的最佳 25% 互补搭档
+    intentFit: [
+      "deep_research",
+      "quick_definition",
+      "travel",
+      "comparison",
+      "balanced",
+      "official_portal",
+      "code_tutorial",
+      "architecture",
+      "troubleshooting",
+      "fact_check",
+      "news_trend",
+      "install",
+      "tool_discovery"
+    ],
     isActionOriented: false
   },
   image_gallery: {
@@ -188,6 +203,15 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["fact_check", "deep_research", "balanced", "official_portal", "install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "news_trend", "quick_definition", "architecture"],
     isActionOriented: false
   },
+  search_engine: {
+    capabilities: ["search_engine_redirect", "external_search_query", "web_search_portal", "engine_launcher", "quick_links"],
+    // 仅在明确的官网跳转/工具导航或经由 Agent 规划时匹配，不再默认泛化至所有阅读流
+    intentFit: [
+      "official_portal",
+      "tool_discovery"
+    ],
+    isActionOriented: true
+  },
   fast_chat: {
     capabilities: ["interactive_followup_chat", "question_answering"],
     intentFit: ["balanced", "deep_research", "code_tutorial"],
@@ -213,10 +237,32 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["deep_research", "balanced"],
     isActionOriented: false
   },
+  token_usage: {
+    capabilities: ["token_metrics", "cost_analysis", "latency_telemetry", "throughput_stats", "model_monitoring"],
+    // 仅在深度研报/技术度量或用户主动开启时加载，默认不污染通用搜索结果
+    intentFit: [
+      "deep_research"
+    ],
+    isActionOriented: false
+  },
   ai_overview: {
     capabilities: ["overview_synthesis"],
     intentFit: ["balanced"],
     isActionOriented: false
+  },
+  weather: {
+    capabilities: ["live_telemetry" as any, "weather_current" as any, "weather_forecast" as any],
+    // 仅在出行攻略或天气垂直场景中由意图激活，严禁默认全部加载
+    intentFit: ["travel"],
+    isActionOriented: false
+  },
+  translation: {
+    capabilities: ["language_translation", "text_translation", "bilingual_comparison", "pronunciation_guide", "dictionary_lookup"],
+    // 仅在明确翻译意图下由 Agent 激活，严禁在常规搜索下默认加载
+    intentFit: [
+      "translation"
+    ],
+    isActionOriented: true
   }
 };
 
@@ -270,7 +316,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     label: "相关图片",
     iconName: "Images",
     width: 75,
-    minWidth: 25,
+    minWidth: 75,
     basePriority: 7,
     category: "secondary",
     // 硬门槛：要么信源确实带图，要么用户就是在找图片（此时空态会给出图片搜索入口）。
@@ -417,6 +463,50 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     minWidth: 50,
     basePriority: 8,
     category: "primary"
+  },
+  search_engine: {
+    id: "search_engine",
+    label: "搜索引擎直达",
+    iconName: "Search",
+    width: 50,
+    minWidth: 50,
+    basePriority: 10,
+    category: "primary",
+    // 门槛：仅在搜索词涉及主流搜索引擎或用户明确需要搜索引擎直达时才加载
+    requiresData: (s) => Boolean(s.searchEngineIntent)
+  },
+  token_usage: {
+    id: "token_usage",
+    label: "Token 消耗统计",
+    iconName: "Coins",
+    width: 25,
+    minWidth: 25,
+    basePriority: 8,
+    category: "utility",
+    // 门槛：仅在查询显式关注意图、研报度量或有 tokenUsageIntent 时才加载
+    requiresData: (s) => Boolean(s.tokenUsageIntent)
+  },
+  weather: {
+    id: "weather",
+    label: "气象预报",
+    iconName: "CloudSun",
+    width: 75,
+    minWidth: 25,
+    basePriority: 25,
+    category: "primary",
+    // 门槛：仅在搜索词明确涉及天气、气象、气温或出行攻略时才加载，绝不默认加载
+    requiresData: (s) => Boolean(s.weatherIntent)
+  },
+  translation: {
+    id: "translation",
+    label: "多语言智能翻译",
+    iconName: "Languages",
+    width: 50,
+    minWidth: 25,
+    basePriority: 30,
+    category: "primary",
+    // 门槛：仅在涉及翻译、词典、多语言互译查词时加载，绝不默认加载
+    requiresData: (s) => Boolean(s.translationIntent)
   }
 };
 
@@ -431,7 +521,14 @@ const ANCHOR_WIDGET_KEYS: ResultWidgetKey[] = ["related_links", "ai_answer"];
  * 未登记为模块的 key（comparison / mindmap / sources …）即使被能力规划器提及，
  * 也不会进入启用集 —— 启用无法渲染的组件只会浪费栅格。
  */
-export const AUTO_SELECTABLE_WIDGET_KEYS: ResultWidgetKey[] = ["takeaways", "image_gallery"];
+export const AUTO_SELECTABLE_WIDGET_KEYS: ResultWidgetKey[] = [
+  "takeaways",
+  "image_gallery",
+  "search_engine",
+  "token_usage",
+  "weather",
+  "translation"
+];
 
 /**
  * 语义意图 → 展示标签（排版决策单的对外说明文案）。
@@ -449,6 +546,7 @@ const INTENT_LABELS: Record<LayoutIntentType, { zh: string; en: string }> = {
   tool_discovery: { zh: "实用工具优先", en: "Tool Discovery Focus" },
   travel: { zh: "旅游攻略优先", en: "Travel Guide Focus" },
   troubleshooting: { zh: "故障排查优先", en: "Troubleshooting Focus" },
+  translation: { zh: "多语言翻译优先", en: "Translation Focus" },
   balanced: { zh: "均衡阅读流", en: "Balanced Reading Flow" }
 };
 
@@ -463,7 +561,8 @@ function buildIntentLabel(intent: LayoutIntentType, isEn: boolean): string {
  *
  * 入选条件（满足其一）：
  *   1. 内容信号满足组件的 `requiresData` 就绪条件，且其 intentFit 命中当前意图；
- *   2. 小组件构建 Agent（WidgetPlan）已显式点名该组件。
+ *   2. 小组件构建 Agent（WidgetPlan）已显式点名该组件；
+ *   3. 搜索引擎关键词命中且为搜索引擎直达任务。
  * 硬门槛：`requiresData` 不就绪者一律出局，避免出现空壳磁贴。
  */
 export function selectAgentWidgets(params: {
@@ -472,12 +571,44 @@ export function selectAgentWidgets(params: {
   plannedKeys?: ResultWidgetKey[];
 }): ResultWidgetKey[] {
   const planned = new Set((params.plannedKeys || []).map(String));
+  const hasAgentPlan = params.plannedKeys && params.plannedKeys.length > 0;
 
   const chosen = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) => {
     const def = WIDGET_REGISTRY[key];
+    const isSearchEngineHit = key === "search_engine" && params.signals.searchEngineIntent === true;
+    const isTranslationHit = key === "translation" && params.signals.translationIntent === true;
+    const isWeatherHit = key === "weather" && params.signals.weatherIntent === true;
+    const isImageHit = key === "image_gallery" && ((params.signals.imageCount ?? 0) > 0 || params.signals.imageIntent === true);
+    const isTakeawaysHit = key === "takeaways" && params.signals.takeawayCount > 0;
+    const isTokenHit = key === "token_usage" && params.signals.tokenUsageIntent === true;
+
+    // 1. 如果有 Agent 服务端规划结果，严格遵循 Agent 规划与强意图触发，杜绝默认全量加载
+    if (hasAgentPlan) {
+      const isPlanned = planned.has(String(key));
+      // 若组件由 Agent 规划选中：必须满足基本数据门槛（如果有的话）
+      if (isPlanned) {
+        if (def?.requiresData && !def.requiresData(params.signals)) {
+          // 容错：若虽未触发关键词但 Agent 判定确实需要且数据就绪
+          return true;
+        }
+        return true;
+      }
+      // 若 Agent 未显式规划，仅当强意图命中时才补充呈现
+      return isSearchEngineHit || isTranslationHit || isWeatherHit;
+    }
+
+    // 2. 兜底场景（无 Agent 规划时的本地轻量决策）：严格依照数据门槛与意图信号决定，杜绝默认加载全部
     if (def?.requiresData && !def.requiresData(params.signals)) return false;
+
+    if (key === "weather") return isWeatherHit;
+    if (key === "translation") return isTranslationHit;
+    if (key === "search_engine") return isSearchEngineHit;
+    if (key === "token_usage") return isTokenHit;
+    if (key === "image_gallery") return isImageHit;
+    if (key === "takeaways") return isTakeawaysHit;
+
     const fitsIntent = WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;
-    return fitsIntent || planned.has(String(key));
+    return fitsIntent;
   });
 
   // 构建 Agent 显式点名者优先，其次按组件基类优先级排序
@@ -494,9 +625,13 @@ export function selectAgentWidgets(params: {
  * Eliminates static hardcoded fallback templates.
  */
 export function resolveDynamicCapabilityWidgets(intent: LayoutIntentType = "balanced"): ResultWidgetKey[] {
-  const selectable = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) =>
-    WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false
-  );
+  const selectable = AUTO_SELECTABLE_WIDGET_KEYS.filter((key) => {
+    // 垂直功能组件（天气、翻译、搜索引擎直达、Token监控）仅在专属意图匹配时加载，普通均衡流不预载
+    if (["weather", "translation", "search_engine", "token_usage"].includes(key)) {
+      return (WIDGET_CAPABILITY_REGISTRY[key]?.intentFit || []).includes(intent);
+    }
+    return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false;
+  });
   return [...ANCHOR_WIDGET_KEYS, ...selectable];
 }
 
@@ -608,6 +743,13 @@ export function detectQueryIntent(query: string = ""): LayoutIntentType {
   const q = query.toLowerCase().trim();
   if (!q) return "balanced";
 
+  // 0. Translation & foreign language lookups
+  if (
+    /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|日译中|用英语|用英文|的英语|的英文|怎么读|音标|查词)/i.test(q)
+  ) {
+    return "translation";
+  }
+
   // 1. Tool discovery & online web utility
   if (
     /(工具|在线工具|转换器|压缩工具|生成器|编辑器|免费网站|好用工具|测试工具|网站推荐|\b(tool|tools|converter|generator|utility|online tool|compressor|editor)\b)/i.test(q)
@@ -703,6 +845,14 @@ export interface ContentSignals {
   imageCount?: number;
   /** 查询本身是否在找图片：无缩略图时仍允许以「图片搜索入口」形态上桌 */
   imageIntent?: boolean;
+  /** 查询是否涉及外部搜索引擎（google, bing, 百度等） */
+  searchEngineIntent?: boolean;
+  /** 查询是否涉及多语言翻译与查词意图 */
+  translationIntent?: boolean;
+  /** 查询是否涉及气象天气预报意图 */
+  weatherIntent?: boolean;
+  /** 查询是否显式关注 Token 与生成消耗度量 */
+  tokenUsageIntent?: boolean;
 }
 
 // ==========================================
@@ -729,11 +879,12 @@ export function getDynamicBudget(intent: LayoutIntentType): LayoutBudget {
         maxInteractiveWidgets: 2
       };
     case "quick_definition":
+    case "translation":
       return {
         maxPrimarySections: 4,
         maxSecondarySections: 2,
         maxVisualWidgets: 1,
-        maxInteractiveWidgets: 1
+        maxInteractiveWidgets: 2
       };
     case "balanced":
     default:
@@ -766,10 +917,22 @@ export function createLayoutPlan(params: {
     plannedKeys: params.plannedKeys
   });
 
-  // 锚点恒启用，官网直达入口始终置顶
-  const enabled: ResultWidgetKey[] = [...ANCHOR_WIDGET_KEYS, ...selected];
+  // 锚点恒启用：若存在特定直达意图（如搜索直达或多语言翻译），则将其前置突显
+  let enabled: ResultWidgetKey[];
+  if (selected.includes("translation") && signals.translationIntent) {
+    enabled = ["translation", ...ANCHOR_WIDGET_KEYS, ...selected.filter((k) => k !== "translation")];
+  } else if (selected.includes("search_engine") && signals.searchEngineIntent) {
+    enabled = ["search_engine", ...ANCHOR_WIDGET_KEYS, ...selected.filter((k) => k !== "search_engine")];
+  } else {
+    enabled = [...ANCHOR_WIDGET_KEYS, ...selected];
+  }
 
-  const featured: ResultWidgetKey = "related_links";
+  const featured: ResultWidgetKey =
+    selected.includes("translation") && signals.translationIntent
+      ? "translation"
+      : selected.includes("search_engine") && signals.searchEngineIntent
+      ? "search_engine"
+      : "related_links";
 
   const width: Partial<Record<ResultWidgetKey, TileWidth>> = {
     related_links: WIDGET_REGISTRY.related_links.width,
@@ -844,9 +1007,13 @@ export function determineClientWidgetActivation(params: {
     followUpCount: params.followUpCount ?? (result?.followUpQuestions || []).length,
     hasOfficial: params.hasOfficial ?? sources.some((r) => r.isOfficial),
     customCardCount: params.hasCustomCards ? 1 : (result?.customCards || []).length,
-    // 图片数据就绪信号：信源里真的带缩略图，或用户本就在找图片
-    imageCount: params.imageCount ?? sources.filter((r) => Boolean(r.thumbnail)).length,
-    imageIntent: params.imageIntent ?? IMAGE_INTENT_PATTERN.test(q)
+    // 图片数据就绪信号：图片检索产出 + 信源缩略图，或用户本就在找图片
+    imageCount: params.imageCount ?? ((result?.relatedImages || []).length + sources.filter((r) => Boolean(r.thumbnail)).length),
+    imageIntent: params.imageIntent ?? IMAGE_INTENT_PATTERN.test(q),
+    searchEngineIntent: /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜|搜索直达|快速搜索)/i.test(q),
+    translationIntent: /(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|双语|查词|音标)/i.test(q),
+    weatherIntent: /(天气|气象|气温|下雨|下雪|降水|温度|穿衣指南|预报|雷阵雨|多云|晴天|阴天|weather|forecast|temperature|rain|climate|台风|空气质量)/i.test(q),
+    tokenUsageIntent: /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(q)
   };
 
   const plannedKeys = (params.widgetPlan?.widgets || [])
@@ -941,6 +1108,7 @@ export function calculateAdaptiveBinPacking(
     : (order && order.length > 0 ? [...order] : resolveDynamicCapabilityWidgets(options.intentType || "balanced"));
 
   const getItemSpan = (key: ResultWidgetKey): number => {
+    if (key === "image_gallery") return 9; // 严格固定为 9 格 (75%)
     const custom = options.customSpans?.[key];
     return normalizeWidgetSpan(
       custom,
@@ -985,13 +1153,15 @@ export function calculateAdaptiveBinPacking(
     };
   }
 
-  // 1. 模式 A: dense (前瞻调配补位 + 缝隙闭合)
-  if (autoFillMode === "dense") {
+  // 1. 模式 A: dense / interleave (前瞻调配补位 + 缝隙闭合 + 智能穿插排列)
+  if (autoFillMode === "dense" || autoFillMode === "interleave") {
     const remaining = [...activeKeys];
     let currentRowIndex = 0;
+    let count75Rows = 0;
+    let count50MixRows = 0;
 
     while (remaining.length > 0) {
-      const rowKeys: ResultWidgetKey[] = [];
+      let rowKeys: ResultWidgetKey[] = [];
       const spans: Record<string, number> = {};
       const autoFilledFlags: Record<string, boolean> = {};
       let currentUsedSpan = 0;
@@ -1019,6 +1189,16 @@ export function calculateAdaptiveBinPacking(
               }
             }
           }
+
+          // 若 75% 占 9 格后还余 3 格，且无原生 3 格项，寻找支持弹性收窄为 3 格 (25%) 的次要组件填充配对
+          if (candidateIdx === -1 && spaceLeft === 3) {
+            for (let i = 0; i < remaining.length; i++) {
+              if (getItemSpan(remaining[i]) <= 6 && remaining[i] !== "search_engine") {
+                candidateIdx = i;
+                break;
+              }
+            }
+          }
         }
 
         if (candidateIdx !== -1) {
@@ -1041,26 +1221,70 @@ export function calculateAdaptiveBinPacking(
       // 如果当前行仍有多余空隙 (如还余 2 或 4 格)，拉伸行内组件彻底填满 12 列 (消除留白)
       const spaceLeft = 12 - currentUsedSpan;
       if (spaceLeft > 0 && rowKeys.length > 0) {
-        const lastKey = rowKeys[rowKeys.length - 1];
-        spans[lastKey] = (spans[lastKey] || 4) + spaceLeft;
-        autoFilledFlags[lastKey] = true;
-        filledGapsCount++;
-        currentUsedSpan = 12;
+        // 注意：相关图片 (image_gallery) 长度数值必须严格保持 75% (9 格)，绝不能自动拉伸至 100% (12 格)！
+        const stretchCandidates = rowKeys.filter(
+          (k) => k !== "image_gallery" && WIDGET_REGISTRY[k]?.width !== 75
+        );
+        if (stretchCandidates.length > 0) {
+          const lastKey = stretchCandidates[stretchCandidates.length - 1];
+          spans[lastKey] = (spans[lastKey] || 4) + spaceLeft;
+          autoFilledFlags[lastKey] = true;
+          filledGapsCount++;
+          currentUsedSpan = 12;
+        }
+      }
+
+      // ──────────────────────────────────────────
+      // 穿插排列优化 (Interleaved Arrangement Re-ordering)：
+      // 1) 75% + 25% 配对：交替穿插 [75%, 25%] 与 [25%, 75%]
+      // 2) 50% + 双 25% 配对：采用黄金分割的对称夹心穿插 [25%, 50%, 25%]
+      // ──────────────────────────────────────────
+      const rowSpans = rowKeys.map(k => spans[k]);
+      if (rowKeys.length === 2 && rowSpans.includes(9) && rowSpans.includes(3)) {
+        const item9 = rowKeys.find(k => spans[k] === 9)!;
+        const item3 = rowKeys.find(k => spans[k] === 3)!;
+        if (count75Rows % 2 === 1) {
+          rowKeys = [item3, item9];
+        } else {
+          rowKeys = [item9, item3];
+        }
+        count75Rows++;
+      } else if (rowKeys.length === 3 && rowSpans.includes(6) && rowSpans.filter(s => s === 3).length === 2) {
+        const item6 = rowKeys.find(k => spans[k] === 6)!;
+        const items3 = rowKeys.filter(k => spans[k] === 3);
+        // 夹心穿插排列：[25%, 50%, 25%]
+        rowKeys = [items3[0], item6, items3[1]];
+        count50MixRows++;
+      } else if (rowKeys.length === 2 && rowSpans.includes(6) && rowSpans.includes(3)) {
+        const item6 = rowKeys.find(k => spans[k] === 6)!;
+        const item3 = rowKeys.find(k => spans[k] === 3)!;
+        if (count50MixRows % 2 === 1) {
+          rowKeys = [item3, item6];
+        } else {
+          rowKeys = [item6, item3];
+        }
+        count50MixRows++;
       }
 
       rowKeys.forEach((key) => {
-        const span = spans[key];
+        const span = key === "image_gallery" ? 9 : spans[key];
         gridConfig[key] = {
           colSpanLg: span,
           colSpanMd: span <= 6 ? 6 : 12,
           rowIndex: currentRowIndex,
-          width: tileWidthFromSpan(span) ?? 50,
+          width: key === "image_gallery" ? 75 : (tileWidthFromSpan(span) ?? 50),
           isCompact: span <= 3,
-          isAutoFilled: autoFilledFlags[key] || false
+          isAutoFilled: key === "image_gallery" ? false : (autoFilledFlags[key] || false)
         };
       });
 
       currentRowIndex++;
+    }
+
+    if (gridConfig.image_gallery) {
+      gridConfig.image_gallery.colSpanLg = 9;
+      gridConfig.image_gallery.width = 75;
+      gridConfig.image_gallery.isAutoFilled = false;
     }
 
     return {
@@ -1082,21 +1306,26 @@ export function calculateAdaptiveBinPacking(
     if (rowKeys.length === 0) return;
     const spaceLeft = 12 - currentUsedSpan;
     if (spaceLeft > 0) {
-      const lastKey = rowKeys[rowKeys.length - 1];
-      spans[lastKey] = (spans[lastKey] || 4) + spaceLeft;
-      autoFilledFlags[lastKey] = true;
-      filledGapsCount++;
+      const stretchCandidates = rowKeys.filter(
+        (k) => k !== "image_gallery" && WIDGET_REGISTRY[k]?.width !== 75
+      );
+      if (stretchCandidates.length > 0) {
+        const lastKey = stretchCandidates[stretchCandidates.length - 1];
+        spans[lastKey] = (spans[lastKey] || 4) + spaceLeft;
+        autoFilledFlags[lastKey] = true;
+        filledGapsCount++;
+      }
     }
 
     rowKeys.forEach((key) => {
-      const span = spans[key];
+      const span = key === "image_gallery" ? 9 : spans[key];
       gridConfig[key] = {
         colSpanLg: span,
         colSpanMd: span <= 6 ? 6 : 12,
         rowIndex: currentRowIndex,
-        width: tileWidthFromSpan(span) ?? 50,
+        width: key === "image_gallery" ? 75 : (tileWidthFromSpan(span) ?? 50),
         isCompact: span <= 3,
-        isAutoFilled: autoFilledFlags[key] || false
+        isAutoFilled: key === "image_gallery" ? false : (autoFilledFlags[key] || false)
       };
     });
 
@@ -1119,6 +1348,12 @@ export function calculateAdaptiveBinPacking(
   }
 
   finalizeRow();
+
+  if (gridConfig.image_gallery) {
+    gridConfig.image_gallery.colSpanLg = 9;
+    gridConfig.image_gallery.width = 75;
+    gridConfig.image_gallery.isAutoFilled = false;
+  }
 
   return {
     gridConfig: gridConfig as Record<ResultWidgetKey, WidgetGridPlacement>,

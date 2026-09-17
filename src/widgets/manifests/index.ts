@@ -5,6 +5,10 @@ import relatedLinks from "./related_links.json";
 import aiAnswer from "./ai_answer.json";
 import takeaways from "./takeaways.json";
 import imageGallery from "./image_gallery.json";
+import searchEngine from "./search_engine.json";
+import tokenUsage from "./token_usage.json";
+import weather from "./weather.json";
+import translation from "./translation.json";
 
 /**
  * 小组件插件清单聚合层 (Widget Manifest Catalog)
@@ -50,7 +54,11 @@ export const WIDGET_MANIFESTS: WidgetManifest[] = [
   aiAnswer,
   relatedLinks,
   takeaways,
-  imageGallery
+  imageGallery,
+  searchEngine,
+  tokenUsage,
+  weather,
+  translation
 ].map(asManifest);
 
 /** id → 清单 索引 */

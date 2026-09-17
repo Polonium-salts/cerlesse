@@ -1,0 +1,53 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "search_engine",
+  "name": "搜索引擎直达",
+  "version": "1.0.0",
+  "description": "提供 Google、Bing、百度等主流搜索引擎快捷入口，支持在卡片内直接输入并一键跳转检索结果页",
+  "category": "action",
+  "tags": [
+    "搜索引擎",
+    "搜索直达",
+    "Google",
+    "Bing",
+    "百度",
+    "外部搜索",
+    "一键跳转",
+    "快捷搜索"
+  ],
+  "agentHint": {
+    "functionality": "智能识别用户对于 Google、Bing、百度等主流搜索引擎的检索或跳转诉求，提供极简药丸形快捷搜索框，输入后一键直达目标搜索引擎结果页",
+    "bestFor": [
+      "用户检索词包含 Google、Bing、百度、必应、谷歌或搜索引擎名称",
+      "用户希望使用指定外部搜索引擎进行二次深度全网搜索",
+      "提供直达外部搜索引擎的一键搜索与跳转通道"
+    ],
+    "dataRequirements": [
+      "当前检索关键词或目标搜索引擎名称"
+    ],
+    "selectionHeuristics": "当搜索词涉及 Google、Bing、百度、必应、谷歌等搜索引擎或用户表达了外部引擎检索意图时，实用性极高，Agent 应优先启用该组件并置于前列。",
+    "triggerKeywords": [
+      "google",
+      "bing",
+      "baidu",
+      "百度",
+      "必应",
+      "谷歌",
+      "搜索引擎",
+      "搜狗",
+      "duckduckgo",
+      "搜索"
+    ]
+  },
+  "icon": "Search",
+  "grid": {
+    "width": 50,
+    "supportedWidths": [50, 75, 100],
+    "ratio": "3:1",
+    "minWidth": 50
+  },
+  "theme": {
+    "accentColor": "#0078d4",
+    "flipAnimation": "3d-flip"
+  }
+}

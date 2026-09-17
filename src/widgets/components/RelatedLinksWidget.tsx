@@ -95,10 +95,10 @@ export const RelatedLinksWidget: React.FC<RelatedLinksWidgetProps> = ({
         </span>
       }
       className="w-full h-full border-border/80 bg-card"
-      contentClassName="overflow-y-auto"
+      contentClassName="p-1 flex flex-col gap-3"
     >
-      {/* 站点卡片列表：圆角长方形 UI，适配半宽比例，全部完整加载 */}
-      <div className="grid grid-cols-1 gap-3 p-1">
+      {/* 站点卡片列表：圆角长方形 UI，全部完整加载展示 */}
+      <div className="grid grid-cols-1 gap-3">
         {siteEntries.map((site) => (
           <div
             key={site.id}
@@ -108,7 +108,7 @@ export const RelatedLinksWidget: React.FC<RelatedLinksWidgetProps> = ({
             <div className="flex items-start justify-between gap-3">
               {/* 网站名称 */}
               <h3
-                className="text-sm sm:text-base font-semibold text-foreground group-hover:text-primary transition-colors leading-snug line-clamp-2"
+                className="text-sm sm:text-base font-semibold text-foreground group-hover:text-primary transition-colors leading-snug"
                 title={site.name}
               >
                 {site.name}
@@ -128,8 +128,8 @@ export const RelatedLinksWidget: React.FC<RelatedLinksWidgetProps> = ({
               </a>
             </div>
 
-            {/* 简介 */}
-            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+            {/* 简介：完整显示不裁剪 */}
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {site.description}
             </p>
           </div>

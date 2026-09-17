@@ -121,7 +121,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
         </div>
       }
       className="w-full h-full border-border/80 bg-card"
-      contentClassName="overflow-y-auto p-3.5 sm:p-4 flex flex-col gap-3"
+      contentClassName="p-3.5 sm:p-4 flex flex-col gap-3"
     >
       {/* 1. 核心结论要点 (Key Takeaways) */}
       {keyTakeaways.length > 0 && (
@@ -245,7 +245,7 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
         </div>
       }
       className="w-full h-full border-border/80 bg-card"
-      contentClassName="overflow-y-auto p-4 sm:p-5 flex flex-col gap-4"
+      contentClassName="p-4 sm:p-5 flex flex-col gap-4"
     >
       {/* 推理指标卡片 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -281,7 +281,7 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
           <BookOpen className="size-3.5 text-primary" />
           核心参引网页与文档
         </span>
-        <div className="max-h-[160px] overflow-y-auto space-y-1.5 no-scrollbar">
+        <div className="space-y-1.5">
           {filteredResults.slice(0, 6).map((source, idx) => (
             <div
               key={idx}

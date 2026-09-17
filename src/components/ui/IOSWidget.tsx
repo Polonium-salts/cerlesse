@@ -2,7 +2,7 @@ import React from "react";
 import { cn } from "../../lib/utils.js";
 import type { TileWidth } from "../../lib/tileLayoutEngine.js";
 
-interface IOSWidgetProps {
+interface IOSWidgetProps extends React.HTMLAttributes<HTMLDivElement> {
   id?: string;
   title?: string;
   subtitle?: string;
@@ -92,7 +92,8 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
   contentClassName,
   children,
   noPadding = false,
-  onClick
+  onClick,
+  ...rest
 }) => {
   const hasHeader = Boolean(title || icon || badge || actions || onResize);
   const isSmall = size === 25;
@@ -102,6 +103,7 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
     <div
       id={id}
       onClick={onClick}
+      {...rest}
       className={cn(
         // shadcn/ui Card 语汇：加大圆角 rounded-2xl md:rounded-3xl + bg-card + border border-border/80 + shadow-xs 纯单色现代感
         "group/card relative flex flex-col overflow-hidden rounded-2xl md:rounded-3xl border border-border/80 bg-card text-card-foreground text-sm shadow-xs transition-all duration-200",
@@ -158,28 +160,15 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
         ref={hostRef}
         data-ios-content-host=""
         className={cn(
-          // 内容宿主：overflow:hidden 让它成为一个可测量容器 ——
-          // scrollHeight 如实反映内容的自然高度，桌面视图据此量出"还差多少像素装不下"
-          // 并回灌求解器给磁贴让高（见 TileDesktopView 的实测回路）。
-          // 底部渐隐只是最后兜底：正常路径下磁贴会先被撑到刚好容纳。
-          // 内容区一律禁止滚动，装不下的部分宁可增高磁贴，也不缩小字号。
-          "relative flex flex-1 min-h-0 flex-col overflow-hidden",
+          // 规则：一次性显示所有内容无需手动向下滑动查看隐藏内容
+          // 移除 overflow-hidden 与 min-h-0，支持由内向外完整撑开显示全部内容
+          "relative flex flex-1 flex-col",
           !noPadding && (isSmall ? "px-3 pb-3" : "px-4 pb-4 sm:px-5 sm:pb-5"),
           hasHeader && !noPadding && (isSmall ? "pt-2" : "pt-3.5"),
           contentClassName
         )}
       >
-        {/* 刻意不写 min-h-0 / overflow：让内容根在空间不足时「溢出」而非被压扁，
-            这样超出部分才会落到 host 的 overflow: hidden 之外被裁掉，
-            同时也让 host 的 scrollHeight 得以如实反映内容总高度 */}
         <div className="flex flex-1 flex-col">{children}</div>
-
-        {overflowing && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent"
-          />
-        )}
       </div>
     </div>
   );

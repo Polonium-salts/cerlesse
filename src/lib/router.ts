@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 
 export type RouteTab =
   | "bento"
+  | "images"
   | "mindmap"
   | "comparison"
   | "sources"
@@ -24,6 +25,7 @@ export type RouteTab =
 export const ROUTE_PATHS = {
   home: "/",
   search: "/search",
+  images: "/images",
   mindmap: "/mindmap",
   comparison: "/comparison",
   sources: "/sources",
@@ -34,6 +36,7 @@ export const ROUTE_PATHS = {
 const TAB_TO_PATH: Record<RouteTab, string> = {
   bento: ROUTE_PATHS.search,
   custom_cards: ROUTE_PATHS.search,
+  images: ROUTE_PATHS.images,
   mindmap: ROUTE_PATHS.mindmap,
   comparison: ROUTE_PATHS.comparison,
   sources: ROUTE_PATHS.sources,
@@ -43,6 +46,7 @@ const TAB_TO_PATH: Record<RouteTab, string> = {
 /** URL 目录 -> 页面标签 */
 const PATH_TO_TAB: Record<string, RouteTab> = {
   [ROUTE_PATHS.search]: "bento",
+  [ROUTE_PATHS.images]: "images",
   [ROUTE_PATHS.mindmap]: "mindmap",
   [ROUTE_PATHS.comparison]: "comparison",
   [ROUTE_PATHS.sources]: "sources",

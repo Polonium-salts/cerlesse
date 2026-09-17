@@ -194,25 +194,46 @@ export type LayoutIntentType =
   | "tool_discovery"    // 实用工具与在线体验优先
   | "travel"            // 旅游攻略与行程路线优先
   | "troubleshooting"   // 报错排查与故障修复优先
+  | "translation"       // 跨语言翻译与双语词典优先
   | "balanced";         // 均衡综合布局
+
+export interface TokenUsageStats {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd?: number;
+  tokensPerSecond?: number;
+  model?: string;
+  contextTokens?: number;
+}
 
 export type ResultWidgetKey = 
   | "ai_answer"
   | "related_links"
+  | "takeaways"
+  | "image_gallery"
+  | "search_engine"
+  | "token_usage"
+  | "weather"
+  | "translation"
   | "custom_cards"
   | string;
 
 /**
  * 可参与自动选型的小组件全集（前端注册中心已登记的模块 id）。
- * related_links / ai_answer 是恒启用的阅读流锚点；takeaways 与 image_gallery
- * 由 Agent 依据搜索意图与内容密度自主启停（image_gallery 还要求信源含缩略图）。
+ * related_links / ai_answer 是恒启用的阅读流锚点；takeaways、image_gallery、search_engine 与 token_usage
+ * 由 Agent 依据搜索意图与能力模型自主决策启停。
  * 此清单同时是排版 Agent 的组件白名单来源。
  */
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "related_links",
   "ai_answer",
   "takeaways",
-  "image_gallery"
+  "image_gallery",
+  "search_engine",
+  "token_usage",
+  "weather",
+  "translation"
 ];
 
 export interface WidgetStatusDetail {
@@ -555,7 +576,7 @@ export interface WidgetGridPlacement {
 }
 
 export type LayoutAlignmentMode = "masonry" | "grid";
-export type AutoFillGapsMode = "dense" | "stretch" | "off";
+export type AutoFillGapsMode = "dense" | "stretch" | "interleave" | "off";
 
 export interface AdaptiveLayoutStrategy {
   intentType: LayoutIntentType;
@@ -648,6 +669,7 @@ export interface SearchSynthesisResult {
   customCards?: CustomCardData[];
   actionPlan?: ActionPlan;
   widgetPlan?: WidgetPlan;
+  tokenUsage?: TokenUsageStats;
 }
 
 export interface OpenRouterModel {

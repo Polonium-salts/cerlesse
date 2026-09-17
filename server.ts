@@ -8,6 +8,8 @@ import { searchAndRankOnce } from "./server/retrievalAgent.js";
 import { SUPPORTED_LANGUAGES } from "./server/language.js";
 import { forgeUniqueCard } from "./server/cardForge.js";
 import { planWidgetLayout } from "./server/layoutAgent.js";
+import { searchSearxngImages } from "./server/searxng.js";
+import { translateText } from "./server/translationAgent.js";
 
 dotenv.config();
 
@@ -54,6 +56,53 @@ app.get("/api/search", async (req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "搜索服务暂时不可用" });
+  }
+});
+
+// 专区图片检索端点：供专门图片加载页面快速按需检索与丰富展示
+app.get("/api/images", async (req, res) => {
+  try {
+    const q = req.query.q as string;
+    if (!q || q.trim() === "") {
+      return res.status(400).json({ error: "缺少搜索关键词" });
+    }
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 36, 1), 72);
+    const customUrl = cleanParam(req.query.customUrl);
+    const lang = cleanParam(req.query.lang);
+    const images = await searchSearxngImages(q.trim(), { customUrl, language: lang, limit, page });
+    res.json({
+      query: q.trim(),
+      images,
+      page,
+      total: images.length
+    });
+  } catch (error: any) {
+    console.error("Images search error:", error);
+    res.status(500).json({ error: error.message || "图片检索失败" });
+  }
+});
+
+// 多语言翻译与双语词典端点：支持多语言互译、音标、词性与例句
+app.post("/api/translate", async (req, res) => {
+  try {
+    const { text, sourceLang, targetLang, apiKey, model } = req.body || {};
+    if (!text || typeof text !== "string" || text.trim() === "") {
+      return res.status(400).json({ error: "缺少待翻译文本" });
+    }
+
+    const result = await translateText({
+      text: text.trim(),
+      sourceLang: cleanParam(sourceLang),
+      targetLang: cleanParam(targetLang),
+      apiKey: cleanParam(apiKey),
+      model: cleanParam(model)
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error("Translation endpoint error:", error);
+    res.status(500).json({ error: error.message || "翻译请求处理失败" });
   }
 });
 

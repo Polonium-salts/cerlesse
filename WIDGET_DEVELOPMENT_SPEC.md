@@ -585,4 +585,42 @@ WidgetRegistry.register(MyToolWidget);
 
 ---
 
-*文档版本：v3.1.0 ｜ 维护团队：Cerlesse Agent Core Team*
+## 九、基于 jsDelivr + GitHub 的远程小组件发布规范 (jsDelivr CDN Specification)
+
+小组件开发者无需自行购买或运维 CDN 服务器，即可通过 **GitHub 仓库 + Git Release/Tag + jsDelivr** 将小组件免维护发布给 Cerlesse 用户即插即用：
+
+### 1. 推荐开源仓库目录结构
+
+```text
+my-widget-repo/
+├── package.json
+├── src/
+│   ├── index.tsx          # 小组件 React 代码 (可选)
+│   ├── manifest.json      # Cerlesse 标准 Manifest
+│   └── icon.svg           # 小组件矢量图标 (可选)
+├── dist/                  # 构建输出目录 (发布分支或 Release)
+│   ├── manifest.json      # 核心清单文件 (必需)
+│   ├── index.js           # 构建好的 JS 代码 (可选)
+│   └── icon.svg           # 矢量或 PNG 图标 (可选)
+└── README.md
+```
+
+### 2. 标准 jsDelivr CDN 访问路径
+
+- **小组件清单**: `https://cdn.jsdelivr.net/gh/<用户名>/<仓库名>@<版本Tag>/dist/manifest.json`
+- **图标素材**: `https://cdn.jsdelivr.net/gh/<用户名>/<仓库名>@<版本Tag>/dist/icon.svg`
+- **JS 模块入口**: `https://cdn.jsdelivr.net/gh/<用户名>/<仓库名>@<版本Tag>/dist/index.js`
+
+### 3. 用户在 Cerlesse 磁贴商店一键导入
+
+在磁贴市场抽屉的「从 jsDelivr / GitHub 导入小组件」中，支持以下便捷格式：
+- `user/repo@v1.0.0` （自动转换至 jsDelivr CDN 对应版本）
+- `user/repo` （自动匹配 main 分支最新版本）
+- `https://github.com/user/repo` （直接粘贴 GitHub 仓库链接）
+- `npm:pkg@1.0.0` （npm 包形式发布的小组件）
+
+Cerlesse 会自动异步获取清单、解析相对路径的图片图标，并在本地沙箱中安全注册为磁贴模块，立即可上架至桌面网格中。
+
+---
+
+*文档版本：v3.2.0 ｜ 维护团队：Cerlesse Agent Core Team*

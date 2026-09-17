@@ -239,12 +239,16 @@ async function fetchSearxngResults(
   query: string,
   categories: string,
   langCode?: string,
-  timeoutMs = 1800
+  timeoutMs = 1800,
+  page?: number
 ): Promise<any[] | null> {
   const url = new URL(`${instance}/search`);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
   url.searchParams.set("categories", categories);
+  if (page && page > 1) {
+    url.searchParams.set("pageno", String(page));
+  }
   // 语言过滤是「结果精准」的一道硬闸门：跨语言路由用 en 下发才能真的拿到英文权威源，
   // 其余路由用查询语言过滤才能挡住不对语种的内容农场。统一走 toSearxngLanguage 映射，
   // 不再把 `zh` 这种两字母码裸传给 SearXNG（见 language.ts 的说明）。
@@ -329,6 +333,103 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
   return mapped;
 }
 
+/**
+ * 解析 SearXNG 图像 URL（兼容提取原始 URL、/image_proxy 代理参数以及相对路径）
+ */
+function extractSearxngImageUrl(raw: unknown, instance?: string): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      if (u.pathname.includes("image_proxy") && u.searchParams.has("url")) {
+        const target = u.searchParams.get("url");
+        if (target && /^https?:\/\//i.test(target)) return target;
+      }
+    } catch {}
+    return trimmed;
+  }
+
+  // 相对路径或代理路径 /image_proxy?url=https%3A%2F%2F...
+  if (trimmed.startsWith("/")) {
+    try {
+      const dummyBase = instance || "https://searx.be";
+      const u = new URL(trimmed, dummyBase);
+      if (u.searchParams.has("url")) {
+        const target = u.searchParams.get("url");
+        if (target && /^https?:\/\//i.test(target)) return target;
+      }
+      if (instance && /^https?:\/\//i.test(instance)) {
+        return new URL(trimmed, instance).toString();
+      }
+    } catch {}
+  }
+  return undefined;
+}
+
+/**
+ * Direct image search fallback (Bing Images)
+ * 高可用且带 CDN 缓存的图片检索兜底通道，返回真实高清图与缩略图
+ */
+export async function searchBingImagesFallback(query: string, limit = 36, page = 1): Promise<SearchImage[]> {
+  try {
+    const first = Math.max(1, (page - 1) * limit + 1);
+    const url = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=${first}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results: SearchImage[] = [];
+    const regex = /class="iusc"[^>]*m="({[^"]+})"/g;
+    let match: RegExpExecArray | null;
+    const seen = new Set<string>();
+
+    while ((match = regex.exec(html)) !== null && results.length < limit) {
+      try {
+        const decoded = match[1]
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>');
+        const data = JSON.parse(decoded);
+        const imageUrl = pickHttpUrl(data.murl) || pickHttpUrl(data.turl);
+        const thumbnailUrl = pickHttpUrl(data.turl) || imageUrl;
+        if (!imageUrl || !thumbnailUrl || seen.has(imageUrl)) continue;
+        seen.add(imageUrl);
+
+        const pageUrl = pickHttpUrl(data.purl);
+        const domain = hostOf(pageUrl) || hostOf(imageUrl);
+        const title = sanitizeSnippet(data.t || data.desc || "") || (domain ? `${domain} 图片` : "相关图片");
+
+        results.push({
+          id: `img-bing-${Math.random().toString(36).substring(2, 9)}`,
+          imageUrl,
+          thumbnailUrl,
+          title,
+          pageUrl,
+          source: "Bing Images",
+          domain
+        });
+      } catch {
+        // Skip malformed item
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 /** 只接受 http(s) 的绝对地址：各上游引擎偶发返回相对路径或空壳 data: */
 function pickHttpUrl(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
@@ -379,9 +480,11 @@ export async function searchSearxngImages(
     language?: string;
     env?: Record<string, string | undefined>;
     limit?: number;
+    page?: number;
   } = {}
 ): Promise<SearchImage[]> {
-  const limit = options.limit && options.limit > 0 ? options.limit : 12;
+  const limit = options.limit && options.limit > 0 ? options.limit : 36;
+  const page = options.page && options.page > 0 ? options.page : 1;
 
   const validCustomUrl = options.customUrl &&
     typeof options.customUrl === "string" &&
@@ -434,7 +537,7 @@ export async function searchSearxngImages(
     }
 
     for (const inst of candidates) {
-      fetchSearxngResults(inst, query, "images", options.language, IMAGE_FETCH_TIMEOUT_MS)
+      fetchSearxngResults(inst, query, "images", options.language, IMAGE_FETCH_TIMEOUT_MS, page)
         .then((res) => {
           if (res && res.length > 0) finish(res);
           else if (--pending === 0) finish(null);
@@ -445,35 +548,58 @@ export async function searchSearxngImages(
     }
   });
 
-  if (!items) return [];
-
   const images: SearchImage[] = [];
   const seen = new Set<string>();
 
-  for (const item of items) {
-    if (images.length >= limit) break;
+  if (items && items.length > 0) {
+    for (const item of items) {
+      if (images.length >= limit) break;
 
-    // 原图优先，没有原图就退回缩略图 —— 有图可看永远好过没有
-    const imageUrl = pickHttpUrl(item.img_src) || pickHttpUrl(item.thumbnail_src);
-    if (!imageUrl || seen.has(imageUrl)) continue;
-    seen.add(imageUrl);
+      // 原图优先，没有原图就退回缩略图（支持从 /image_proxy?url= 提取真实地址）
+      const imageUrl =
+        extractSearxngImageUrl(item.img_src) ||
+        extractSearxngImageUrl(item.thumbnail_src) ||
+        extractSearxngImageUrl(item.thumbnail);
+      if (!imageUrl || seen.has(imageUrl)) continue;
+      seen.add(imageUrl);
 
-    const pageUrl = pickHttpUrl(item.url);
-    const domain = hostOf(pageUrl) || hostOf(imageUrl);
+      const pageUrl = pickHttpUrl(item.url);
+      const domain = hostOf(pageUrl) || hostOf(imageUrl);
 
-    images.push({
-      id: `img-${Math.random().toString(36).substring(2, 9)}`,
-      imageUrl,
-      // 缩略图字段名各引擎不统一（thumbnail_src / thumbnail），逐个兜底后回落原图
-      thumbnailUrl: pickHttpUrl(item.thumbnail_src) || pickHttpUrl(item.thumbnail) || imageUrl,
-      title: sanitizeSnippet(item.title || "") || (domain ? `${domain} 图片` : "相关图片"),
-      pageUrl,
-      source: item.source || item.engine || "SearXNG Images",
-      domain,
-      resolution: typeof item.resolution === "string" && item.resolution.trim() !== ""
-        ? item.resolution.trim()
-        : undefined
-    });
+      const thumbUrl =
+        extractSearxngImageUrl(item.thumbnail_src) ||
+        extractSearxngImageUrl(item.thumbnail) ||
+        imageUrl;
+
+      images.push({
+        id: `img-${Math.random().toString(36).substring(2, 9)}`,
+        imageUrl,
+        thumbnailUrl: thumbUrl,
+        title: sanitizeSnippet(item.title || "") || (domain ? `${domain} 图片` : "相关图片"),
+        pageUrl,
+        source: item.source || item.engine || "SearXNG Images",
+        domain,
+        resolution: typeof item.resolution === "string" && item.resolution.trim() !== ""
+          ? item.resolution.trim()
+          : undefined
+      });
+    }
+  }
+
+  // 若实例池未返回或图片数量不足 limit，使用高可靠 Bing 图片通道补齐，确保相关图片组件能稳定加载足额图片
+  if (images.length < limit) {
+    try {
+      const fallbackImages = await searchBingImagesFallback(query, limit - images.length, page);
+      for (const fImg of fallbackImages) {
+        if (images.length >= limit) break;
+        if (!seen.has(fImg.imageUrl)) {
+          seen.add(fImg.imageUrl);
+          images.push(fImg);
+        }
+      }
+    } catch {
+      // 容灾忽略
+    }
   }
 
   return images;

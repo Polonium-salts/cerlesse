@@ -428,6 +428,10 @@ export interface TileLayoutInput {
    */
   contentHeightPx?: number;
   /**
+   * 优先排版侧偏好（用于 75%+25% 互补配对时指定 25% 置于左侧还是右侧）
+   */
+  preferredSide?: "left" | "right";
+  /**
    * contentHeightPx 的测量列跨度。
    *
    * 内容高度只在「同一宽度」下成立：换行位置一变，高度立刻失效。
@@ -454,6 +458,8 @@ export interface TileLayoutOptions {
   minTileHeightPx?: number;
   /** 跨度偏离代价（像素/列），默认 TILE_SPAN_DEVIATION_PENALTY_PX */
   spanDeviationPenaltyPx?: number;
+  /** 是否启用小组件穿插排列模式（75%+25% 左右交替穿插、50%+双25% 夹心居中穿插，默认开启） */
+  interleave?: boolean;
 }
 
 export interface SolvedTileItem {
@@ -665,23 +671,42 @@ export function solveTileLayout(
   const columnHeights = new Array(totalColumns).fill(0);
   const solved: SolvedTileItem[] = [];
 
-  /** 单个磁贴落位：x 为起始列（0-indexed），yTop 为像素顶部偏移 */
+  /** 单个磁贴落位：x 为起始列（0-indexed），yTop 为像素顶部偏移，targetHeightPx 为同行等高对齐基准 */
   const commit = (
     input: TileLayoutInput,
     span: number,
     ratio: TileRatio,
     x: number,
     yTop: number,
-    spanDeviation: number
+    spanDeviation: number,
+    targetHeightPx?: number
   ): SolvedTileItem => {
     const pixelWidth = columnWidthOf(span);
     const ratioHeightPx = pixelWidth / RATIO_VALUES[ratio];
-    // 比例是「形状下限」：内容实测更高时就按内容给足高度，
-    // 否则磁贴会截断内容 —— 即"小组件没有完整加载出来"的观感。
-    const pixelHeight =
-      input.contentHeightPx && input.contentHeightPx > ratioHeightPx
-        ? input.contentHeightPx
-        : ratioHeightPx;
+    // 规则：一次性显示所有内容无需手动向下滑动查看隐藏内容
+    // 磁贴高度必须完全容纳小组件全部内容，取比例基准与实测自然高度的较大者
+    let naturalHeight: number;
+    if (input.id === "search_engine") {
+      // 搜索引擎小组件属于快捷入口控件，UI 结构紧凑（标题栏 + 药丸搜索框 + 引擎切换胶囊 + 底部跳转栏）
+      // 实际 UI 高度约 220~240px。必须以实测自然高度为准，绝不可做向下截断 (Math.min)，
+      // 保证后续紧随其后的小组件（如相关图片）与其实体边缘之间具有完整且标准的 rowGap 垂直间距！
+      const baseHeight = 230;
+      naturalHeight =
+        input.contentHeightPx && input.contentHeightPx > 0
+          ? Math.max(baseHeight, input.contentHeightPx)
+          : baseHeight;
+    } else {
+      naturalHeight =
+        input.contentHeightPx && input.contentHeightPx > 0
+          ? Math.max(ratioHeightPx, input.contentHeightPx)
+          : ratioHeightPx;
+    }
+
+    // 同行等高平齐对齐：若同排提供了统一对齐高度 targetHeightPx，则延展至统一下沿，彻底消除行内纵向空洞与留白
+    if (targetHeightPx && targetHeightPx > naturalHeight) {
+      naturalHeight = targetHeightPx;
+    }
+    const pixelHeight = Math.round(naturalHeight);
 
     const rowStart = Math.round(yTop / TILE_ROW_UNIT_PX);
     // 覆盖 [rowStart*unit, yTop + pixelHeight + rowGap)，向上取整保证永不重叠
@@ -690,7 +715,7 @@ export function solveTileLayout(
 
     const item: SolvedTileItem = {
       id: input.id,
-      size: widthForSpan(span, totalColumns),
+      size: (input.id === "image_gallery" || input.size === 75) ? 75 : widthForSpan(span, totalColumns),
       ratio,
       x,
       y: yTop,
@@ -738,14 +763,22 @@ export function solveTileLayout(
   // 2. 其余磁贴入队：聚焦磁贴永远第一个落位（视觉焦点必须先占住最好的位置）
   const fixedIds = new Set(fixedInputs.map(t => t.id));
   const rest = inputs.filter(t => !fixedIds.has(t.id));
-  const spanOfInput = (t: TileLayoutInput) =>
-    clampSpanToHeightBand(
+  const spanOfInput = (t: TileLayoutInput) => {
+    // 图片小组件横向长度属性严格固定为 75%
+    if (t.id === "image_gallery" || t.size === 75) {
+      return spanOfTileWidth(75, totalColumns);
+    }
+    return clampSpanToHeightBand(
       Math.max(2, Math.min(spanOfTileWidth(t.size, totalColumns), totalColumns)),
       resolveTileRatio(t.id, t.ratio)
     );
+  };
 
   /** 实测过内容高度的磁贴所锁定的跨度（null = 未实测，走常规弹性闭合） */
   const lockedSpanOf = (t: TileLayoutInput): number | null => {
+    if (t.id === "image_gallery" || t.size === 75) {
+      return spanOfTileWidth(75, totalColumns);
+    }
     if (!t.contentHeightPx || t.contentHeightPx <= 0) return null;
     const span = t.contentSpan ?? spanOfTileWidth(t.size, totalColumns);
     return Math.max(2, Math.min(Math.round(span), totalColumns));
@@ -763,54 +796,309 @@ export function solveTileLayout(
 
   let adjustedSpanCount = 0;
 
-  // 3. 逐块瀑布流落位
-  for (const input of queue) {
-    const ratio = resolveTileRatio(input.id, input.ratio);
-    // 实测过内容的磁贴锁定测量时的跨度（改宽度会让实测高度失效），其余照常弹性闭合
-    const lockedSpan = lockedSpanOf(input);
-    const nominalSpan = lockedSpan ?? spanOfInput(input);
+  // 3. 行级互补自动对齐排列算法 (Row-based Complementary Auto-Arranging)
+  // 遵循用户规则：
+  //   - 如果一排有 w=75 的小组件，在左侧或右侧自动填充一个 w=25 的小组件 (75+25 或 25+75 = 100%)
+  //   - 其他的小组件 w 尺寸也是类似的整行排法：
+  //       50 + 50 = 100%
+  //       50 + 25 + 25 = 100%
+  //       25 + 25 + 25 + 25 = 100%
+  //       100 = 100%
+  //   - 同行互补磁贴采用统一行高对齐，上下沿平齐消除空洞与高低参差
 
-    // 候选跨度 = 目录中与名义跨度相邻的档位（±TILE_SPAN_FLEX 档），名义跨度优先落位
-    const nominalIdx = spanCatalog.indexOf(nominalSpan);
-    const flexWindow = allowSpanFlex && nominalIdx >= 0
-      ? spanCatalog.slice(
-        Math.max(0, nominalIdx - TILE_SPAN_FLEX),
-        Math.min(spanCatalog.length, nominalIdx + TILE_SPAN_FLEX + 1)
-      )
-      : [nominalSpan];
-    // 内容密集的小组件可声明 minSpan：宁可有洞，也不允许被收窄到该宽度以下
-    const spanFloor = input.minSpan && input.minSpan > 0
-      ? Math.min(totalColumns, Math.max(2, Math.round(input.minSpan)))
-      : 2;
-    const candidateSpans = lockedSpan !== null
-      ? [lockedSpan]
-      : flexWindow.filter((span) => span >= spanFloor);
-    if (candidateSpans.length === 0) candidateSpans.push(nominalSpan);
+  // 3. 2D Skyline + Best-Fit + 碰撞检测 + 穿插奖励布局算法 (2D Skyline Best-Fit & Interlocking Engine)
+  // 实现不同尺寸卡片互相穿插、填补彼此空隙的交叉/嵌套式磁贴布局：
+  // 1) 穿插排序：按 L -> S -> M -> S 交替序入队，确保大块先建立锚点，小块立即填入相邻凹陷与缝隙
+  // 2) 候选位置探测：基于 Skyline 天际线与已有卡片边缘（右侧、左侧、下方）多点候选
+  // 3) 二维碰撞检测：严格检查 AABB 边界与重叠
+  // 4) Best-Fit 多目标评分 + 交叉奖励 (Crossing Score) 决策最佳落位
 
-    let bestSpan = nominalSpan;
-    let bestX = 0;
-    let bestY = Number.POSITIVE_INFINITY;
-    let bestScore = Number.POSITIVE_INFINITY;
+  // 1) 计算每个输入的自然几何尺寸并按 L / M / S 分组
+  interface SizedInput {
+    input: TileLayoutInput;
+    span: number;
+    ratio: TileRatio;
+    pixelWidth: number;
+    pixelHeight: number;
+    category: "L" | "M" | "S";
+  }
 
-    for (const span of candidateSpans) {
-      const deviation = Math.abs(span - nominalSpan);
-      for (let x = 0; x + span <= totalColumns; x++) {
-        const y = landingHeightOf(x, span);
-        // 主项：落点越低越差（填掉空洞是第一目标）
-        // 次项：跨度偏离越大越差（尊重排版 Agent 的宽度决策）
-        // 末项：轻微偏左，让同高度的候选保持从左到右的阅读手感
-        const score = y + deviation * spanDeviationPenaltyPx + x * 0.5;
-        if (score < bestScore - 1e-6) {
-          bestScore = score;
-          bestSpan = span;
-          bestX = x;
-          bestY = y;
+  const sizedInputs: SizedInput[] = rest.map(t => {
+    let span: number;
+    if (t.id === "image_gallery" || t.size === 75) {
+      span = spanOfTileWidth(75, totalColumns);
+    } else {
+      const locked = lockedSpanOf(t);
+      span = locked !== null ? locked : spanOfInput(t);
+    }
+    span = Math.max(1, Math.min(span, totalColumns));
+
+    const ratio = resolveTileRatio(t.id, t.ratio);
+    const pixelWidth = columnWidthOf(span);
+    const ratioHeightPx = pixelWidth / RATIO_VALUES[ratio];
+    
+    let naturalHeight: number;
+    if (t.id === "search_engine") {
+      const baseHeight = 230;
+      naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
+        ? Math.max(baseHeight, t.contentHeightPx)
+        : baseHeight;
+    } else {
+      naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
+        ? Math.max(ratioHeightPx, t.contentHeightPx)
+        : ratioHeightPx;
+    }
+    const pixelHeight = Math.round(naturalHeight);
+
+    let category: "L" | "M" | "S" = "M";
+    if (span >= 9) category = "L";
+    else if (span <= 4) category = "S";
+    else category = "M";
+
+    return {
+      input: t,
+      span,
+      ratio,
+      pixelWidth,
+      pixelHeight,
+      category
+    };
+  });
+
+  // 2) 穿插排序器 (Interleaved Widget Sorter: L -> S -> M -> S)
+  const lItems = sizedInputs.filter(item => item.category === "L").sort((a, b) => (b.input.priority ?? 50) - (a.input.priority ?? 50));
+  const mItems = sizedInputs.filter(item => item.category === "M").sort((a, b) => (b.input.priority ?? 50) - (a.input.priority ?? 50));
+  const sItems = sizedInputs.filter(item => item.category === "S").sort((a, b) => (b.input.priority ?? 50) - (a.input.priority ?? 50));
+
+  const interleavedQueue: SizedInput[] = [];
+
+  // 如果有焦点磁贴，先放入队列头部
+  const emphasizedIdx = sizedInputs.findIndex(item => item.input.isEmphasized);
+  if (emphasizedIdx !== -1) {
+    const emp = sizedInputs[emphasizedIdx];
+    interleavedQueue.push(emp);
+    if (emp.category === "L") {
+      const idx = lItems.indexOf(emp);
+      if (idx !== -1) lItems.splice(idx, 1);
+    } else if (emp.category === "M") {
+      const idx = mItems.indexOf(emp);
+      if (idx !== -1) mItems.splice(idx, 1);
+    } else {
+      const idx = sItems.indexOf(emp);
+      if (idx !== -1) sItems.splice(idx, 1);
+    }
+  }
+
+  // 交替抽取：L -> S -> M -> S -> L -> S...
+  while (lItems.length > 0 || mItems.length > 0 || sItems.length > 0) {
+    if (lItems.length > 0) interleavedQueue.push(lItems.shift()!);
+    if (sItems.length > 0) interleavedQueue.push(sItems.shift()!);
+    if (mItems.length > 0) interleavedQueue.push(mItems.shift()!);
+    if (sItems.length > 0) interleavedQueue.push(sItems.shift()!);
+    
+    // 若仅剩某一类，逐个耗尽
+    if (lItems.length === 0 && mItems.length === 0 && sItems.length > 0) {
+      interleavedQueue.push(...sItems.splice(0));
+    } else if (lItems.length === 0 && sItems.length === 0 && mItems.length > 0) {
+      interleavedQueue.push(...mItems.splice(0));
+    } else if (mItems.length === 0 && sItems.length === 0 && lItems.length > 0) {
+      interleavedQueue.push(...lItems.splice(0));
+    }
+  }
+
+  // 3) 已放置矩形集合与碰撞检测
+  interface PlacedRect {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    category: "L" | "M" | "S";
+  }
+  const placedRects: PlacedRect[] = solved.map(s => ({
+    id: s.id,
+    x: s.x,
+    y: s.y,
+    w: s.w,
+    h: s.pixelHeight,
+    category: s.w >= 9 ? "L" : s.w <= 4 ? "S" : "M"
+  }));
+
+  const checkCollision = (x: number, y: number, w: number, h: number): boolean => {
+    // 边界越界
+    if (x < 0 || x + w > totalColumns) return true;
+    if (y < 0) return true;
+
+    // AABB 矩形重叠检测 (保留 rowGap 与 columnGap 保护裕量)
+    for (const p of placedRects) {
+      const pRight = p.x + p.w;
+      const pBottom = p.y + p.h;
+      const candRight = x + w;
+      const candBottom = y + h;
+
+      const horizontalOverlap = !(candRight <= p.x || x >= pRight);
+      const verticalOverlap = !(candBottom <= p.y || y >= pBottom);
+
+      if (horizontalOverlap && verticalOverlap) {
+        return true; // 碰撞！
+      }
+    }
+    return false;
+  };
+
+  let wideLCount = 0;
+
+  // 4) 逐个执行 2D Skyline + Best-Fit + 穿插奖励落位
+  for (const item of interleavedQueue) {
+    const { input, span: w, ratio, pixelHeight: h, category } = item;
+
+    // 搜索所有合法的候选落点 (Candidate Placement Search)
+    const candidatePositions: Array<{ x: number; y: number; type: string }> = [];
+    const seenPos = new Set<string>();
+
+    const addCandidate = (candX: number, candY: number, type: string) => {
+      if (candX < 0 || candX + w > totalColumns) return;
+      const key = `${candX}_${Math.round(candY)}`;
+      if (seenPos.has(key)) return;
+      seenPos.add(key);
+      candidatePositions.push({ x: candX, y: Math.max(0, candY), type });
+    };
+
+    // a) 基础 Skyline 天际线落点：在每一可能起始列 x 上取区间最高天际线
+    for (let candX = 0; candX <= totalColumns - w; candX++) {
+      let yBase = 0;
+      for (let col = candX; col < candX + w; col++) {
+        if (columnHeights[col] > yBase) yBase = columnHeights[col];
+      }
+      addCandidate(candX, yBase, "skyline");
+    }
+
+    // b) 口袋与邻接缝隙探测 (Pocket & Side Adjacent Candidates)
+    // 检查是否能直接卡入已有卡片的右侧凹槽、左侧凹槽、或下方凹槽
+    for (const p of placedRects) {
+      // 1. 卡片右侧凹槽
+      const rightX = p.x + p.w;
+      if (rightX + w <= totalColumns) {
+        let yBase = p.y;
+        for (let col = rightX; col < rightX + w; col++) {
+          if (columnHeights[col] > yBase) yBase = columnHeights[col];
         }
+        addCandidate(rightX, yBase, "right_pocket");
+        // 也尝试与 p 的顶对齐
+        addCandidate(rightX, p.y, "right_top_align");
+        // 也尝试在 p 的底边上方对齐
+        addCandidate(rightX, p.y + p.h + rowGap, "right_bottom");
+      }
+
+      // 2. 卡片左侧凹槽
+      const leftX = p.x - w;
+      if (leftX >= 0) {
+        let yBase = p.y;
+        for (let col = leftX; col < leftX + w; col++) {
+          if (columnHeights[col] > yBase) yBase = columnHeights[col];
+        }
+        addCandidate(leftX, yBase, "left_pocket");
+        addCandidate(leftX, p.y, "left_top_align");
+      }
+
+      // 3. 卡片正下方
+      const bottomX = p.x;
+      if (bottomX + w <= totalColumns) {
+        addCandidate(bottomX, p.y + p.h + rowGap, "underneath");
       }
     }
 
-    if (bestSpan !== nominalSpan) adjustedSpanCount++;
-    commit(input, bestSpan, ratio, bestX, bestY === Number.POSITIVE_INFINITY ? 0 : bestY, bestSpan - nominalSpan);
+    // c) Best-Fit 评分与交叉奖励评价 (Scoring with Crossing Bonus)
+    let bestX = 0;
+    let bestY = 0;
+    let bestScore = Infinity;
+
+    for (const cand of candidatePositions) {
+      if (checkCollision(cand.x, cand.y, w, h)) continue;
+
+      // 1. 计算下方产生的垂直空洞面积 (Waste Area / Gap)
+      let wasteUnderneath = 0;
+      for (let col = cand.x; col < cand.x + w; col++) {
+        if (cand.y > columnHeights[col]) {
+          wasteUnderneath += (cand.y - columnHeights[col]);
+        }
+      }
+
+      // 2. 纵向高度代价 (Height Cost)
+      const heightCost = cand.y;
+
+      // 3. 水平不平衡程度 (Imbalance)
+      const centerDist = Math.abs((cand.x + w / 2) - (totalColumns / 2));
+
+      // 4. 穿插奖励 (Crossing Bonus)
+      let crossingBonus = 0;
+
+      // 规则 1：大卡片与小卡片并排穿插奖励 (Interlocking Masonry Bonus)
+      // 若当前为小卡片 (S)，且紧挨着一个大卡片 (L/M)，赋予高额穿插奖励
+      if (category === "S") {
+        for (const p of placedRects) {
+          if (p.category === "L" || p.category === "M") {
+            const isRightBeside = (cand.x === p.x + p.w) && !(cand.y + h <= p.y || cand.y >= p.y + p.h);
+            const isLeftBeside = (cand.x + w === p.x) && !(cand.y + h <= p.y || cand.y >= p.y + p.h);
+            if (isRightBeside || isLeftBeside) {
+              crossingBonus += 220;
+            }
+          }
+        }
+      }
+
+      // 规则 2：纵向堆叠填补奖励 (Stacking fill bonus)
+      // 小卡片叠在另一个小卡片下方，与旁边的大卡片形成完美的 [A] + [B/C] 交叉嵌套结构
+      if (category === "S") {
+        for (const p of placedRects) {
+          if (p.category === "S" && p.x === cand.x && Math.abs(cand.y - (p.y + p.h + rowGap)) < 16) {
+            crossingBonus += 180;
+          }
+        }
+      }
+
+      // 规则 3：用户偏好侧与穿插交替
+      if (input.preferredSide === "left" && cand.x === 0) {
+        crossingBonus += 160;
+      } else if (input.preferredSide === "right" && cand.x + w === totalColumns) {
+        crossingBonus += 160;
+      } else if (category === "L" && w === 9 && totalColumns === 12) {
+        // 75% 宽卡片左右交替穿插
+        const expectedX = (wideLCount % 2 === 1) ? 3 : 0;
+        if (cand.x === expectedX) crossingBonus += 120;
+      }
+
+      // 规则 4：栅格柱位对齐奖励 (0, 3, 6, 9, 12)
+      if (cand.x === 0 || cand.x + w === totalColumns || cand.x === 3 || cand.x === 6 || cand.x === 9) {
+        crossingBonus += 60;
+      }
+
+      // 综合评分公式：
+      // score 越低越优：最小化空洞与高度，最大化穿插奖励
+      const score = (wasteUnderneath * 0.35) + (heightCost * 0.25) + (centerDist * 10) - (crossingBonus * 0.40);
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestX = cand.x;
+        bestY = cand.y;
+      }
+    }
+
+    if (category === "L" && w === 9) {
+      wideLCount++;
+    }
+
+    // 落位磁贴并记录
+    commit(input, w, ratio, bestX, bestY, 0);
+
+    placedRects.push({
+      id: input.id,
+      x: bestX,
+      y: bestY,
+      w,
+      h,
+      category
+    });
   }
 
   // ==========================================

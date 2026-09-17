@@ -11,7 +11,9 @@ export {
   aiAnswerModule,
   relatedLinksModule,
   takeawaysModule,
-  imageGalleryModule
+  imageGalleryModule,
+  searchEngineModule,
+  tokenUsageModule
 } from "../modules/index.js";
 
 /** 初始化并自动向注册中心登记小组件模块 */

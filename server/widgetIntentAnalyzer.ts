@@ -91,6 +91,22 @@ export const INTENT_CAPABILITIES_MAP: Record<string, CanonicalCapability[]> = {
     "service_status",
     "contact_entry"
   ],
+  // 搜索引擎直达：外部引擎搜索 + 搜索跳转 + 快捷通道
+  search_engine_portal: [
+    "search_engine_redirect",
+    "external_search_query",
+    "web_search_portal",
+    "engine_launcher",
+    "quick_links"
+  ],
+  // 跨语言翻译与词典：语言翻译 + 文本转换 + 双语对照 + 发音指引 + 词典释义
+  translation: [
+    "language_translation",
+    "text_translation",
+    "bilingual_comparison",
+    "pronunciation_guide",
+    "dictionary_lookup"
+  ],
   // 概念科普：定义 + 知识图谱 + 核心原理 + 典型场景 + 文献来源
   concept_explanation: [
     "concept_definition",
@@ -113,6 +129,44 @@ export const INTENT_CAPABILITIES_MAP: Record<string, CanonicalCapability[]> = {
  */
 export function analyzeIntentAlgorithmically(query: string, results: SearchResult[]): WidgetIntentAnalysis {
   const cleanQ = query.trim();
+
+  // 0. 跨语言翻译与词典查词 (Translation & Dictionary)
+  // 当用户查询涉及翻译、中译英、英译中、外语表达（如"翻译（苹果的英文）"、"苹果的英文"、"用英语怎么说"、"apple 什么意思"）
+  if (/(翻译|英文|英语|日语|韩语|法语|德语|西语|俄语|translate|translation|怎么说|什么意思|英译中|中译英|日译中|中译日|用英语|用英文|的英语|的英文|的日文|怎么读|音标|释义)/i.test(cleanQ)) {
+    const entity = cleanQ
+      .replace(/^(请问|帮我|请)?\s*翻译\s*[:：(（]?/i, "")
+      .replace(/[)）]$/i, "")
+      .replace(/(用英语怎么说|用英文怎么说|怎么说|什么意思|英译中|中译英|日译中|中译日|用英语|用英文|的英语|的英文|的日文|的韩文|怎么读|音标|释义|请问|帮我|一下)/gi, "")
+      .replace(/[（）()]/g, "")
+      .trim() || cleanQ;
+
+    return {
+      intent: "translation",
+      intents: ["translation", "language_translation", "dictionary_lookup"],
+      entity,
+      goal: "translate_text",
+      needs: [...INTENT_CAPABILITIES_MAP.translation],
+      requiredCapabilities: [...INTENT_CAPABILITIES_MAP.translation],
+      suggestedLayout: "composite_card",
+      confidence: 0.96
+    };
+  }
+
+  // 1. 搜索引擎直达与外部检索 (Search Engine Portal)
+  // 当用户查询涉及 Google、Bing、百度等搜索引擎，或明确表达外部检索诉求时
+  if (/(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜|搜索直达|快速搜索)/i.test(cleanQ)) {
+    const entity = cleanQ.replace(/(搜索引擎|搜索|入口|直达|主页|官网|搜一下|全网搜)/gi, "").trim() || cleanQ;
+    return {
+      intent: "search_engine_portal",
+      intents: ["search_engine_portal", "portal_navigation", "external_search"],
+      entity,
+      goal: "search_external",
+      needs: [...INTENT_CAPABILITIES_MAP.search_engine_portal],
+      requiredCapabilities: [...INTENT_CAPABILITIES_MAP.search_engine_portal],
+      suggestedLayout: "composite_card",
+      confidence: 0.95
+    };
+  }
 
   // 1. 天气气象 (Weather)
   if (/(天气|气温|下雨|下雪|降水|温度|穿衣指南|几度|晴天|阴天|台风|空气质量)/i.test(cleanQ)) {
@@ -345,6 +399,7 @@ ${formatAgentWidgetGuidancePrompt()}
 - "study_tutorial": 学习、编程入门、教程、速成指南 (例如: "学习 Python", "Docker入门教程")
 - "github_project": GitHub 开源项目、代码仓库 (例如: "GitHub热门项目", "vue源码仓库")
 - "weather": 城市天气、气象、温湿度、降水 (例如: "上海天气", "北京周末会下雨吗")
+- "translation": 跨语言翻译、词义释义、外语查词 (例如: "翻译（苹果的英文）", "人工智能英语怎么说", "hello中文什么意思")
 - "tech_comparison": 技术对比、选型、优缺点比较 (例如: "Vue vs React", "选哪款降噪耳机")
 - "troubleshooting": 报错诊断、Bug修复、异常排查 (例如: "npm install报错EACCES", "蓝屏代码")
 - "portal_navigation": 官网直达、官方入口 (例如: "少数派官网", "Github地址")

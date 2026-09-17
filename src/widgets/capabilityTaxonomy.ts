@@ -89,6 +89,12 @@ export const CANONICAL_CAPABILITIES = [
   "quick_links",
   "quick_action",
 
+  // ── 搜索引擎直达 ──
+  "search_engine_redirect",
+  "external_search_query",
+  "web_search_portal",
+  "engine_launcher",
+
   // ── 工具发现 ──
   "tool_cards",
   "demo_button",
@@ -187,7 +193,14 @@ export const CANONICAL_CAPABILITIES = [
   // ── 声明式组件 ──
   "custom_schema",
   "declarative_ui",
-  "dynamic_components"
+  "dynamic_components",
+
+  // ── 语言与翻译 ──
+  "language_translation",
+  "text_translation",
+  "bilingual_comparison",
+  "pronunciation_guide",
+  "dictionary_lookup"
 ] as const;
 
 export type CanonicalCapability = (typeof CANONICAL_CAPABILITIES)[number];
@@ -266,7 +279,14 @@ export const CAPABILITY_ALIASES: Record<string, CanonicalCapability> = {
   timeline: "timeline_evolution",
   pros_and_cons: "pros_cons",
   mindmap: "mindmap_tree",
-  comparison: "compare_table"
+  comparison: "compare_table",
+
+  // 3. 翻译与语言别名
+  translate: "language_translation",
+  translation: "language_translation",
+  dictionary: "dictionary_lookup",
+  bilingual: "bilingual_comparison",
+  phonetic: "pronunciation_guide"
 };
 
 /**
@@ -358,9 +378,10 @@ export const CAPABILITY_PROMPT_ENUM = CANONICAL_CAPABILITIES.join(" | ");
 export const INTENT_TAXONOMY_ALIGNMENT: Record<string, string[]> = {
   install: ["software_download", "github_project"],
   compare: ["tech_comparison"],
-  tool_discovery: ["resource_search", "general_knowledge"],
+  tool_discovery: ["resource_search", "general_knowledge", "search_engine_portal"],
   tutorial: ["study_tutorial"],
   troubleshooting: ["troubleshooting"],
+  translation: ["translation"],
   travel: ["general_knowledge"],
   explain: ["concept_explanation"],
   research: ["concept_explanation", "general_knowledge"]
@@ -387,9 +408,11 @@ export const INTENT_GOAL_LABELS: Record<string, string> = {
   github_project: "调研、克隆并使用目标开源项目",
   tech_comparison: "横向对比参数并给出选型裁决",
   troubleshooting: "定位根因并修复故障",
-  portal_navigation: "直达官方权威入口与文档",
-  concept_explanation: "理解概念定义与核心原理",
-  general_knowledge: "综合掌握主题核心要点"
+  portal_navigation: "直达官方网站与权威门户",
+  search_engine_portal: "在主流搜索引擎中进行外部检索与快速跳转",
+  translation: "跨语言文本翻译与双语词典释义",
+  concept_explanation: "理解概念定义与核心原理解析",
+  general_knowledge: "全面获取信息与多方文献研判"
 };
 
 // =========================================================================
@@ -459,6 +482,35 @@ export const OFFICIAL_WIDGET_PROFILES: Record<string, WidgetPracticalityMeta> = 
     selectionHeuristics: "当查询对象具备明确视觉形态（实物/人物/地点/界面/图表）且信源含图片时实用性最高；纯抽象概念推演、代码报错排查、无任何图片信源的任务不推荐。",
     triggerKeywords: ["图片", "照片", "图集", "壁纸", "素材", "外观", "长什么样", "图片搜索"],
     antiPatterns: ["纯抽象概念解释、术语定义与代码报错排查", "检索结果中不含任何可用图片信源的长文研报"]
+  },
+  search_engine: {
+    id: "search_engine",
+    name: "搜索引擎直达",
+    category: "action",
+    tags: ["搜索引擎", "搜索直达", "Google", "Bing", "百度", "外部搜索", "一键跳转", "快捷搜索"],
+    functionality: "智能识别用户对于 Google、Bing、百度等主流搜索引擎的检索或跳转诉求，提供极简药丸形快捷搜索框，输入后一键直达目标搜索引擎结果页",
+    bestFor: [
+      "用户检索词包含 Google、Bing、百度、必应、谷歌或搜索引擎名称",
+      "用户希望使用指定外部搜索引擎进行二次深度全网搜索",
+      "提供直达外部搜索引擎的一键搜索与跳转通道"
+    ],
+    dataRequirements: ["当前检索关键词或目标搜索引擎名称"],
+    selectionHeuristics: "当搜索词涉及 Google、Bing、百度、必应、谷歌等搜索引擎或用户表达了外部引擎检索意图时，实用性极高，Agent 应优先启用该组件并置于前列。",
+    triggerKeywords: ["google", "bing", "baidu", "百度", "必应", "谷歌", "搜索引擎", "搜狗", "duckduckgo", "搜索"]
+  },
+  translation: {
+    id: "translation",
+    name: "多语言翻译",
+    category: "action",
+    tags: ["翻译", "双语", "多语言", "词典", "英译中", "中译英", "Translate", "发音"],
+    functionality: "即时文本与词汇翻译、双语词典释义、权威发音、例句对照与一键复制",
+    bestFor: [
+      "用户搜索内容与翻译、跨语言表达、外语查词相关（如'苹果的英文'、'中译英'、'怎么说'）",
+      "双语互译、音标发音与例句对照"
+    ],
+    dataRequirements: ["待翻译词句或目标语言"],
+    selectionHeuristics: "当搜索词涉及中英日韩等翻译或双语查词时，实用性极高，Agent 应优先启用该组件并置于前列。",
+    triggerKeywords: ["翻译", "英文", "英语", "日语", "韩语", "德语", "法语", "西语", "俄语", "translate", "translation", "怎么说", "什么意思"]
   }
 };
 

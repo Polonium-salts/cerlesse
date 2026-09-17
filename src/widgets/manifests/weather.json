@@ -1,0 +1,18 @@
+{
+  "id": "weather",
+  "name": "气象预报",
+  "version": "1.0.0",
+  "description": "实时天气气温、湿度风速、空气质量与 5 天趋势预测",
+  "category": "portal",
+  "tags": ["天气", "气象", "预报", "气温", "weather", "forecast"],
+  "icon": "CloudSun",
+  "grid": {
+    "width": 75,
+    "supportedWidths": [50, 75, 100],
+    "ratio": "4:3",
+    "minWidth": 25
+  },
+  "theme": {
+    "accentColor": "#0284c7"
+  }
+}

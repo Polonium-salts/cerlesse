@@ -14,6 +14,7 @@ import { SearchHistoryDrawer } from "./components/SearchHistoryDrawer.js";
 import { TileDesktopView } from "./components/desktop/TileDesktopView.js";
 import { WidgetMarketplaceDrawer } from "./components/desktop/WidgetMarketplaceDrawer.js";
 import { CockpitWorkspace } from "./components/CockpitWorkspace.js";
+import { ImageGalleryPage } from "./components/ImageGalleryPage.js";
 import { Alert, AlertDescription } from "./components/ui/alert.js";
 import { Button } from "./components/ui/button.js";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs.js";
@@ -44,6 +45,7 @@ import { navigate, readRoute, useRoute, RouteTab } from "./lib/router.js";
 import { motion } from "motion/react";
 import { 
   LayoutGrid, 
+  Images,
   GitFork, 
   Scale, 
   Database, 
@@ -260,7 +262,25 @@ export default function App() {
       if (activeResult.customCards && activeResult.customCards.length > 0) {
         setCustomCards(prev => mergeCustomCards(prev, activeResult.customCards!));
       }
+      if (activeResult.layoutStrategy) {
+        if (activeResult.layoutStrategy.gridConfig?.image_gallery) {
+          activeResult.layoutStrategy.gridConfig.image_gallery.colSpanLg = 9;
+          activeResult.layoutStrategy.gridConfig.image_gallery.width = 75;
+          activeResult.layoutStrategy.gridConfig.image_gallery.isAutoFilled = false;
+        }
+        if (activeResult.layoutStrategy.customWidgetSpans?.image_gallery) {
+          activeResult.layoutStrategy.customWidgetSpans.image_gallery = 9;
+        }
+      }
       const rec = activeResult.layoutStrategy || computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
+      if (rec.gridConfig?.image_gallery) {
+        rec.gridConfig.image_gallery.colSpanLg = 9;
+        rec.gridConfig.image_gallery.width = 75;
+        rec.gridConfig.image_gallery.isAutoFilled = false;
+      }
+      if (rec.customWidgetSpans?.image_gallery) {
+        rec.customWidgetSpans.image_gallery = 9;
+      }
       setLayoutPreset(rec.intentType);
       setCustomWidgetOrder(rec.componentOrder);
       setCustomEnabledWidgets(rec.enabledWidgets || null);
@@ -294,6 +314,17 @@ export default function App() {
       autoFillMode
     });
 
+    if (packing.gridConfig.image_gallery) {
+      packing.gridConfig.image_gallery.colSpanLg = 9;
+      packing.gridConfig.image_gallery.width = 75;
+      packing.gridConfig.image_gallery.isAutoFilled = false;
+    }
+
+    const finalCustomSpans = { ...(baseRec.customWidgetSpans || {}), ...customWidgetSpans };
+    if (finalCustomSpans.image_gallery) {
+      finalCustomSpans.image_gallery = 9;
+    }
+
     // 用户尚未手动调过任何跨度时，布局数字直接沿用排版 Agent 的决策单：
     // 那份数字是用「磁贴桌面正在使用的同一套行带装箱求解器」预演出来的，
     // 因此控制栏上的行数/补位列数与用户实际看到的画面口径完全一致（决策即渲染）。
@@ -314,7 +345,7 @@ export default function App() {
       widgetStatusMap: baseRec.widgetStatusMap,
       // 合并而非覆盖：排版 Agent 给出的栅格跨度是宽度权威，用户手动调整则拥有更高优先级。
       // （原实现直接用用户态覆盖，会把 Agent 精心编排的宽度整批打回默认值）
-      customWidgetSpans: { ...(baseRec.customWidgetSpans || {}), ...customWidgetSpans },
+      customWidgetSpans: finalCustomSpans,
       alignmentMode,
       autoFillGaps,
       autoFillMode,
@@ -761,6 +792,7 @@ export default function App() {
         ...(widgetModule.actions || {}),
         openMindMap: () => goToPage("mindmap"),
         openComparison: () => goToPage("comparison"),
+        openImagePage: () => goToPage("images"),
         reSearch: () => executeSearch(activeResult.query, settings.enableDeepSearch),
         viewDeepAnalysis: () => goToPage("sources"),
         viewDetails: () => goToPage("reasoning")
@@ -821,6 +853,10 @@ export default function App() {
                 <TabsTrigger value="bento" className="flex items-center gap-1.5 font-medium">
                   <LayoutGrid className="size-3.5" />
                   <span>小组件网格</span>
+                </TabsTrigger>
+                <TabsTrigger value="images" className="flex items-center gap-1.5 font-medium">
+                  <Images className="size-3.5" />
+                  <span>图片图库</span>
                 </TabsTrigger>
                 <TabsTrigger value="mindmap">
                   <GitFork />
@@ -885,7 +921,7 @@ export default function App() {
               />
             </div>
 
-            {/* 首页小组件中心快捷入口 */}
+            {/* 首页小组件中心与图片图库快捷入口 */}
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
               <Button
                 variant="outline"
@@ -895,8 +931,20 @@ export default function App() {
                 title="浏览所有搜索引擎小组件 (Live Tile 磁贴矩阵与插件系统)"
               >
                 <LayoutGrid className="size-3.5 text-primary" />
-                <span className="font-medium text-foreground">显示搜索引擎小组件网格库</span>
+                <span className="font-medium text-foreground">小组件网格库</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono font-semibold">12 磁贴</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage("images")}
+                className="rounded-full h-8 px-3.5 gap-1.5 border-border/80 bg-background/60 hover:bg-muted/80 backdrop-blur-md shadow-xs transition-all hover:scale-105"
+                title="进入专门加载与浏览图片的页面"
+              >
+                <Images className="size-3.5 text-pink-500" />
+                <span className="font-medium text-foreground">图片图库专区</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/10 text-pink-500 font-mono font-semibold">HD 画廊</span>
               </Button>
             </div>
           </div>
@@ -939,11 +987,22 @@ export default function App() {
 
             {/* Empty State: 直接访问结果页目录但尚无研报数据 */}
             {!activeResult && !isLoading && agentSteps.length === 0 && (
-              <div className="flex-1 flex items-center justify-center py-24 text-center">
-                <p className="text-sm text-muted-foreground">
-                  当前页面暂无研报数据，请在顶部搜索框输入关键词开始检索。
-                </p>
-              </div>
+              activeTab === "images" ? (
+                <div className="w-full">
+                  <ImageGalleryPage
+                    activeResult={null}
+                    query={route.query || currentQuery}
+                    onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+                    isWideCanvas={isWideCanvas}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center py-24 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    当前页面暂无研报数据，请在顶部搜索框输入关键词开始检索。
+                  </p>
+                </div>
+              )
             )}
 
             {/* Results Bento Grid & Focused Tabs */}
@@ -971,7 +1030,16 @@ export default function App() {
                           strategy={currentStrategy}
                           enabledWidgets={currentStrategy.componentOrder}
                           widgetPlan={activeResult.widgetPlan}
-                          customCards={customCards.length > 0 ? customCards : activeResult.customCards}
+                          customCards={
+                            (customCards && customCards.length > 0 ? customCards : (activeResult.customCards || []))
+                              .filter(c => {
+                                if (c.isPinned) return true;
+                                const q1 = (c.basedOnQuery || "").trim().toLowerCase();
+                                const q2 = (activeResult?.query || "").trim().toLowerCase();
+                                if (!q1 || !q2) return true;
+                                return q1 === q2 || q1.includes(q2) || q2.includes(q1);
+                              })
+                          }
                           activeResult={activeResult}
                           isWideCanvas={isWideCanvas}
                           onOpenMarketplace={() => setIsMarketplaceOpen(true)}
@@ -985,7 +1053,19 @@ export default function App() {
                   </div>
                 )}
 
-                {/* 2. TAB: RELATED LINKS */}
+                {/* 2. TAB: DEDICATED IMAGE GALLERY PAGE */}
+                {activeTab === "images" && (
+                  <div className="w-full">
+                    <ImageGalleryPage
+                      activeResult={activeResult}
+                      query={activeResult.query || currentQuery}
+                      onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+                      isWideCanvas={isWideCanvas}
+                    />
+                  </div>
+                )}
+
+                {/* 3. TAB: RELATED LINKS */}
                 {(activeTab === "mindmap" || activeTab === "comparison" || activeTab === "sources") && (
                   <div className="w-full">
                     <RelatedLinksWidget
@@ -996,7 +1076,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* 5. TAB: AGENT REASONING STREAM */}
+                {/* 4. TAB: AGENT REASONING STREAM */}
                 {activeTab === "reasoning" && (
                   <div className="w-full max-w-5xl mx-auto">
                     <AgentProgressStream

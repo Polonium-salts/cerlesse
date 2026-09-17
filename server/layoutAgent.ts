@@ -210,6 +210,11 @@ function mergeLlmSuggestion(
     }
   }
 
+  // image_gallery 严格锁定 9 格 (75% 长度)
+  if (mergedSpans.image_gallery !== undefined) {
+    mergedSpans.image_gallery = 9;
+  }
+
   const emphasized = allowed.has(String(suggestion.emphasized))
     ? (String(suggestion.emphasized) as ResultWidgetKey)
     : base.emphasized;
@@ -320,6 +325,10 @@ export async function planWidgetLayout(
 
   const spans: Partial<Record<ResultWidgetKey, number>> = {};
   for (const key of safeOrder) {
+    if (key === "image_gallery") {
+      spans[key] = 9;
+      continue;
+    }
     const preferred =
       plannedSpans[key] ??
       baseStrategy.customWidgetSpans?.[key] ??
@@ -327,6 +336,9 @@ export async function planWidgetLayout(
       widthToSpan(widgetPlan?.widgets?.find((w: any) => (typeof w === "string" ? w : w?.type) === key)?.size) ??
       (key === "related_links" ? spanOfTileWidth(50, LAYOUT_PREVIEW_COLUMNS) : 6);
     spans[key] = normalizeWidgetSpan(preferred);
+  }
+  if (safeOrder.includes("image_gallery")) {
+    spans.image_gallery = 9;
   }
 
   // 官网跳转与 AI 智能回答都封顶半宽（50%），避免任一组件挤占整屏首屏。
@@ -477,7 +489,7 @@ export async function planWidgetLayout(
     intentLabel: baseStrategy.intentLabel,
     componentOrder: [...safeOrder],
     emphasizedWidget: emphasized,
-    spans: { ...spans },
+    spans: { ...spans, ...(safeOrder.includes("image_gallery") ? { image_gallery: 9 } : {}) },
     enabledWidgets: [...safeOrder],
     disabledWidgets,
     reasoning,
@@ -502,12 +514,23 @@ export async function planWidgetLayout(
       : `小组件排版 Agent 完成 12 栅格瀑布流错落编排：以「${getWidgetLabel(emphasized)}」为视觉焦点，共排布 ${safeOrder.length} 个小组件，${preview.staggeredCount} 张磁贴呈错落顶线，桌面下沿参差 ${Math.round(preview.raggednessPx)}px，内部空洞仅 ${preview.gapCount} 格。`,
     componentOrder: [...safeOrder],
     emphasizedWidget: emphasized,
-    gridConfig: { ...baseStrategy.gridConfig, ...packing.gridConfig },
+    gridConfig: {
+      ...baseStrategy.gridConfig,
+      ...packing.gridConfig,
+      ...(packing.gridConfig.image_gallery ? {
+        image_gallery: {
+          ...packing.gridConfig.image_gallery,
+          colSpanLg: 9,
+          width: 75,
+          isAutoFilled: false
+        }
+      } : {})
+    },
     totalRows: preview.totalRows,
     packingMethod: "semantic-css-grid",
     enabledWidgets: [...safeOrder],
     disabledWidgets,
-    customWidgetSpans: { ...spans },
+    customWidgetSpans: { ...spans, ...(safeOrder.includes("image_gallery") ? { image_gallery: 9 } : {}) },
     // 瀑布流不会去"补满行带"——留白由错落自然吸收，强行 dense 补位只会把磁贴挤成对齐的横条
     autoFillGaps: false,
     autoFillMode: "off",

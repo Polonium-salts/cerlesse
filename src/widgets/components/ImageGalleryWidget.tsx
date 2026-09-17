@@ -7,13 +7,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  ShieldAlert
+  ShieldAlert,
+  Loader2,
+  Plus
 } from "lucide-react";
 import { IOSWidget } from "../../components/ui/IOSWidget.js";
 import { Badge } from "../../components/ui/badge.js";
 import { Button } from "../../components/ui/button.js";
 import { cn } from "../../lib/utils.js";
 import type { SearchSynthesisResult } from "../../types.js";
+import type { TileWidth } from "../../lib/tileLayoutEngine.js";
 
 /** 图库单张图片条目 */
 export interface GalleryImage {
@@ -48,21 +51,19 @@ export interface ImageGalleryData {
 
 export interface ImageGalleryWidgetProps {
   data: ImageGalleryData;
+  size?: TileWidth;
   isCompact?: boolean;
   /** Live Tile 是否已翻到背面：翻面时收起灯箱，避免两面状态打架 */
   isFlipped?: boolean;
   openUrl?: (url: string) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
+  onOpenImagePage?: () => void;
 }
 
 /**
- * 图库最多呈现的图片数。
- *
- * 这不是性能限制而是排版护栏：磁贴会为内容让高（见 TileDesktopView 的实测回路），
- * 无上限时一次检索的几十张缩略图会把单张磁贴拉成数千像素的长条，
- * 整面磁贴墙的节奏被一张卡吃干。12 张足够铺满一屏再留一点余量。
+ * 图库初始收录的最大图片数（增加到 120，配合分页组件浏览，不破坏排版高度）。
  */
-const GALLERY_MAX_IMAGES = 12;
+const GALLERY_MAX_IMAGES = 120;
 
 /** 取域名用于角标展示（失败时返回 undefined，绝不抛错） */
 function hostnameOf(url?: string): string | undefined {
@@ -115,12 +116,6 @@ export function buildImageGalleryData(result?: SearchSynthesisResult): ImageGall
   const images: GalleryImage[] = [];
   const seen = new Set<string>();
 
-  /**
-   * 收录一张图。
-   *
-   * 去重键用「大图地址」而非网格地址：同一张原图在不同来源里可能挂着不同的缩略图 URL，
-   * 用缩略图去重会把它当成两张不同的图重复铺出来。
-   */
   const push = (params: {
     grid?: string;
     full?: string;
@@ -186,28 +181,57 @@ export function buildImageGalleryData(result?: SearchSynthesisResult): ImageGall
 /**
  * 相关图片小组件 (正面)
  *
- * 以自适应网格墙呈现检索到的相关图片：点击任意缩略图进入磁贴内灯箱放大预览，
- * 可左右切换并一键跳转图片原始出处。无图时给出「去图片搜索」的行动入口而非空白卡。
+ * 以自适应网格墙呈现检索到的相关图片：支持分页浏览与动态异步加载更多图片；
+ * 点击任意缩略图进入磁贴内灯箱放大预览，可左右切换并一键跳转图片原始出处。
  */
 export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
   data,
+  size = 75,
   isCompact,
   isFlipped,
   openUrl,
-  onExecuteSearch
+  onExecuteSearch,
+  onOpenImagePage
 }) => {
   const { query, images } = data;
 
+  // 异步加载更多的附加图片
+  const [extraImages, setExtraImages] = useState<GalleryImage[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [apiPage, setApiPage] = useState(1);
+  const [hasMoreFromApi, setHasMoreFromApi] = useState(true);
+
   // 网格图加载失败：按地址记录后从网格中剔除，避免留下破图占位。
-  // 刻意用地址而非条目 id 作键 —— id 是按序号生成的，换检索词后同一序号会指向
-  // 另一张图，用 id 记录会让新一轮的图片被上一轮的失败记录误伤。
   const [failed, setFailed] = useState<Set<string>>(new Set());
-  // 灯箱大图加载失败：单独记账。图库里的 thumb 与 orig 往往是两套独立资源
-  // （不同 CDN、各自的防盗链策略），一格坏掉不该把另一格也判死。
+  // 灯箱大图加载失败记录
   const [failedFull, setFailedFull] = useState<Set<string>>(new Set());
   // 灯箱当前索引（null = 未打开）
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  // 检索关键词切换时重置增量状态
+  useEffect(() => {
+    setExtraImages([]);
+    setApiPage(1);
+    setHasMoreFromApi(true);
+    setLoadMoreError(null);
+    setCurrentPage(1);
+  }, [query]);
+
+  // 合并初始图片与后续异步加载的图片（按大图/小图去重）
+  const allImages = useMemo(() => {
+    const list = [...images];
+    const seen = new Set(list.map((x) => x.fullSrc || x.src));
+    for (const extra of extraImages) {
+      const key = extra.fullSrc || extra.src;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(extra);
+      }
+    }
+    return list;
+  }, [images, extraImages]);
 
   const markFailed = useCallback((url: string) => {
     setFailed((prev) => {
@@ -228,18 +252,32 @@ export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
   }, []);
 
   const visible = useMemo(
-    () => images.filter((img) => !failed.has(img.src)),
-    [images, failed]
+    () => allImages.filter((img) => !failed.has(img.src)),
+    [allImages, failed]
   );
 
-  /**
-   * 图片集合的内容指纹。
-   * 换检索词（或该组件的图片集发生任何变化）时用它清空灯箱索引与破图记录：
-   * 否则上一轮的索引会指向新一轮的另一张图，上一轮的破图记录也会误伤新图片。
-   */
+  // 分页状态：一页显示 18 个图片（桌面端 6 列 × 3 行一次性完整铺满呈现，无需滚动）
+  const pageSize = 18;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
+
+  // 当前页图片切片
+  const pagedImages = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return visible.slice(start, start + pageSize);
+  }, [visible, currentPage, pageSize]);
+
+  // 如果有效图片数量变动导致当前页越界，则收敛到最后一页
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  // 图片集合内容指纹，变化时清空灯箱与破图记录
   const imageSignature = useMemo(
-    () => images.map((img) => `${img.src}~${img.fullSrc}`).join("|"),
-    [images]
+    () => allImages.map((img) => `${img.src}~${img.fullSrc}`).join("|"),
+    [allImages]
   );
 
   useEffect(() => {
@@ -248,38 +286,98 @@ export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
     setFailedFull(new Set());
   }, [imageSignature]);
 
-  // 翻到背面时收起灯箱：两面同时有交互态会让用户不知身在何处
+  // 翻到背面时收起灯箱
   useEffect(() => {
     if (isFlipped) setActiveIndex(null);
   }, [isFlipped]);
 
-  // 图片被剔除后索引可能越界，收敛到最后一张，避免灯箱指向空位
+  // 灯箱越界保护
   useEffect(() => {
     if (activeIndex !== null && activeIndex >= visible.length) {
       setActiveIndex(visible.length > 0 ? visible.length - 1 : null);
     }
   }, [visible.length, activeIndex]);
 
-  // 灯箱打开时聚焦到对话框，让键盘方向键 / Esc 立即可用
+  // 灯箱内切图时，同步更新网格当前页码，使用户关闭灯箱后处于对应页
+  useEffect(() => {
+    if (activeIndex !== null) {
+      const targetPage = Math.floor(activeIndex / pageSize) + 1;
+      if (targetPage !== currentPage && targetPage <= totalPages) {
+        setCurrentPage(targetPage);
+      }
+    }
+  }, [activeIndex, pageSize, totalPages, currentPage]);
+
+  // 灯箱打开时聚焦
   useEffect(() => {
     if (activeIndex !== null) dialogRef.current?.focus();
   }, [activeIndex]);
 
+  // 异步加载更多图片
+  const handleLoadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMoreFromApi || !query) return;
+    setIsLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const nextPage = apiPage + 1;
+      const res = await fetch(
+        `/api/images?q=${encodeURIComponent(query)}&page=${nextPage}&limit=36`
+      );
+      if (!res.ok) {
+        throw new Error("加载图片失败，请稍后重试");
+      }
+      const json = await res.json();
+      const rawList: any[] = Array.isArray(json.images) ? json.images : [];
+      if (rawList.length === 0) {
+        setHasMoreFromApi(false);
+      } else {
+        const newItems: GalleryImage[] = [];
+        for (const item of rawList) {
+          const grid = normalizeImageUrl(item.thumbnailUrl || item.imageUrl);
+          const full = normalizeImageUrl(item.imageUrl) || grid;
+          if (!grid) continue;
+          newItems.push({
+            id: `gallery_api_${item.id || Math.random().toString(36).substring(2, 9)}`,
+            src: grid,
+            fullSrc: full || grid,
+            alt: item.title?.trim() || (query ? `${query} 相关图片` : "相关图片"),
+            pageUrl: item.pageUrl,
+            domain: item.domain || hostnameOf(item.pageUrl) || hostnameOf(grid),
+            source: item.source,
+            resolution: item.resolution
+          });
+        }
+        if (newItems.length === 0) {
+          setHasMoreFromApi(false);
+        } else {
+          setExtraImages((prev) => [...prev, ...newItems]);
+          setApiPage(nextPage);
+          // 自动跳转到新加载的图片所在页
+          setCurrentPage((prev) => prev + 1);
+        }
+      }
+    } catch (err: any) {
+      setLoadMoreError(err?.message || "网络异常，未能加载更多图片");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMoreFromApi, query, apiPage]);
+
   const openImageSearch = useCallback(() => {
+    if (onOpenImagePage) {
+      onOpenImagePage();
+      return;
+    }
     if (!query) return;
     if (onExecuteSearch) {
       onExecuteSearch(`${query} 图片`, false);
     } else if (openUrl) {
       openUrl(`https://www.bing.com/images/search?q=${encodeURIComponent(query)}`);
     }
-  }, [query, onExecuteSearch, openUrl]);
+  }, [query, onExecuteSearch, openUrl, onOpenImagePage]);
 
   const active = activeIndex !== null ? visible[activeIndex] : null;
 
-  /**
-   * 灯箱实际加载的地址：优先原图，原图已判死则回落网格图。
-   * 回落之后仍是同一张图，只是清晰度差一档 —— 远好过弹出一个空灯箱。
-   */
   const lightboxSrc = active
     ? (failedFull.has(active.fullSrc) ? active.src : active.fullSrc)
     : null;
@@ -296,17 +394,57 @@ export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
   );
 
   const headerBadge = (
-    <Badge
-      variant="outline"
-      className="text-[11px] h-5 font-normal text-muted-foreground whitespace-nowrap"
-    >
-      共 {visible.length} 张
-    </Badge>
+    <div className="flex items-center gap-1.5">
+      <Badge
+        variant="outline"
+        className="text-[11px] h-5 font-normal text-muted-foreground whitespace-nowrap"
+      >
+        第 {currentPage} / {totalPages} 页 · 共 {visible.length} 张
+      </Badge>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+            className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            title="上一页"
+          >
+            <ChevronLeft className="size-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => {
+              if (currentPage < totalPages) {
+                setCurrentPage((p) => p + 1);
+              } else if (hasMoreFromApi && !isLoadingMore) {
+                handleLoadMore();
+              }
+            }}
+            disabled={(currentPage >= totalPages && !hasMoreFromApi) || isLoadingMore}
+            className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            title={currentPage < totalPages ? "下一页" : "加载更多"}
+          >
+            {isLoadingMore && currentPage === totalPages ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <ChevronRight className="size-3" />
+            )}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 
   if (visible.length === 0) {
     return (
       <IOSWidget
+        id="widget-image-gallery"
+        data-widget-id="image_gallery"
+        data-width="75"
+        size={size}
         title="相关图片"
         icon={<Images className="size-4 text-primary" />}
         className="w-full h-full border-border/80 bg-card"
@@ -317,19 +455,37 @@ export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
             本轮检索未返回可用图片
           </p>
           <p className="text-[11px] text-muted-foreground/80 leading-relaxed max-w-[22rem]">
-            检索信源中暂无缩略图或研报配图。可切换至图片搜索直接查看该主题的相关图片。
+            检索信源中暂无缩略图或研报配图。可尝试在线加载更多或切换至图片专区。
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={openImageSearch}
-            disabled={!query}
-            className="gap-1.5 whitespace-nowrap"
-            title={query ? `搜索「${query}」的相关图片` : "暂无可检索的主题词"}
-          >
-            <Search className="size-3.5" />
-            <span>搜索相关图片</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {query && (
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="gap-1.5 whitespace-nowrap"
+                title="尝试加载更多图片"
+              >
+                {isLoadingMore ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )}
+                <span>加载图片</span>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={openImageSearch}
+              className="gap-1.5 whitespace-nowrap"
+              title="进入图片专区或发起图片检索"
+            >
+              <Images className="size-3.5" />
+              <span>进入图片图库专区</span>
+            </Button>
+          </div>
         </div>
       </IOSWidget>
     );
@@ -337,24 +493,31 @@ export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
 
   return (
     <IOSWidget
+      id="widget-image-gallery"
+      data-widget-id="image_gallery"
+      data-width="75"
+      size={size}
       title="相关图片"
       icon={<Images className="size-4 text-primary" />}
       badge={headerBadge}
       className="w-full h-full border-border/80 bg-card"
     >
-      <div className="flex flex-col h-full gap-2.5">
-        {/* 图片网格墙：窄栏 2 列，常规 2→3 列，所有图片等比裁剪保证栅格整齐 */}
+      <div className="flex flex-col gap-2.5">
+        {/* 图片网格墙：一次性完整呈现当前页的图片 */}
         <div
           className={cn(
-            "grid gap-1.5 sm:gap-2",
-            isCompact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"
+            "grid gap-2",
+            isCompact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
           )}
         >
-          {visible.map((img, idx) => (
+          {pagedImages.map((img) => (
             <button
               key={img.id}
               type="button"
-              onClick={() => setActiveIndex(idx)}
+              onClick={() => {
+                const gIdx = visible.findIndex((v) => v.id === img.id);
+                setActiveIndex(gIdx >= 0 ? gIdx : 0);
+              }}
               title={img.alt}
               className="group/img relative overflow-hidden rounded-lg border border-border/70 bg-muted/30 aspect-[4/3] cursor-pointer transition-colors hover:border-primary/40"
             >
@@ -379,23 +542,127 @@ export const ImageGalleryWidget: React.FC<ImageGalleryWidgetProps> = ({
           ))}
         </div>
 
-        {/* 底部行动条 */}
-        <div className="mt-auto flex items-center justify-between gap-2 pt-1 border-t border-border/40">
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground min-w-0">
-            <ShieldAlert className="size-3 shrink-0" />
-            <span className="truncate">图片来自公开检索信源，版权归原作者所有</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={openImageSearch}
-            disabled={!query}
-            className="h-7 shrink-0 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 whitespace-nowrap"
-            title={query ? `在图片搜索中查看更多「${query}」相关图片` : "暂无可检索的主题词"}
-          >
-            <Search className="size-3.5" />
-            <span>更多图片</span>
-          </Button>
+        {/* 底部行动条与分页控制 */}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/40">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground min-w-0">
+              <ShieldAlert className="size-3 shrink-0" />
+              <span className="truncate hidden sm:inline">公开信源，版权归原作者</span>
+              <span className="truncate sm:hidden">公开信源</span>
+            </span>
+            {loadMoreError && (
+              <span className="text-[11px] text-destructive truncate max-w-[140px]" title={loadMoreError}>
+                {loadMoreError}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            {/* 分页控制区 */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-0.5 bg-muted/40 rounded-lg p-0.5 border border-border/50">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  title="上一页"
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+
+                {/* 数字页码 pills */}
+                <div className="flex items-center gap-0.5 px-0.5">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => {
+                      if (totalPages <= 5) return true;
+                      return Math.abs(p - currentPage) <= 1 || p === 1 || p === totalPages;
+                    })
+                    .map((p, idx, arr) => {
+                      const showEllipsisBefore = idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <React.Fragment key={p}>
+                          {showEllipsisBefore && (
+                            <span className="text-[10px] text-muted-foreground px-0.5 select-none">…</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(p)}
+                            className={cn(
+                              "h-5 min-w-[20px] px-1 text-[11px] font-medium rounded transition-colors cursor-pointer",
+                              currentPage === p
+                                ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            )}
+                          >
+                            {p}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (currentPage < totalPages) {
+                      setCurrentPage((p) => p + 1);
+                    } else if (hasMoreFromApi && !isLoadingMore) {
+                      handleLoadMore();
+                    }
+                  }}
+                  disabled={(currentPage >= totalPages && !hasMoreFromApi) || isLoadingMore}
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  title={currentPage < totalPages ? "下一页" : "加载更多"}
+                >
+                  {isLoadingMore && currentPage === totalPages ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <ChevronRight className="size-3.5" />
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* 加载更多图片按钮 */}
+            {hasMoreFromApi && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadMore}
+                disabled={isLoadingMore || !query}
+                className="h-6.5 px-2 text-xs gap-1 border-border/70 hover:bg-muted/70 whitespace-nowrap"
+                title={query ? `从网络继续加载更多「${query}」相关图片` : "暂无检索词"}
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin text-primary" />
+                    <span>加载中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-3 text-muted-foreground" />
+                    <span>加载更多</span>
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* 进入图片专区 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openImageSearch}
+              disabled={!query}
+              className="h-6.5 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 whitespace-nowrap"
+              title={query ? `进入图片图库专区查看更多「${query}」高清大图` : "暂无可检索的主题词"}
+            >
+              <Images className="size-3.5" />
+              <span className="hidden sm:inline">图库专区</span>
+            </Button>
+          </div>
         </div>
       </div>
 

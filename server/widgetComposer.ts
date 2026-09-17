@@ -430,21 +430,25 @@ function composeGenericSuite(options: ComposeOptions): WidgetBlueprint {
  * 根据 Intent Analyzer 的多目标意图分析与用户真实目的，分发至专属组合器组合子组件
  */
 export function composeWidgetsForTask(options: ComposeOptions): WidgetBlueprint {
-  const { intentAnalysis } = options;
+  const safeOptions: ComposeOptions = {
+    ...options,
+    results: options.results || []
+  };
+  const { intentAnalysis } = safeOptions;
   const intent = intentAnalysis.intent;
 
   switch (intent) {
     case "software_download":
-      return composeSoftwareSuite(options);
+      return composeSoftwareSuite(safeOptions);
     case "resource_search":
-      return composeResourceSuite(options);
+      return composeResourceSuite(safeOptions);
     case "study_tutorial":
-      return composeStudySuite(options);
+      return composeStudySuite(safeOptions);
     case "github_project":
-      return composeGitHubSuite(options);
+      return composeGitHubSuite(safeOptions);
     case "weather":
-      return composeWeatherSuite(options);
+      return composeWeatherSuite(safeOptions);
     default:
-      return composeGenericSuite(options);
+      return composeGenericSuite(safeOptions);
   }
 }

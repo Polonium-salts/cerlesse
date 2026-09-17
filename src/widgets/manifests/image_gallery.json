@@ -44,9 +44,9 @@
   "icon": "Images",
   "grid": {
     "width": 75,
-    "supportedWidths": [25, 50, 75, 100],
+    "supportedWidths": [75],
     "ratio": "4:3",
-    "minWidth": 25
+    "minWidth": 75
   },
   "theme": {
     "accentColor": "#ec4899",

@@ -13,14 +13,17 @@ import { manifestMeta } from "../manifests/moduleMeta.js";
  */
 export const imageGalleryModule: WidgetModule<ImageGalleryData> = {
   ...manifestMeta("image_gallery"),
+  width: 75,
   data: (activeResult) => buildImageGalleryData(activeResult),
   render: (ctx) => (
     <ImageGalleryWidget
       data={ctx.data}
+      size={ctx.size || 75}
       isCompact={ctx.isCompact}
       isFlipped={ctx.isFlipped}
       openUrl={ctx.openUrl}
       onExecuteSearch={ctx.onExecuteSearch}
+      onOpenImagePage={ctx.actions?.openImagePage}
     />
   ),
   renderBack: (ctx) => (
