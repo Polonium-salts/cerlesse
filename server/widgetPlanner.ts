@@ -6,16 +6,13 @@ import {
   SearchResult, 
   WidgetAction,
   WidgetPlannedItem,
-  WidgetIntentAnalysis,
-  WidgetBlueprint,
-  BlueprintComponent
+  WidgetIntentAnalysis
 } from "../src/types.js";
 import type { TileWidth } from "../src/lib/tileLayoutEngine.js";
 import { classifyQueryIntent, planTaskCapabilities } from "./intentAgent.js";
 import { synthesizeToolActions } from "./toolRegistry.js";
 import { analyzeWidgetIntent, INTENT_CAPABILITIES_MAP } from "./widgetIntentAnalyzer.js";
 import { normalizeCapabilities, INTENT_TAXONOMY_ALIGNMENT, GENERIC_INTENTS, INTENT_CONFIDENCE_OVERRIDE_THRESHOLD, INTENT_GOAL_LABELS, ARCHETYPE_PROFILES, OFFICIAL_WIDGET_PROFILES, type CanonicalCapability } from "../src/widgets/capabilityTaxonomy.js";
-import { composeWidgetsForTask } from "./widgetComposer.js";
 import { retrieveWidgets } from "../src/widgets/widgetRetriever.js";
 import { selectAndReRankWidgets } from "./widgetSelector.js";
 import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
@@ -157,33 +154,6 @@ interface WidgetDefinition {
 }
 
 const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
-  custom_cards: {
-    type: "custom_cards",
-    // custom_cards 是复合蓝图宿主：WidgetComposer 会按 intent 渲染软件/素材/学习/开源/气象套件。
-    // 因此它必须声明这些套件真实渲染出的全部能力，否则外围磁贴选择拿不到任何能力信号。
-    capabilities: [
-      "download", "releases", "software_info", "version_history", "release_binary", "git_clone",
-      "tool_cards", "demo_button", "try_online",
-      "itinerary_timeline", "travel_budget",
-      "pros_cons", "checklist", "install_step", "verdict_recommendation", "parameter_matrix",
-      "timeline_evolution", "quote_dossier",
-      // 学习套件 (composeStudySuite)
-      "roadmap_step", "code_run", "recommended_courses", "practice_exercises", "progress_tracker",
-      // 素材套件 (composeResourceSuite)
-      "resource_search", "resource_preview", "favorite", "tags_filter", "author_credit",
-      "license_info", "resolution_spec",
-      // 气象套件 (composeWeatherSuite)
-      "weather_current", "weather_forecast", "weather_indices", "air_quality",
-      "clothing_advice", "location_map"
-    ],
-    tags: ["独有卡片", "动态套件", "高密度业务", "场景定制", "全能卡片"],
-    description: "场景专属业务卡片套件（包含软件下载枢纽、学习路线图、素材预览、气象看板等）",
-    selectionHeuristics: "具备极高场景针对性，在具有明确领域意图时优先级最高",
-    basePriority: 95,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
   actions_toolbox: {
     type: "actions_toolbox",
     capabilities: ["install_command", "copy_text", "quick_action", "cli_execution", "quick_links", "code_snippet", "fix_command", "download", "git_clone"],
@@ -381,6 +351,116 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     width: 75,
     flexible: true,
     isActionOriented: true
+  },
+  software_info: {
+    type: "software_info",
+    capabilities: ["software_info", "version_history", "copy_text", "official_site", "license_info"],
+    tags: ["软件信息", "版本", "开发者", "支持平台", "开源许可证", "规格参数"],
+    description: "展示软件名称、版本、支持平台、开发者、开源许可证与核心规格",
+    selectionHeuristics: "查询特定软件工具详情时实用性最高",
+    basePriority: 88,
+    width: 50,
+    flexible: true,
+    isActionOriented: false
+  },
+  download: {
+    type: "download",
+    capabilities: ["download", "releases", "release_binary", "install_command", "package_manager", "official_site"],
+    tags: ["下载中心", "安装包", "Release", "Homebrew", "npm", "pip", "多平台"],
+    description: "提供多平台安装包下载、包管理器一键安装指令、版本镜像与校验",
+    selectionHeuristics: "用户需要下载或安装软件时优先级最高",
+    basePriority: 95,
+    width: 75,
+    flexible: true,
+    isActionOriented: true
+  },
+  release_history: {
+    type: "release_history",
+    capabilities: ["version_history", "releases", "timeline_evolution", "milestones", "history"],
+    tags: ["版本历史", "更新日志", "Changelog", "迭代路线", "新特性"],
+    description: "展示软件/项目的历史版本演进、更新日志、重大特性与破坏性变更",
+    selectionHeuristics: "关注项目更新记录与版本变动时使用",
+    basePriority: 82,
+    width: 75,
+    flexible: true,
+    isActionOriented: false
+  },
+  repository: {
+    type: "repository",
+    capabilities: ["git_clone", "software_info", "trend_signals", "copy_text", "verified_docs"],
+    tags: ["GitHub", "GitLab", "代码库", "Star趋势", "快速克隆", "开源生态"],
+    description: "展示 GitHub/GitLab 仓库详情、Star/Fork 统计、语言构成、快速克隆指令",
+    selectionHeuristics: "涉及开源项目与 GitHub 仓库时使用",
+    basePriority: 86,
+    width: 75,
+    flexible: true,
+    isActionOriented: true
+  },
+  code_playground: {
+    type: "code_playground",
+    capabilities: ["code_snippet", "code_run", "copy_text", "cli_execution"],
+    tags: ["代码演练", "在线运行", "调试", "控制台", "多语言示例"],
+    description: "提供交互式代码编辑、即时运行控制台、多语言代码片段与控制台输出模拟",
+    selectionHeuristics: "教程、排错与技术实现场景下实用性最高",
+    basePriority: 85,
+    width: 75,
+    flexible: true,
+    isActionOriented: true
+  },
+  tool_discovery: {
+    type: "tool_discovery",
+    capabilities: ["tool_cards", "try_online", "software_directory", "free_tool", "pricing_comparison"],
+    tags: ["工具发现", "替代品", "精选工具", "开源竞品", "效率神器"],
+    description: "发现精选效能工具、竞品与开源替代方案，包含价格模型与核心优势对比",
+    selectionHeuristics: "用户寻找工具或替代方案时使用",
+    basePriority: 84,
+    width: 75,
+    flexible: true,
+    isActionOriented: true
+  },
+  document_preview: {
+    type: "document_preview",
+    capabilities: ["verified_docs", "literature_archive", "citation_retrieval", "evidence_chain"],
+    tags: ["文档速览", "白皮书", "PDF研报", "Markdown规范", "学术论文"],
+    description: "快速预览技术规范、PDF 研报、Markdown 手册与学术证据链摘要",
+    selectionHeuristics: "长篇研报与权威文档速读时使用",
+    basePriority: 83,
+    width: 75,
+    flexible: true,
+    isActionOriented: false
+  },
+  news_feed: {
+    type: "news_feed",
+    capabilities: ["temporal_analysis", "temporal_evolution", "citation_retrieval", "overview_synthesis"],
+    tags: ["时事资讯", "最新动态", "行业要闻", "快讯", "新闻流"],
+    description: "汇聚全网即时要闻、热点资讯、科技动态与时序演进摘要",
+    selectionHeuristics: "查询最新时事资讯与动态时使用",
+    basePriority: 81,
+    width: 75,
+    flexible: true,
+    isActionOriented: false
+  },
+  trend_chart: {
+    type: "trend_chart",
+    capabilities: ["trend_signals", "temporal_evolution", "sentiment_distribution", "temporal_analysis"],
+    tags: ["趋势图表", "增长走势", "时序数据", "Star曲线", "数据分析"],
+    description: "可视化时序趋势走势、行业增长曲线、Star 增长率与对比图表",
+    selectionHeuristics: "需要查看时序演进与增长走势时使用",
+    basePriority: 84,
+    width: 75,
+    flexible: true,
+    isActionOriented: false
+  },
+  map: {
+    type: "map",
+    capabilities: ["location_map", "attractions_map", "route_plan", "itinerary_timeline"],
+    tags: ["地图导览", "地理位置", "周边POI", "景点推荐", "交通出行"],
+    description: "展示地理位置、周边 POI 兴趣点探索、路线规划与旅行交通建议",
+    selectionHeuristics: "涉及地理位置、旅游出行与周边探索时使用",
+    basePriority: 85,
+    width: 75,
+    flexible: true,
+    isActionOriented: true
   }
 };
 
@@ -465,7 +545,7 @@ function resolveWidgetsFromCapabilities(
 
   // 能力特异性（IDF）预计算：一项能力被越多组件声明，就越"通用"，越不足以证明语义对齐。
   // 这条约束专治"声明一大串能力就能霸榜"：旧实现按命中条数等权加分 (matchCount * 12)，
-  // 而 custom_cards 声明了 45 项能力，仅凭数量就恒居榜首，把真正对口的组件压了下去。
+  // 如果组件声明过多能力，按特异性加权压制通用能力，突出真正对口的组件。
   const declaredBy = new Map<string, number>();
   for (const def of Object.values(WIDGET_REGISTRY) as WidgetDefinition[]) {
     for (const cap of new Set(def.capabilities.map(c => c.toLowerCase()))) {
@@ -500,9 +580,6 @@ function resolveWidgetsFromCapabilities(
     }
 
     // 特殊能力直接强关联
-    if (key === "custom_cards") {
-      dynamicScore += 20; // 专属定制卡片始终具备最高业务表达力
-    }
     if (key === "actions_toolbox" && (capSet.has("install_command") || capSet.has("download") || capSet.has("fix_command"))) {
       dynamicScore += 25;
     }
@@ -543,7 +620,7 @@ function resolveWidgetsFromCapabilities(
         continue;
       }
     } else {
-      const isBaseSupport = ["ai_answer", "related_links", "sources", "custom_cards"].includes(key);
+      const isBaseSupport = ["ai_answer", "related_links", "sources"].includes(key);
       if (matchCount === 0 && !isBaseSupport) {
         continue;
       }
@@ -561,18 +638,12 @@ function resolveWidgetsFromCapabilities(
         finalSize = 75;
       }
 
-      // custom_cards 是复合蓝图宿主，需要足够面积承载多分区内容：
-      // 矩阵类内容偏高 -> 100% 全宽；其余业务套件 -> 75% 焦点磁贴。
-      if (key === "custom_cards") {
-        finalSize = archetype === "parameter_matrix" ? 100 : 75;
-      }
-
       // 优先级分层：下游排版引擎（tileLayoutEngine / bentoLayoutEngine / TileDesktopView）
       // 一律按 priority 降序重排，数组顺序会被丢弃。
       // 因此必须把"是否真正命中任务能力"编码进 priority 本身，
       // 否则 basePriority 较高的固定锚点组件会永久压住意图命中的组件，
       // 导致意图分析的输出无法体现在桌面优先级上。
-      // 命中层: score + MATCH_TIER_BONUS (>=142) 恒高于未命中层最大可能值 (custom_cards 95+20=115)
+      // 命中层: score + MATCH_TIER_BONUS (>=142) 恒高于未命中层最大可能值
       const MATCH_TIER_BONUS = 100;
       const priority = matchCount > 0 ? dynamicScore + MATCH_TIER_BONUS : dynamicScore;
 
@@ -644,31 +715,12 @@ function resolveWidgetsFromCapabilities(
 }
 
 /**
- * 语义驱动的多功能组件蓝图构建器 (Server-Driven UI Blueprint Synthesizer)
- * 委托至 Widget Composer 将高层业务意图、主体实体和原子能力转化为结构化、可直接渲染的功能蓝图
- */
-export function buildWidgetBlueprint(
-  query: string,
-  results: SearchResult[],
-  intentAnalysis: WidgetIntentAnalysis,
-  targetLanguage?: string
-): WidgetBlueprint {
-  return composeWidgetsForTask({
-    query,
-    results,
-    intentAnalysis,
-    targetLanguage
-  });
-}
-
-/**
  * WidgetPlannerAgent (专属小组件规划 Agent)
  * 职责：
  * 1. 深度研判用户目标与语义意图 (Widget Intent Layer)
  * 2. 梳理完成任务所需的真实能力模型 (Required Capabilities)
- * 3. 构造 Server-Driven UI 复合组件蓝图 (Widget Blueprint)
- * 4. 依据能力库 (Capability Registry) 动态规划原型与交互动作
- * 5. 计算各小组件的展示优先级 (Priority)、尺寸需求 (Size) 与可压缩程度 (Flexible)
+ * 3. 依据能力库 (Capability Registry) 动态规划原型与交互动作
+ * 4. 计算各小组件的展示优先级 (Priority)、尺寸需求 (Size) 与可压缩程度 (Flexible)
  */
 export async function planWidgetStrategy(options: {
   query: string;
@@ -688,10 +740,7 @@ export async function planWidgetStrategy(options: {
     env
   });
 
-  // 2. 阶段二：Server-Driven UI 功能蓝图生成 (Widget Blueprint)
-  const blueprint: WidgetBlueprint = buildWidgetBlueprint(query, results, intentAnalysis, options.targetLanguage);
-
-  // 3. 基础意图分类与目标研判
+  // 2. 基础意图分类与目标研判
   const { intent, userGoal } = await classifyQueryIntent(query, results, { env, apiKey });
 
   // 4. 聚合语义分析所需能力与任务能力清单
@@ -799,21 +848,6 @@ export async function planWidgetStrategy(options: {
     widgetOrder = plannedWidgets.map(w => w.type);
   }
 
-  // 场景定制卡片 (custom_cards)：若蓝图生成了定制组件且尚未包含，加入规划
-  if (blueprint.components && blueprint.components.length > 0 && !plannedWidgets.some(w => w.type === "custom_cards")) {
-    plannedWidgets.push({
-      type: "custom_cards",
-      priority: 90,
-      size: suggestedArchetype === "parameter_matrix" ? 100 : 75,
-      flexible: true,
-      reason: `场景专属定制卡片 (${suggestedArchetype})`
-    });
-    plannedWidgets.sort((a, b) => (b.priority || 50) - (a.priority || 50));
-    if (!widgetOrder.includes("custom_cards")) {
-      widgetOrder.push("custom_cards");
-    }
-  }
-
   // 严格依据 Agent Router 过滤黑名单组件
   const canonicalIntent = normalizeIntent(intent);
   plannedWidgets = plannedWidgets.filter(w => !isWidgetForbidden(w.type, canonicalIntent));
@@ -839,17 +873,15 @@ export async function planWidgetStrategy(options: {
     intent: canonicalIntent,
     userGoal: resolvedUserGoal,
     suggestedArchetype,
+    allowCustomCard: false,
     capabilities,
     widgets: plannedWidgets,
     widgetOrder,
     primaryActions,
     intentAnalysis,
-    blueprint,
     widgetCustomizations: {
-      cardTitle: blueprint.title,
-      cardSubtitle: blueprint.subtitle,
       suggestedArchetype,
-      themeColor: blueprint.themeColor || themeColor,
+      themeColor,
       iconName
     }
   };

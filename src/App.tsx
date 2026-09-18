@@ -709,20 +709,6 @@ export default function App() {
     return "col-span-12";
   };
 
-  // 同步所有自定卡片与 Agent 锻造卡片至插件注册中心
-  useEffect(() => {
-    const allCards = [
-      ...(customCards || []),
-      ...(activeResult?.customCards || [])
-    ];
-    allCards.forEach((card) => {
-      WidgetRegistry.registerCustomCard(card, {
-        onUpdateCard: handleUpdateCard,
-        onDeleteCard: handleDeleteCard
-      });
-    });
-  }, [customCards, activeResult?.customCards, handleUpdateCard, handleDeleteCard]);
-
   const renderWidgetContent = (
     key: ResultWidgetKey, 
     overrideCompact?: boolean,
@@ -733,52 +719,7 @@ export default function App() {
     const placement = currentStrategy.gridConfig?.[key];
     const isCompact = overrideCompact ?? (size === 25) ?? placement?.isCompact ?? (placement?.colSpanLg ? placement.colSpanLg <= 3 : false);
 
-    // 1. 若为旧版 custom_cards 聚合组件且包含多张卡片，平铺展示
-    if (key === "custom_cards") {
-      const activeNormQ = (activeResult?.query || "").trim().toLowerCase();
-      let relevantCards = customCards.filter(c => {
-        if (c.isPinned) return true;
-        const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
-        return cardQ === activeNormQ;
-      });
-
-      if (relevantCards.length === 0 && activeResult.customCards && activeResult.customCards.length > 0) {
-        relevantCards = activeResult.customCards;
-      }
-
-      const seenArch = new Set<string>();
-      const displayCards = relevantCards.filter(c => {
-        if (seenArch.has(c.archetype)) return false;
-        seenArch.add(c.archetype);
-        return true;
-      });
-
-      if (displayCards.length === 0) return null;
-      return (
-        <div className="space-y-4 w-full">
-          {displayCards.map((card) => {
-            const cardModule = WidgetRegistry.get(`custom_card__${card.id}`) 
-              || WidgetRegistry.registerCustomCard(card, {
-                  onUpdateCard: handleUpdateCard,
-                  onDeleteCard: handleDeleteCard
-                });
-            return (
-              <WidgetRuntime
-                key={card.id}
-                module={cardModule}
-                activeResult={activeResult}
-                size={size}
-                isCompact={isCompact}
-                onResize={onResize}
-                onExecuteSearch={(q, deep) => executeSearch(q, deep)}
-              />
-            );
-          })}
-        </div>
-      );
-    }
-
-    // 2. 插件系统架构核心：统一通过 WidgetRegistry 调度渲染所有官方与 AI 动态插件模块
+    // 插件系统架构核心：统一通过 WidgetRegistry 调度渲染所有官方插件模块
     const widgetModule = WidgetRegistry.get(key);
     if (!widgetModule) {
       console.warn(`Widget module not found in registry: ${key}`);

@@ -298,27 +298,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
         );
       }
     })(),
-    // 独有卡片锻造 (仅在 widgetPlan 明确需要或允许自定义卡片时执行，杜绝冗余锻造)
-    (async () => {
-      const needsCustomCard = widgetPlan.allowCustomCard ?? (
-        widgetPlan.widgets?.some(w => (typeof w === "string" ? w : w.type) === "custom_cards") ||
-        Boolean(widgetPlan.blueprint?.components && widgetPlan.blueprint.components.length > 0)
-      );
-      if (!needsCustomCard) {
-        return [];
-      }
-      try {
-        return await forgeMultipleDynamicWidgets({
-          query,
-          results: filteredResults,
-          widgetPlan,
-          apiKey: options.openRouterApiKey
-        });
-      } catch (err) {
-        console.warn("[Search Agent] Custom card forging failed safely:", err);
-        return [];
-      }
-    })()
+    // 独有卡片锻造已彻底停用 (Agent 仅使用官方与社区标准小组件)
+    (async () => [] as CustomCardData[])()
   ]);
 
   updateStep(

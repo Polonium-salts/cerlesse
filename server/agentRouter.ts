@@ -114,6 +114,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "错误现象分析、根因诊断、分步修复指令与交互式验证清单",
     allowedWidgets: [
       "troubleshooting",
+      "code_playground",
       "actions_toolbox",
       "verification_checklist",
       "ai_answer",
@@ -133,7 +134,11 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "software_download",
     description: "软件官方下载枢纽、多平台安装包、包管理器命令与系统要求",
     allowedWidgets: [
-      "custom_cards",
+      "software_info",
+      "download",
+      "release_history",
+      "repository",
+      "tool_discovery",
       "actions_toolbox",
       "related_links",
       "verification_checklist",
@@ -143,7 +148,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["custom_cards", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["software_info", "download", "ai_answer", "related_links", "sources"],
     requiresImages: false,
     recommendedArchetype: "download_hub",
     defaultCapabilities: ["software_info", "download", "releases", "install_command", "official_site"]
@@ -154,7 +159,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "技术方案/产品多维参数横向评测、优缺点对比与选型裁决",
     allowedWidgets: [
       "comparison",
-      "custom_cards",
+      "trend_chart",
+      "tool_discovery",
       "ai_answer",
       "takeaways",
       "sources",
@@ -174,7 +180,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "素材预览、图片图集、视觉参考与资源聚合",
     allowedWidgets: [
       "image_gallery",
-      "custom_cards",
       "ai_answer",
       "related_links",
       "takeaways",
@@ -192,7 +197,9 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "study_tutorial",
     description: "循序渐进教程、实操代码、阶段演进与架构导图",
     allowedWidgets: [
-      "custom_cards",
+      "code_playground",
+      "document_preview",
+      "repository",
       "actions_toolbox",
       "ai_answer",
       "mindmap",
@@ -203,7 +210,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["custom_cards", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
     requiresImages: false,
     recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["roadmap_step", "code_snippet", "core_principles"]
@@ -213,7 +220,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "travel",
     description: "分天行程路线规划、必去景点、天气实况与旅行预算",
     allowedWidgets: [
-      "custom_cards",
+      "map",
       "image_gallery",
       "weather",
       "ai_answer",
@@ -223,10 +230,10 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["troubleshooting", "translation"],
-    mandatoryWidgets: ["custom_cards", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["map", "ai_answer", "related_links", "sources"],
     requiresImages: false,
     recommendedArchetype: "travel_itinerary",
-    defaultCapabilities: ["itinerary_timeline", "travel_budget", "weather_forecast", "resource_preview"]
+    defaultCapabilities: ["location_map", "attractions_map", "itinerary_timeline", "travel_budget", "weather_forecast", "resource_preview"]
   },
 
   portal_navigation: {
@@ -269,7 +276,12 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "github_project",
     description: "开源项目详情、Star趋势、Release下载与快速克隆指令",
     allowedWidgets: [
-      "custom_cards",
+      "repository",
+      "software_info",
+      "download",
+      "release_history",
+      "trend_chart",
+      "code_playground",
       "actions_toolbox",
       "related_links",
       "sources",
@@ -278,21 +290,22 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["custom_cards", "related_links", "ai_answer", "sources"],
+    mandatoryWidgets: ["repository", "related_links", "ai_answer", "sources"],
     requiresImages: false,
     recommendedArchetype: "download_hub",
-    defaultCapabilities: ["software_info", "download", "install_command", "official_site"]
+    defaultCapabilities: ["git_clone", "software_info", "download", "install_command", "official_site"]
   },
 
   concept_explanation: {
     intent: "concept_explanation",
     description: "核心概念剖析、底层原理阐释与认知拓扑导图",
     allowedWidgets: [
+      "document_preview",
+      "code_playground",
       "ai_answer",
       "takeaways",
       "mindmap",
       "sources",
-      "custom_cards",
       "related_links",
       "token_usage"
     ],
@@ -307,6 +320,9 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "general_knowledge",
     description: "全网多信源综合问答、要点提炼与引文溯源",
     allowedWidgets: [
+      "news_feed",
+      "document_preview",
+      "map",
       "ai_answer",
       "takeaways",
       "sources",
@@ -324,6 +340,9 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "research",
     description: "深度行业研报、产业链图谱、横向对比与权威信源存证",
     allowedWidgets: [
+      "document_preview",
+      "trend_chart",
+      "news_feed",
       "ai_answer",
       "takeaways",
       "sources",
@@ -343,7 +362,9 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     intent: "tool_discovery",
     description: "实用工具筛选矩阵、在线体验沙盒与选型评价",
     allowedWidgets: [
-      "custom_cards",
+      "tool_discovery",
+      "software_info",
+      "download",
       "actions_toolbox",
       "related_links",
       "ai_answer",
@@ -353,7 +374,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["custom_cards", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["tool_discovery", "ai_answer", "related_links", "sources"],
     requiresImages: false,
     recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["tool_discovery", "try_online", "software_info", "quick_links"]
@@ -363,9 +384,9 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   install: {
     intent: "software_download",
     description: "软件安装与下载",
-    allowedWidgets: ["custom_cards", "actions_toolbox", "related_links", "verification_checklist", "ai_answer", "sources", "takeaways", "token_usage"],
+    allowedWidgets: ["actions_toolbox", "related_links", "verification_checklist", "ai_answer", "sources", "takeaways", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["custom_cards", "related_links", "ai_answer", "sources"],
+    mandatoryWidgets: ["related_links", "ai_answer", "sources"],
     requiresImages: false,
     recommendedArchetype: "download_hub",
     defaultCapabilities: ["software_info", "download", "releases", "install_command", "official_site"]
@@ -374,7 +395,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   compare: {
     intent: "tech_comparison",
     description: "多方案对比与选型",
-    allowedWidgets: ["comparison", "custom_cards", "ai_answer", "takeaways", "sources", "mindmap", "related_links", "token_usage"],
+    allowedWidgets: ["comparison", "ai_answer", "takeaways", "sources", "mindmap", "related_links", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
     mandatoryWidgets: ["comparison", "ai_answer", "related_links", "sources"],
     requiresImages: false,
@@ -385,9 +406,9 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   tutorial: {
     intent: "study_tutorial",
     description: "操作教程与学习指南",
-    allowedWidgets: ["custom_cards", "actions_toolbox", "ai_answer", "mindmap", "sources", "takeaways", "related_links", "verification_checklist", "token_usage"],
+    allowedWidgets: ["actions_toolbox", "ai_answer", "mindmap", "sources", "takeaways", "related_links", "verification_checklist", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["custom_cards", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
     requiresImages: false,
     recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["roadmap_step", "code_snippet", "core_principles"]
@@ -396,7 +417,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   explain: {
     intent: "concept_explanation",
     description: "概念解释与原理",
-    allowedWidgets: ["ai_answer", "takeaways", "mindmap", "sources", "custom_cards", "related_links", "token_usage"],
+    allowedWidgets: ["ai_answer", "takeaways", "mindmap", "sources", "related_links", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
     mandatoryWidgets: ["ai_answer", "related_links", "sources"],
     requiresImages: false,

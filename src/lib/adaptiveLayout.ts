@@ -121,11 +121,6 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["deep_research", "quick_definition", "travel", "comparison", "balanced", "official_portal", "code_tutorial", "architecture", "troubleshooting", "fact_check", "news_trend", "install", "tool_discovery"],
     isActionOriented: false
   },
-  custom_cards: {
-    capabilities: ["download_hub", "tool_discovery", "travel_itinerary", "parameter_matrix", "verdict_summary", "pros_cons", "quote_dossier"],
-    intentFit: ["install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "deep_research", "architecture", "balanced"],
-    isActionOriented: true
-  },
   actions_toolbox: {
     capabilities: ["copy_command", "download_package", "quick_action", "cli_execution", "quick_links"],
     intentFit: ["install", "troubleshooting", "code_tutorial", "tool_discovery", "official_portal", "quick_definition", "balanced"],
@@ -225,6 +220,56 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: [
       "translation"
     ],
+    isActionOriented: true
+  },
+  software_info: {
+    capabilities: ["software_info", "version_history", "copy_text", "official_site", "license_info"],
+    intentFit: ["install", "tool_discovery", "code_tutorial", "deep_research"],
+    isActionOriented: false
+  },
+  download: {
+    capabilities: ["download", "releases", "release_binary", "install_command", "package_manager", "official_site"],
+    intentFit: ["install", "tool_discovery"],
+    isActionOriented: true
+  },
+  release_history: {
+    capabilities: ["version_history", "releases", "timeline_evolution", "milestones", "history"],
+    intentFit: ["install", "deep_research", "code_tutorial"],
+    isActionOriented: false
+  },
+  repository: {
+    capabilities: ["git_clone", "software_info", "trend_signals", "copy_text", "verified_docs"],
+    intentFit: ["install", "code_tutorial", "tool_discovery", "deep_research"],
+    isActionOriented: true
+  },
+  code_playground: {
+    capabilities: ["code_snippet", "code_run", "copy_text", "cli_execution"],
+    intentFit: ["code_tutorial", "troubleshooting", "quick_definition"],
+    isActionOriented: true
+  },
+  tool_discovery: {
+    capabilities: ["tool_cards", "try_online", "software_directory", "free_tool", "pricing_comparison"],
+    intentFit: ["tool_discovery", "install", "comparison"],
+    isActionOriented: true
+  },
+  document_preview: {
+    capabilities: ["verified_docs", "literature_archive", "citation_retrieval", "evidence_chain"],
+    intentFit: ["deep_research", "quick_definition", "code_tutorial"],
+    isActionOriented: false
+  },
+  news_feed: {
+    capabilities: ["temporal_analysis", "temporal_evolution", "citation_retrieval", "overview_synthesis"],
+    intentFit: ["news_trend", "deep_research", "balanced"],
+    isActionOriented: false
+  },
+  trend_chart: {
+    capabilities: ["trend_signals", "temporal_evolution", "sentiment_distribution", "temporal_analysis"],
+    intentFit: ["deep_research", "comparison", "news_trend"],
+    isActionOriented: false
+  },
+  map: {
+    capabilities: ["location_map", "attractions_map", "route_plan", "itinerary_timeline"],
+    intentFit: ["travel"],
     isActionOriented: true
   }
 };
@@ -332,15 +377,6 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     basePriority: 6,
     category: "analytical"
   },
-  custom_cards: {
-    id: "custom_cards",
-    label: "搜索定制独有组件",
-    iconName: "Sparkles",
-    width: 50,
-    minWidth: 50,
-    basePriority: 8,
-    category: "primary"
-  },
   search_engine: {
     id: "search_engine",
     label: "搜索引擎直达",
@@ -392,6 +428,96 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     width: 75,
     minWidth: 50,
     basePriority: 28,
+    category: "primary"
+  },
+  software_info: {
+    id: "software_info",
+    label: "软件信息",
+    iconName: "Info",
+    width: 50,
+    minWidth: 25,
+    basePriority: 24,
+    category: "primary"
+  },
+  download: {
+    id: "download",
+    label: "下载中心",
+    iconName: "Download",
+    width: 75,
+    minWidth: 50,
+    basePriority: 29,
+    category: "primary"
+  },
+  release_history: {
+    id: "release_history",
+    label: "版本历史",
+    iconName: "History",
+    width: 75,
+    minWidth: 50,
+    basePriority: 20,
+    category: "analytical"
+  },
+  repository: {
+    id: "repository",
+    label: "开源代码库",
+    iconName: "Github",
+    width: 75,
+    minWidth: 50,
+    basePriority: 22,
+    category: "primary"
+  },
+  code_playground: {
+    id: "code_playground",
+    label: "代码演练场",
+    iconName: "Code2",
+    width: 75,
+    minWidth: 50,
+    basePriority: 21,
+    category: "utility"
+  },
+  tool_discovery: {
+    id: "tool_discovery",
+    label: "工具发现与替代品",
+    iconName: "Compass",
+    width: 75,
+    minWidth: 50,
+    basePriority: 21,
+    category: "primary"
+  },
+  document_preview: {
+    id: "document_preview",
+    label: "文档速览与研报",
+    iconName: "FileText",
+    width: 75,
+    minWidth: 50,
+    basePriority: 19,
+    category: "analytical"
+  },
+  news_feed: {
+    id: "news_feed",
+    label: "时事资讯",
+    iconName: "Newspaper",
+    width: 75,
+    minWidth: 50,
+    basePriority: 18,
+    category: "analytical"
+  },
+  trend_chart: {
+    id: "trend_chart",
+    label: "趋势与时序图表",
+    iconName: "TrendingUp",
+    width: 75,
+    minWidth: 50,
+    basePriority: 20,
+    category: "analytical"
+  },
+  map: {
+    id: "map",
+    label: "地理位置与地图导览",
+    iconName: "MapPin",
+    width: 75,
+    minWidth: 50,
+    basePriority: 25,
     category: "primary"
   }
 };

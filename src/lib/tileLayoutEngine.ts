@@ -98,9 +98,7 @@ export const WIDGET_RATIOS: Record<string, TileRatio> = {
   // —— 官方小组件：比例全部来自插件清单的 grid.ratio 字段。
   //    要改某个磁贴的形状，请编辑 src/widgets/manifests/<id>.json，不要在
   //    这里加特例 —— 那会让"清单外的隐藏比例"重新出现，两边迟早失配。
-  ...MANIFEST_RATIOS,
-  // —— 非官方插件：用户自定义卡片容器没有清单，比例仍由布局引擎本地维护
-  custom_cards: "4:3"
+  ...MANIFEST_RATIOS
 };
 
 /** 自定义卡片原型 -> 固定宽高比（AI 锻造的独有卡片按其原型定型） */

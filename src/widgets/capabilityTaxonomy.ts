@@ -641,3 +641,31 @@ ${archetypeSection}
 `;
 }
 
+/**
+ * 规范意图全集 (Canonical Intents)
+ */
+export const CANONICAL_INTENTS = [
+  "weather",
+  "translation",
+  "software_download",
+  "resource_search",
+  "study_tutorial",
+  "github_project",
+  "tech_comparison",
+  "troubleshooting",
+  "portal_navigation",
+  "search_engine_portal",
+  "concept_explanation",
+  "general_knowledge",
+  "travel",
+  "research",
+  "tool_discovery",
+  "install",
+  "compare",
+  "tutorial",
+  "explain"
+] as const;
+
+export type CanonicalIntent = (typeof CANONICAL_INTENTS)[number];
+
+

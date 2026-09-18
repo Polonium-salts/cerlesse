@@ -1,17 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  RotateCcw,
-  Store,
-  Check,
   Trash2,
-  BookmarkCheck,
-  Columns3,
   ArrowLeftRight,
-  Sparkles,
-  LayoutGrid,
-  GripVertical,
-  Move
+  GripVertical
 } from "lucide-react";
 import {
   ResultWidgetKey,
@@ -22,10 +14,7 @@ import {
 } from "../../types.js";
 import {
   solveTileLayout,
-  saveDesktopState,
-  clearDesktopState,
   TileWidth,
-  SolvedTileItem,
   TileLayoutInput,
   TILE_COLUMN_GAP_PX,
   TILE_ROW_GAP_PX,
@@ -39,10 +28,9 @@ import {
 import { MANIFEST_MIN_WIDTHS } from "../../widgets/manifests/index.js";
 import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetRuntime } from "../../widgets/runtime.js";
-import { resolveDynamicCapabilityWidgets, getWidgetLabel } from "../../lib/adaptiveLayout.js";
+import { resolveDynamicCapabilityWidgets } from "../../lib/adaptiveLayout.js";
 import { MuuriWidgetGrid, MuuriWidgetItem } from "./MuuriWidgetGrid.js";
 import { Button } from "../ui/button.js";
-import { Badge } from "../ui/badge.js";
 
 interface TileDesktopViewProps {
   strategy: AdaptiveLayoutStrategy;
@@ -51,9 +39,9 @@ interface TileDesktopViewProps {
   customCards?: CustomCardData[];
   activeResult: SearchSynthesisResult;
   isWideCanvas?: boolean;
-  onOpenMarketplace: () => void;
+  onOpenMarketplace?: () => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onNavigateTab?: (tab: "bento" | "images" | "mindmap" | "comparison" | "sources" | "reasoning" | "custom_cards") => void;
+  onNavigateTab?: (tab: "bento" | "images" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
   onUpdateCard?: (updated: CustomCardData) => void;
   onDeleteCard?: (id: string) => void;
 }
@@ -64,7 +52,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   widgetPlan,
   customCards = [],
   activeResult,
-  onOpenMarketplace,
   onExecuteSearch,
   onNavigateTab,
   onUpdateCard,
@@ -74,10 +61,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   const [userSides, setUserSides] = useState<Record<string, "left" | "right">>({});
   // 用户移除的小组件集合
   const [hiddenTileIds, setHiddenTileIds] = useState<Set<string>>(new Set());
-  // 已保存提示 Toast 状态
-  const [showSavedToast, setShowSavedToast] = useState(false);
-  // 自动对齐提示
-  const [showAlignToast, setShowAlignToast] = useState(false);
   // 容器物理宽度监听
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(1280);
@@ -87,8 +70,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
   const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
 
-  // 注册中心补全版本号：注册中心是模块级单例，补登记不会自动触发 React 更新，
-  // 需要此信号让磁贴重新解析模块。
+  // 注册中心补全版本号
   const [registryRevision] = useState(0);
 
   /** 解析小组件模块；registryRevision 参与解析，手动补全后即可重新命中 */
@@ -175,20 +157,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       list = list.filter(k => k !== "takeaways");
     }
 
-    // 过滤与当前搜索词不相关的 custom_cards
-    const relevantCustomCards = customCards.filter(c => {
-      if (c.isPinned) return true;
-      const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
-      if (!cardQ) return true;
-      return cardQ === query || query.includes(cardQ) || cardQ.includes(query);
-    });
-
-    if (relevantCustomCards.length > 0 && !list.includes("custom_cards") && !hiddenTileIds.has("custom_cards")) {
-      list.push("custom_cards");
-    } else if (relevantCustomCards.length === 0) {
-      list = list.filter(k => k !== "custom_cards");
-    }
-
     // 保证用户指令：图片小组件保持启用（除非用户在当前会话中显式关闭）
     if (!hiddenTileIds.has("image_gallery") && !list.includes("image_gallery")) {
       list.push("image_gallery");
@@ -197,8 +165,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     // 过滤用户已显式隐藏的组件，并确保注册中心有对应模块
     const visibleList = list.filter(k => !hiddenTileIds.has(String(k)));
     const uniqueKeys = Array.from(new Set(visibleList));
-    return uniqueKeys.filter((k) => k === "custom_cards" || Boolean(resolveWidgetModule(String(k))));
-  }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, customCards, widgetPlan]);
+    return uniqueKeys.filter((k) => Boolean(resolveWidgetModule(String(k))));
+  }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, widgetPlan]);
 
   // 监听各个小组件实际内容高度，当内容变化时自动扩充磁贴高度以一次性显示全部内容
   useEffect(() => {
@@ -264,46 +232,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     const inputs: TileLayoutInput[] = [];
 
     for (const key of activeKeys) {
-      if (key === "custom_cards") {
-        const query = (activeResult?.query || "").trim().toLowerCase();
-        const relevantCards = customCards.filter(c => {
-          if (c.isPinned) return true;
-          const cardQ = (c.basedOnQuery || "").trim().toLowerCase();
-          if (!cardQ) return true;
-          return cardQ === query || query.includes(cardQ) || cardQ.includes(query);
-        });
-
-        const seenCards = new Set<string>();
-        relevantCards.forEach((card, idx) => {
-          const cardKey = `custom_card__${card.id}`;
-          if (hiddenTileIds.has(cardKey) || hiddenTileIds.has(card.id)) return;
-          if (seenCards.has(card.id) || seenCards.has(card.archetype)) return;
-          seenCards.add(card.id);
-          seenCards.add(card.archetype);
-          
-          const declaredCardWidth = tileWidthFromSpan(card.colSpan);
-          const size: TileWidth = declaredCardWidth || (
-            card.archetype === "parameter_matrix"
-              ? 50
-              : 25
-          );
-
-          const measuredHeight = contentHeights[cardKey];
-
-          inputs.push({
-            id: cardKey,
-            size,
-            preferredSide: userSides[cardKey] || userSides[card.id],
-            ratio: resolveTileRatio(cardKey, ARCHETYPE_RATIOS[card.archetype]),
-            priority: 110 - idx * 5,
-            isEmphasized: idx === 0,
-            contentHeightPx: measuredHeight,
-            minSpan: minSpanFor(cardKey, size)
-          });
-        });
-        continue;
-      }
-
       if (hiddenTileIds.has(String(key))) continue;
 
       const planned = plannedMap.get(key);
@@ -377,29 +305,12 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     });
   };
 
-  // 触发整行互补自动对齐重排（75%+25% 填满整行，50%+50% 填满整行）
-  const handleAutoAlignRows = () => {
-    clearDesktopState();
-    setUserSides({});
-    setCustomMuuriOrder([]);
-    setShowAlignToast(true);
-    setTimeout(() => setShowAlignToast(false), 2500);
-  };
-
-  // 恢复全部被隐藏的磁贴
-  const handleRestoreAllTiles = () => {
-    setUserSides({});
-    setHiddenTileIds(new Set());
-    setCustomMuuriOrder([]);
-    clearDesktopState();
-  };
-
   // 桌面布局引擎选择："muuri" (Muuri 动态交叉回填引擎) | "skyline" (2D Skyline 装箱引擎)
-  const [layoutEngine, setLayoutEngine] = useState<"muuri" | "skyline">("muuri");
+  const [layoutEngine] = useState<"muuri" | "skyline">("muuri");
 
   // Muuri 拖拽与排序控制
-  const [muuriDragEnabled, setMuuriDragEnabled] = useState<boolean>(true);
-  const [muuriDragAction, setMuuriDragAction] = useState<"move" | "swap">("move");
+  const [muuriDragEnabled] = useState<boolean>(true);
+  const [muuriDragAction] = useState<"move" | "swap">("move");
   const [customMuuriOrder, setCustomMuuriOrder] = useState<string[]>([]);
 
   // 拖拽排序后更新顺序
@@ -407,40 +318,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     setCustomMuuriOrder(newOrder);
   };
 
-  // 保存当前桌面布局到本地
-  const handleSaveDesktop = () => {
-    saveDesktopState(layoutSolution.items);
-    setShowSavedToast(true);
-    setTimeout(() => setShowSavedToast(false), 2500);
-  };
-
   // 渲染单个磁贴内容
   const renderTileContentById = (id: string, size: TileWidth) => {
-    // 若为自定义卡片
-    if (id.startsWith("custom_card__")) {
-      const cardId = id.replace("custom_card__", "");
-      const card = customCards.find(c => c.id === cardId);
-      if (!card) return null;
-
-      const cardModule = WidgetRegistry.get(id) 
-        || WidgetRegistry.registerCustomCard(card, {
-            onUpdateCard,
-            onDeleteCard
-          });
-
-      return (
-        <WidgetRuntime
-          key={id}
-          module={cardModule}
-          activeResult={activeResult}
-          size={size}
-          isCompact={size === 25}
-          onResize={undefined}
-          onExecuteSearch={onExecuteSearch}
-        />
-      );
-    }
-
     // 官方或已注册模块
     const widgetModule = resolveWidgetModule(id);
     if (!widgetModule) {
@@ -551,151 +430,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   }, [tileInputs, customCards, activeResult, customMuuriOrder, muuriDragEnabled, onNavigateTab, onExecuteSearch, onUpdateCard, onDeleteCard]);
 
   return (
-    <div className="w-full space-y-4">
-      {/* 桌面控制台总线 (Desktop Control Bar) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl bg-card border border-border shadow-sm text-xs">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* OS 标识图标 */}
-          <div className="w-7 h-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-black">
-            ⊞
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-foreground">
-              Live Tile 桌面系统
-            </span>
-            <Badge
-              variant="secondary"
-              className="font-medium cursor-help"
-              title={[
-                `${layoutSolution.items.length} 张磁贴 · ${activeColumns} 栅格列 · 固定比例装箱`,
-                `错落：${layoutSolution.staggeredCount} 张磁贴独占顶线（共 ${layoutSolution.topLineCount} 条顶线）`,
-                `参差：桌面下沿起伏 ${Math.round(layoutSolution.raggednessPx)}px`,
-                layoutSolution.gapCount > 0
-                  ? `内部空洞：${layoutSolution.gapCount} 个栅格单元`
-                  : "内部零空洞",
-                ...(layoutDecision
-                  ? [
-                    "",
-                    `${layoutDecision.agentName} 排版决策单`,
-                    `焦点组件：${getWidgetLabel(agentFocusKey)}`,
-                    `求解方式：${layoutDecision.llmRefined ? "大模型精修" : "确定性装箱"} · 耗时 ${layoutDecision.executionTimeMs}ms`,
-                    ...layoutDecision.reasoning
-                  ]
-                  : [])
-              ].filter(Boolean).join("\n")}
-            >
-              <span>{layoutSolution.items.length} 磁贴</span>
-              <span className="text-muted-foreground/50">·</span>
-              <span>{activeColumns} 栅格列</span>
-            </Badge>
-          </div>
-        </div>
-
-        {/* 右侧桌面控制动作 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* 排版引擎切换：Muuri 交叉回填 vs Skyline 2D 装箱 */}
-          <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60">
-            <Button
-              variant={layoutEngine === "muuri" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setLayoutEngine("muuri")}
-              className={`h-7 px-2.5 text-xs gap-1.5 rounded-md ${
-                layoutEngine === "muuri" ? "shadow-xs font-semibold" : "text-muted-foreground"
-              }`}
-              title="Muuri 智能交叉填充：开启 fillGaps: true，大卡片与小卡片自由穿插，自动回填所有空隙"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Muuri 交叉填充</span>
-            </Button>
-            <Button
-              variant={layoutEngine === "skyline" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setLayoutEngine("skyline")}
-              className={`h-7 px-2.5 text-xs gap-1.5 rounded-md ${
-                layoutEngine === "skyline" ? "shadow-xs font-semibold" : "text-muted-foreground"
-              }`}
-              title="Skyline 2D 装箱引擎：基于天际线算法的高密度整行落位"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Skyline 装箱</span>
-            </Button>
-          </div>
-
-          {/* Muuri 专用拖拽与交互模式切换 */}
-          {layoutEngine === "muuri" && (
-            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-muted/40 border border-border/50">
-              <Button
-                variant={muuriDragEnabled ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setMuuriDragEnabled(!muuriDragEnabled)}
-                className={`h-7 px-2 text-xs gap-1 rounded-md ${
-                  muuriDragEnabled ? "font-semibold" : "text-muted-foreground"
-                }`}
-                title={muuriDragEnabled ? "已开启自由拖拽：抓取组件即可重排位置" : "拖拽已锁定：组件保持当前静止排列"}
-              >
-                <Move className="w-3 h-3" />
-                <span>{muuriDragEnabled ? "拖拽中" : "锁定"}</span>
-              </Button>
-              {muuriDragEnabled && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setMuuriDragAction(muuriDragAction === "move" ? "swap" : "move")}
-                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md"
-                  title="切换拖拽排序模式：move (平滑挤移) / swap (位置互换)"
-                >
-                  <span>{muuriDragAction === "move" ? "挤移" : "互换"}</span>
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* 整行穿插排列 */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAutoAlignRows}
-            className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 h-7 text-xs"
-            title="优化小组件自动排列：支持75%与25%左右交替穿插、50%与双25%居中夹心穿插，整行对齐无缝消除留白"
-          >
-            {showAlignToast ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Columns3 className="w-3.5 h-3.5" />}
-            <span>{showAlignToast ? "已穿插排列" : "穿插重排"}</span>
-          </Button>
-
-          {/* 打开磁贴商店 */}
-          <Button size="sm" onClick={onOpenMarketplace} className="h-7 text-xs">
-            <Store className="w-3.5 h-3.5" />
-            <span>磁贴商店</span>
-          </Button>
-
-          {/* 恢复全部磁贴 */}
-          {hiddenTileIds.size > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRestoreAllTiles}
-              className="text-muted-foreground h-7 text-xs"
-              title="恢复被移除的桌面小组件"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>恢复全部</span>
-            </Button>
-          )}
-
-          {/* 保存桌面 */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSaveDesktop}
-            className="text-muted-foreground h-7 text-xs"
-            title="将当前桌面磁贴布局保存到本地"
-          >
-            {showSavedToast ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <BookmarkCheck className="w-3.5 h-3.5" />}
-            <span>{showSavedToast ? "已保存" : "保存"}</span>
-          </Button>
-        </div>
-      </div>
-
+    <div className="w-full">
       {/* 桌面磁贴网格主体 */}
       {layoutEngine === "muuri" ? (
         <MuuriWidgetGrid

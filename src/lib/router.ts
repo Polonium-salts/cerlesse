@@ -19,8 +19,7 @@ export type RouteTab =
   | "mindmap"
   | "comparison"
   | "sources"
-  | "reasoning"
-  | "custom_cards";
+  | "reasoning";
 
 export const ROUTE_PATHS = {
   home: "/",
@@ -32,10 +31,9 @@ export const ROUTE_PATHS = {
   reasoning: "/reasoning"
 } as const;
 
-/** 页面标签 -> URL 目录（custom_cards 属于全景网格页内嵌内容，复用 /search） */
+/** 页面标签 -> URL 目录 */
 const TAB_TO_PATH: Record<RouteTab, string> = {
   bento: ROUTE_PATHS.search,
-  custom_cards: ROUTE_PATHS.search,
   images: ROUTE_PATHS.images,
   mindmap: ROUTE_PATHS.mindmap,
   comparison: ROUTE_PATHS.comparison,

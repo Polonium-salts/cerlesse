@@ -1,6 +1,7 @@
 import { create, insert, search, type AnyOrama } from "@orama/orama";
 import type { ResultWidgetKey, TileWidth } from "../types.js";
 import type { CandidateWidget, ContentSignalsPayload } from "./widgetContract.js";
+import { getExtensionCatalog, ExtensionCatalogEntry } from "./registry/extensionCatalog.js";
 
 /**
  * 完整规范的小组件画像定义
@@ -15,7 +16,7 @@ export interface WidgetCatalogItem {
   keywords: string[];
   examples: string[];
   negativeIntents?: string[];
-  requiredData?: Array<"takeaways" | "images" | "sources" | "multiple_entities" | "code_snippet" | "install_command" | "custom_cards">;
+  requiredData?: Array<"takeaways" | "images" | "sources" | "multiple_entities" | "code_snippet" | "install_command">;
   defaultSpan: TileWidth;
   minConfidence: number;
   basePriority: number;
@@ -278,28 +279,144 @@ export const WIDGET_CATALOG: Record<ResultWidgetKey, WidgetCatalogItem> = {
     basePriority: 72,
     flexible: true
   },
-  custom_cards: {
-    id: "custom_cards",
-    name: "专属场景定制套件",
-    description: "由 Widget Composer 锻造的场景专属业务卡片套件（软件下载枢纽、学习路线图、素材预览等）",
-    category: "custom",
-    capabilities: [
-      "software_info",
-      "download",
-      "releases",
-      "roadmap_step",
-      "resource_preview",
-      "itinerary_timeline",
-      "travel_budget",
-      "pros_cons",
-      "parameter_matrix"
-    ],
-    intents: ["software_download", "study_tutorial", "resource_search", "travel", "github_project"],
-    keywords: ["下载", "学习路线", "教程", "素材", "攻略", "旅游", "预算", "开源项目", "github"],
-    examples: ["VS Code 下载与安装", "TypeScript 学习指南", "东京 3 天旅游攻略"],
+  software_info: {
+    id: "software_info",
+    name: "软件信息",
+    description: "展示软件名称、版本、支持平台、开发者、开源许可证与核心规格",
+    category: "portal",
+    capabilities: ["software_info", "version_history", "copy_text", "official_site", "license_info"],
+    intents: ["software_download", "github_project", "tool_discovery"],
+    keywords: ["软件", "版本", "开发者", "平台", "许可证", "license", "version", "developer", "software"],
+    examples: ["VS Code 软件信息", "Docker 版本与支持平台", "Node.js 运行环境与许可证"],
+    defaultSpan: 50,
+    minConfidence: 0.7,
+    basePriority: 88,
+    flexible: true
+  },
+  download: {
+    id: "download",
+    name: "下载中心",
+    description: "提供多平台安装包下载、包管理器一键安装指令、版本镜像与 SHA256 校验",
+    category: "action",
+    capabilities: ["download", "releases", "release_binary", "install_command", "package_manager", "official_site"],
+    intents: ["software_download", "github_project"],
+    keywords: ["下载", "安装", "installer", "dmg", "exe", "release", "brew", "npm", "pip", "curl", "download"],
+    examples: ["Node.js 安装包下载", "Docker Desktop 客户端下载", "VS Code macOS 与 Windows 下载"],
+    defaultSpan: 75,
+    minConfidence: 0.75,
+    basePriority: 95,
+    flexible: true
+  },
+  release_history: {
+    id: "release_history",
+    name: "版本历史",
+    description: "展示软件/项目的历史版本演进、更新日志 (Changelog)、重大特性与破坏性变更",
+    category: "analysis",
+    capabilities: ["version_history", "releases", "timeline_evolution", "milestones", "history"],
+    intents: ["software_download", "github_project", "research"],
+    keywords: ["版本历史", "更新日志", "changelog", "releases", "更新了什么", "新特性", "历史版本"],
+    examples: ["React 19 更新日志与破坏性改动", "Next.js 历史版本演进", "Tailwind CSS v4 发布说明"],
     defaultSpan: 75,
     minConfidence: 0.7,
-    basePriority: 94,
+    basePriority: 82,
+    flexible: true
+  },
+  repository: {
+    id: "repository",
+    name: "开源代码库",
+    description: "展示 GitHub/GitLab 仓库详情、Star/Fork 统计、语言构成、快速克隆指令与健康度",
+    category: "portal",
+    capabilities: ["git_clone", "software_info", "trend_signals", "copy_text", "verified_docs"],
+    intents: ["github_project", "study_tutorial", "software_download"],
+    keywords: ["github", "gitlab", "repo", "repository", "开源", "star", "git clone", "代码库", "源码"],
+    examples: ["facebook/react GitHub 仓库", "vercel/next.js 代码库与 Star 趋势"],
+    defaultSpan: 75,
+    minConfidence: 0.75,
+    basePriority: 86,
+    flexible: true
+  },
+  code_playground: {
+    id: "code_playground",
+    name: "代码演练场",
+    description: "提供交互式代码编辑、即时运行控制台、多语言代码片段与控制台输出模拟",
+    category: "action",
+    capabilities: ["code_snippet", "code_run", "copy_text", "cli_execution"],
+    intents: ["study_tutorial", "troubleshooting", "concept_explanation"],
+    keywords: ["代码", "运行", "playground", "code", "snippet", "调试", "控制台", "输出", "示例代码"],
+    examples: ["JavaScript 异步并发控制代码运行", "Python 列表推导式与数据处理示例"],
+    defaultSpan: 75,
+    minConfidence: 0.7,
+    basePriority: 85,
+    flexible: true
+  },
+  tool_discovery: {
+    id: "tool_discovery",
+    name: "工具发现与替代品",
+    description: "发现精选效能工具、竞品与开源替代方案，包含价格模型与核心优势对比",
+    category: "portal",
+    capabilities: ["tool_cards", "try_online", "software_directory", "free_tool", "pricing_comparison"],
+    intents: ["tool_discovery", "software_download", "tech_comparison"],
+    keywords: ["工具", "替代品", "alternative", "推荐", "好用", "开源替代", "竞品", "类似软件"],
+    examples: ["Notion 开源替代品推荐", "Figma 替代设计工具"],
+    defaultSpan: 75,
+    minConfidence: 0.72,
+    basePriority: 84,
+    flexible: true
+  },
+  document_preview: {
+    id: "document_preview",
+    name: "文档速览与研报",
+    description: "快速预览技术规范、PDF 研报、Markdown 手册与学术证据链摘要",
+    category: "analysis",
+    capabilities: ["verified_docs", "literature_archive", "citation_retrieval", "evidence_chain"],
+    intents: ["research", "concept_explanation", "study_tutorial"],
+    keywords: ["文档", "预览", "pdf", "markdown", "论文", "白皮书", "研报", "规范", "rfc", "手册"],
+    examples: ["TypeScript 5.0 规范白皮书速览", "深度学习模型论文摘要与证据链"],
+    defaultSpan: 75,
+    minConfidence: 0.72,
+    basePriority: 83,
+    flexible: true
+  },
+  news_feed: {
+    id: "news_feed",
+    name: "时事资讯",
+    description: "汇聚全网即时要闻、热点资讯、科技动态与时序演进摘要",
+    category: "synthesis",
+    capabilities: ["temporal_analysis", "temporal_evolution", "citation_retrieval", "overview_synthesis"],
+    intents: ["general_knowledge", "research"],
+    keywords: ["新闻", "资讯", "news", "时事", "热点", "最新动态", "快讯", "要闻"],
+    examples: ["AI 人工智能最新行业要闻", "全球开源大模型前沿发布快讯"],
+    defaultSpan: 75,
+    minConfidence: 0.72,
+    basePriority: 81,
+    flexible: true
+  },
+  trend_chart: {
+    id: "trend_chart",
+    name: "趋势与时序图表",
+    description: "可视化时序趋势走势、行业增长曲线、Star 增长率与对比图表",
+    category: "analysis",
+    capabilities: ["trend_signals", "temporal_evolution", "sentiment_distribution", "temporal_analysis"],
+    intents: ["research", "tech_comparison", "github_project"],
+    keywords: ["趋势", "走势", "图表", "增长", "数据", "统计", "chart", "trend", "历史走势"],
+    examples: ["AI 大模型关注度增长走势图", "React vs Vue npm 下载量趋势"],
+    defaultSpan: 75,
+    minConfidence: 0.72,
+    basePriority: 84,
+    flexible: true
+  },
+  map: {
+    id: "map",
+    name: "地理位置与地图导览",
+    description: "展示地理位置、周边 POI 兴趣点探索、路线规划与旅行交通建议",
+    category: "portal",
+    capabilities: ["location_map", "attractions_map", "route_plan", "itinerary_timeline"],
+    intents: ["travel", "general_knowledge"],
+    keywords: ["地图", "位置", "地址", "景点", "路线", "导航", "交通", "周边", "map", "location"],
+    examples: ["杭州西湖旅游地图与周边景点", "东京新宿美食与交通路线导览"],
+    defaultSpan: 75,
+    minConfidence: 0.75,
+    basePriority: 85,
     flexible: true
   }
 };
@@ -340,12 +457,42 @@ export const cjkTokenizer = {
 };
 
 let oramaDbInstance: AnyOrama | null = null;
+let lastOramaFingerprint = "";
+
+export function resetOramaWidgetDb(): void {
+  oramaDbInstance = null;
+  lastOramaFingerprint = "";
+}
+
+function extensionToCatalogItem(entry: ExtensionCatalogEntry): WidgetCatalogItem {
+  return {
+    id: entry.id as ResultWidgetKey,
+    name: entry.name,
+    description: entry.description,
+    category: (entry.category as any) || "analysis",
+    capabilities: entry.capabilities,
+    intents: entry.intents,
+    keywords: entry.keywords,
+    examples: entry.examples,
+    negativeIntents: entry.negativeIntents,
+    requiredData: (entry.requiredData as any) || [],
+    defaultSpan: (entry.layout.defaultWidth as TileWidth) || 50,
+    minConfidence: entry.agent?.minConfidence ?? 0.5,
+    basePriority: entry.agent?.priority ?? 80,
+    flexible: entry.agent?.flexible ?? true
+  };
+}
 
 /**
- * 获取或创建 Orama 小组件检索索引
+ * 获取或创建 Orama 小组件检索索引（融合 Extension Catalog 主来源与 Legacy Catalog）
  */
 export async function getOramaWidgetDb(): Promise<AnyOrama> {
-  if (oramaDbInstance) return oramaDbInstance;
+  const extCatalog = getExtensionCatalog();
+  const currentFingerprint = extCatalog.map(c => `${c.id}:${c.version}`).join("|");
+
+  if (oramaDbInstance && currentFingerprint === lastOramaFingerprint) {
+    return oramaDbInstance;
+  }
 
   const db = await create({
     schema: {
@@ -362,7 +509,20 @@ export async function getOramaWidgetDb(): Promise<AnyOrama> {
     }
   });
 
-  for (const item of Object.values(WIDGET_CATALOG)) {
+  // 1. 优先载入 Extension Catalog（插件化主来源）
+  const catalogMap = new Map<string, WidgetCatalogItem>();
+  for (const ext of extCatalog) {
+    catalogMap.set(ext.id, extensionToCatalogItem(ext));
+  }
+
+  // 2. 补齐 Legacy WIDGET_CATALOG（尚未迁移的旧组件兼容层）
+  for (const [key, item] of Object.entries(WIDGET_CATALOG)) {
+    if (!catalogMap.has(key)) {
+      catalogMap.set(key, item);
+    }
+  }
+
+  for (const item of catalogMap.values()) {
     await insert(db, {
       id: item.id,
       name: item.name,
@@ -375,6 +535,7 @@ export async function getOramaWidgetDb(): Promise<AnyOrama> {
   }
 
   oramaDbInstance = db;
+  lastOramaFingerprint = currentFingerprint;
   return db;
 }
 
@@ -413,9 +574,6 @@ function checkDataReadiness(item: WidgetCatalogItem, signals?: ContentSignalsPay
         break;
       case "install_command":
         if (signals.hasInstallCommand === true) met++;
-        break;
-      case "custom_cards":
-        if ((signals.customCardCount ?? 0) > 0) met++;
         break;
     }
   }
@@ -492,10 +650,19 @@ export async function retrieveWidgets(
     if (hit.score > maxRawScore) maxRawScore = hit.score;
   }
 
-  // 2. 遍历评估所有组件候选
+  // 2. 遍历评估所有组件候选 (Extension Catalog 优先 + Legacy WIDGET_CATALOG 兼容)
   const candidates: CandidateWidget[] = [];
+  const evaluatedCatalogMap = new Map<string, WidgetCatalogItem>();
+  for (const ext of getExtensionCatalog()) {
+    evaluatedCatalogMap.set(ext.id, extensionToCatalogItem(ext));
+  }
+  for (const [key, item] of Object.entries(WIDGET_CATALOG)) {
+    if (!evaluatedCatalogMap.has(key)) {
+      evaluatedCatalogMap.set(key, item);
+    }
+  }
 
-  for (const item of Object.values(WIDGET_CATALOG)) {
+  for (const item of evaluatedCatalogMap.values()) {
     // 2.1 语义召回分 (归一化至 0~1)
     const rawOramaScore = rawScores.get(item.id) ?? 0;
     const semanticScore = Math.min(1.0, rawOramaScore / maxRawScore);

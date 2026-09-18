@@ -1,5 +1,9 @@
 import { WidgetModule } from "./types.js";
 
+export * from "./manifest.js";
+export * from "./adapter.js";
+export * from "./extension.js";
+export * from "./manifestValidator.js";
 export * from "./types.js";
 export * from "./sandbox.js";
 

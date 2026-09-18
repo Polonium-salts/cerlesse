@@ -223,15 +223,24 @@ export type OfficialWidgetId =
   | "mindmap"
   | "actions_toolbox"
   | "verification_checklist"
-  | "custom_cards";
+  | "software_info"
+  | "download"
+  | "release_history"
+  | "repository"
+  | "code_playground"
+  | "tool_discovery"
+  | "document_preview"
+  | "news_feed"
+  | "trend_chart"
+  | "map";
 
 export type RemoteWidgetId = string;
 
 export type ResultWidgetKey = OfficialWidgetId;
 
 /**
- * 可参与自动选型的小组件全集（前端注册中心已登记的标准官方模块 14 个）。
- * ai_answer / related_links / sources 是恒启用的三大阅读流与事实存证锚点；其余组件（如 weather, translation, troubleshooting, comparison, mindmap, image_gallery, takeaways, search_engine, token_usage, actions_toolbox, verification_checklist 等）由 Agent 依据搜索意图与能力模型自主决策启停。
+ * 可参与自动选型的小组件全集（前端注册中心已登记的标准官方模块）。
+ * ai_answer / related_links / sources 是恒启用的三大阅读流与事实存证锚点；其余组件由 Agent 依据搜索意图与能力模型自主决策启停。
  * 此清单同时是排版 Agent 的组件白名单来源。
  */
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
@@ -248,7 +257,17 @@ export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "comparison",
   "mindmap",
   "actions_toolbox",
-  "verification_checklist"
+  "verification_checklist",
+  "software_info",
+  "download",
+  "release_history",
+  "repository",
+  "code_playground",
+  "tool_discovery",
+  "document_preview",
+  "news_feed",
+  "trend_chart",
+  "map"
 ];
 
 export interface WidgetStatusDetail {

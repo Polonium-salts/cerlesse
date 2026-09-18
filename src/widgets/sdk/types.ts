@@ -256,6 +256,10 @@ export interface WidgetModule<TData = any> {
   category?: WidgetCategoryType;
   /** 语义与功能标签列表 (Tags)，如 ["AI回答", "全网总结", "深度要点"]，供 Agent 结合检索内容智能选取 */
   tags?: string[];
+  /** 能力特征列表 (如 ["weather_current", "direct_answer"]) */
+  capabilities?: string[];
+  /** 匹配意图列表 (如 ["weather", "general_knowledge"]) */
+  intents?: string[];
   /** Agent 实用性提示词与底层属性定义 */
   agentHint?: WidgetAgentPromptHint;
   icon?: React.ComponentType<{ className?: string }> | string;

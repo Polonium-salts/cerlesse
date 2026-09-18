@@ -71,7 +71,6 @@ export function validateWidgetDecision(
   // 3. 检查必选组件 (Mandatory Widgets)
   for (const mand of route.mandatoryWidgets) {
     if (!selectedKeys.includes(mand)) {
-      // 若是 custom_cards，如果蓝图里有或候选里有才强制
       missingMandatory.push(mand);
       violations.push(`缺失意图 [${route.intent}] 的核心必选组件: [${mand}]`);
     }

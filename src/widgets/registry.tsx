@@ -1,13 +1,18 @@
 import React from "react";
 import { WidgetModule, ResultWidgetKey } from "./sdk/types.js";
 import { safeInstantiateWidgetModule } from "./sdk/sandbox.js";
-import { CustomCardData } from "../types.js";
 import type { TileWidth } from "../lib/tileLayoutEngine.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 import { TileAtomRenderer } from "./tileRenderer.js";
 import { OFFICIAL_WIDGET_MODULES } from "./modules/index.js";
 import { RemoteWidgetManifest, resolveCdnAssetUrl, fetchRemoteWidgetManifest } from "./sdk/cdnResolver.js";
 import { resolveManifestIcon, FALLBACK_MANIFEST_ICON } from "./manifests/icons.js";
+import { extensionRegistry, ExtensionRegistry } from "./registry/extensionRegistry.js";
+import { initializeWidgetExtensions } from "./registry/index.js";
+import { createModuleFromExtension } from "./sdk/extension.js";
+
+// 自动发现并注册全部小组件扩展（实现零改动插件式接入）
+initializeWidgetExtensions();
 
 const OFFICIAL_IDS = new Set<string>([
   "ai_answer",
@@ -24,7 +29,16 @@ const OFFICIAL_IDS = new Set<string>([
   "mindmap",
   "actions_toolbox",
   "verification_checklist",
-  "custom_cards"
+  "software_info",
+  "download",
+  "release_history",
+  "repository",
+  "code_playground",
+  "tool_discovery",
+  "document_preview",
+  "news_feed",
+  "trend_chart",
+  "map"
 ]);
 
 /**
@@ -170,11 +184,15 @@ class WidgetRegistryClass {
   }
 
   /**
-   * 获取指定 ID 的组件模块（按官方 -> 远程 -> 运行时顺序逐级检索）
+   * 获取指定 ID 的组件模块（按独立扩展 -> 官方 -> 远程 -> 运行时 顺序逐级检索）
    */
   public get(id: string | ResultWidgetKey): WidgetModule | undefined {
     this.hydrate();
     const idStr = String(id);
+    const ext = extensionRegistry.get(idStr);
+    if (ext) {
+      return createModuleFromExtension(ext);
+    }
     return (
       this.officialModules.get(idStr) ||
       this.remoteModules.get(idStr) ||
@@ -189,6 +207,7 @@ class WidgetRegistryClass {
     this.hydrate();
     const idStr = String(id);
     return (
+      extensionRegistry.has(idStr) ||
       this.officialModules.has(idStr) ||
       this.remoteModules.has(idStr) ||
       this.runtimeModules.has(idStr)
@@ -196,15 +215,25 @@ class WidgetRegistryClass {
   }
 
   /**
-   * 获取所有已注册的组件模块列表（官方 + 远程 + 运行时）
+   * 获取所有已注册的组件模块列表（扩展优先 + 官方 + 远程 + 运行时）
    */
   public getAll(): WidgetModule[] {
     this.hydrate();
-    return [
+    const extModules = extensionRegistry.getAll().map(ext => createModuleFromExtension(ext));
+    const set = new Set<string>();
+    const res: WidgetModule[] = [];
+    for (const m of [
+      ...extModules,
       ...Array.from(this.officialModules.values()),
       ...Array.from(this.remoteModules.values()),
       ...Array.from(this.runtimeModules.values())
-    ];
+    ]) {
+      if (!set.has(String(m.id))) {
+        set.add(String(m.id));
+        res.push(m);
+      }
+    }
+    return res;
   }
 
   /**
@@ -249,52 +278,6 @@ class WidgetRegistryClass {
       (m) => m.agentHint?.selectable !== false
     );
     return [...Array.from(this.officialModules.values()), ...allowedRemotes];
-  }
-
-  /**
-   * 适配并将 Agent 锻造的 CustomCardData 注册到专属运行时动态分区（不污染商店）
-   */
-  public registerCustomCard(
-    card: CustomCardData, 
-    handlers?: {
-      onUpdateCard?: (updated: CustomCardData) => void;
-      onDeleteCard?: (id: string) => void;
-    }
-  ): WidgetModule {
-    const cardKey = `custom_card__${card.id}`;
-    
-    // 确定黄金默认宽度
-    const width: TileWidth = card.archetype === "parameter_matrix"
-      ? 100
-      : 75;
-
-    const customModule: WidgetModule = {
-      id: cardKey,
-      name: card.title,
-      version: "1.0.0",
-      description: card.subtitle || `${card.archetype} 业务卡片`,
-      category: "custom",
-      width,
-      supportedWidths: [25, 50, 75, 100],
-      schema: card.archetype === "schema" ? card.schema : undefined,
-      render: (ctx) => {
-        if (card.schema) {
-          return <WidgetSchemaRenderer schema={card.schema} context={ctx} />;
-        }
-        return (
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <h4 className="font-semibold text-foreground text-sm">{card.title}</h4>
-            {card.subtitle && <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>}
-          </div>
-        );
-      }
-    };
-
-    // 仅注册进 runtimeModules 分区
-    this.registerRuntime(customModule);
-    this.registerRuntime({ ...customModule, id: card.id });
-
-    return customModule;
   }
 
   /**

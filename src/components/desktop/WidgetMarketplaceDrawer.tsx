@@ -290,8 +290,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
               ) : (
                 filteredModules.map((module) => {
                   const modId = String(module.id);
-                  const isOnDesktop = activeIdSet.has(modId)
-                    || (modId.startsWith("custom_card__") && activeIdSet.has("custom_cards"));
+                  const isOnDesktop = activeIdSet.has(modId);
                   const chosenSize = previewSizes[modId] || (module.width as TileWidth) || 50;
 
                   const IconComp = typeof module.icon === "function" ? module.icon : Layers;
@@ -318,7 +317,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
                               </span>
                               {module.category === "custom" && (
                                 <Badge variant="outline" className="text-xs font-bold">
-                                  {modId.startsWith("custom_card__") ? "AI专属" : "CDN插件"}
+                                  CDN插件
                                 </Badge>
                               )}
                               <span className="text-xs text-muted-foreground">v{module.version}</span>

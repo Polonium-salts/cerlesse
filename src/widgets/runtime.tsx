@@ -4,16 +4,19 @@ import {
   WidgetContext,
   TileSchemaDescriptor
 } from "./sdk/types.js";
+import { WidgetExtension, createModuleFromExtension } from "./sdk/extension.js";
 import type { TileWidth } from "../lib/tileLayoutEngine.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 import { TileAtomRenderer } from "./tileRenderer.js";
+import { WidgetBoundary } from "./core/WidgetBoundary.js";
 import { SearchSynthesisResult } from "../types.js";
 import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { Button } from "../components/ui/button.js";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface WidgetRuntimeProps {
-  module: WidgetModule;
+  module?: WidgetModule;
+  extension?: WidgetExtension;
   data?: any;
   activeResult?: SearchSynthesisResult;
   size?: TileWidth;
@@ -25,6 +28,61 @@ interface WidgetRuntimeProps {
 }
 
 export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
+  module: propModule,
+  extension,
+  data,
+  activeResult,
+  size,
+  isCompact = false,
+  onResize,
+  onExecuteSearch,
+  openUrl,
+  copyText
+}) => {
+  const module = useMemo(() => {
+    if (propModule) return propModule;
+    if (extension) return createModuleFromExtension(extension);
+    return undefined;
+  }, [propModule, extension]);
+
+  if (!module) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-xs text-muted-foreground">
+        未找到有效的小组件模块或扩展
+      </div>
+    );
+  }
+
+  return (
+    <WidgetBoundary widgetId={String(module.id)}>
+      <WidgetRuntimeInner
+        module={module}
+        data={data}
+        activeResult={activeResult}
+        size={size}
+        isCompact={isCompact}
+        onResize={onResize}
+        onExecuteSearch={onExecuteSearch}
+        openUrl={openUrl}
+        copyText={copyText}
+      />
+    </WidgetBoundary>
+  );
+};
+
+interface WidgetRuntimeInnerProps {
+  module: WidgetModule;
+  data?: any;
+  activeResult?: SearchSynthesisResult;
+  size?: TileWidth;
+  isCompact?: boolean;
+  onResize?: (nextSize: TileWidth) => void;
+  onExecuteSearch?: (query: string, deep?: boolean) => void;
+  openUrl?: (url: string) => void;
+  copyText?: (text: string) => void;
+}
+
+const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
   module,
   data,
   activeResult,

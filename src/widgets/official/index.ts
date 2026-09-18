@@ -14,13 +14,10 @@ export {
   imageGalleryModule,
   searchEngineModule,
   tokenUsageModule,
-  weatherModule,
-  translationModule,
   comparisonModule,
   sourcesModule,
   mindmapModule,
-  actionsToolboxModule,
-  verificationChecklistModule
+  actionsToolboxModule
 } from "../modules/index.js";
 
 /** 初始化并自动向注册中心登记小组件模块 */
