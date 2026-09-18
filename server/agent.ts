@@ -298,8 +298,15 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
         );
       }
     })(),
-    // 独有卡片锻造
+    // 独有卡片锻造 (仅在 widgetPlan 明确需要或允许自定义卡片时执行，杜绝冗余锻造)
     (async () => {
+      const needsCustomCard = widgetPlan.allowCustomCard ?? (
+        widgetPlan.widgets?.some(w => (typeof w === "string" ? w : w.type) === "custom_cards") ||
+        Boolean(widgetPlan.blueprint?.components && widgetPlan.blueprint.components.length > 0)
+      );
+      if (!needsCustomCard) {
+        return [];
+      }
       try {
         return await forgeMultipleDynamicWidgets({
           query,

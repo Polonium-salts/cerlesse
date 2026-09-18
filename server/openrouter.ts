@@ -1,4 +1,5 @@
 import { SearchResult, ComparisonDimension, MindMapNode, SearchSynthesisResult, AgentPlan, OpenRouterModel, DetectedLanguage, TroubleshootingPlan } from "../src/types.js";
+import { callGeminiChat, getGeminiClient } from "./gemini.js";
 
 /**
  * 全面基于 OpenRouter 官方免费模型路由集合的规范定义
@@ -70,32 +71,50 @@ export function normalizeModelId(requestedModel?: string): string {
   return "openrouter/free";
 }
 
+function isValidKeyString(key?: string): boolean {
+  if (!key || typeof key !== "string") return false;
+  const trimmed = key.trim();
+  if (
+    !trimmed ||
+    trimmed === "undefined" ||
+    trimmed === "null" ||
+    trimmed === "your_openrouter_api_key_here" ||
+    trimmed === "MY_OPENROUTER_KEY" ||
+    trimmed.startsWith("your_") ||
+    trimmed.length < 8
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function resolveOpenRouterApiKey(explicitKey?: string, env?: Record<string, string | undefined>): string | undefined {
-  if (explicitKey && typeof explicitKey === "string" && explicitKey.trim() !== "" && explicitKey !== "undefined" && explicitKey !== "null") {
-    return explicitKey.trim();
+  if (isValidKeyString(explicitKey)) {
+    return explicitKey!.trim();
   }
   const fromEnv = env?.OPENROUTER_KEY || env?.OPENROUTER_API_KEY;
-  if (fromEnv && fromEnv.trim() !== "") {
-    return fromEnv.trim();
+  if (isValidKeyString(fromEnv)) {
+    return fromEnv!.trim();
   }
   if (typeof process !== "undefined" && process.env) {
     const fromProc = process.env.OPENROUTER_KEY || process.env.OPENROUTER_API_KEY;
-    if (fromProc && fromProc.trim() !== "") {
-      return fromProc.trim();
+    if (isValidKeyString(fromProc)) {
+      return fromProc!.trim();
     }
   }
   return undefined;
 }
 
 /**
- * 维护每个 API Key 的限流熔断状态缓存
- * 当 OpenRouter 返回 429（如每日免费额度上限）时，记录熔断截止时间，
- * 避免频繁向已受限的 Key 重复发出无效网络请求，并快速平滑切换至本地算法研报引擎
+ * 维护每个 API Key 的限流/鉴权失效熔断状态缓存
+ * 当 OpenRouter 返回 429、401（未授权/用户未找到）、402 或 403 时，记录熔断截止时间，
+ * 避免频繁向已受限或失效的 Key 重复发出无效网络请求，并快速平滑切换至 Gemini 或本地算法研报引擎
  */
 const keyRateLimitedUntil = new Map<string, number>();
 
 /**
- * 通用 OpenRouter Chat 驱动函数，供整个 Multi-Agent 团队调用
+ * 通用 AI 大模型 Chat 驱动函数，供整个 Multi-Agent 团队调用
+ * 具备 OpenRouter 驱动、保护性熔断、Google Gemini 自动降级与本地极速算法兜底
  */
 export async function callOpenRouterChat(options: {
   messages: Array<{ role: string; content: string }>;
@@ -108,75 +127,87 @@ export async function callOpenRouterChat(options: {
   maxTokens?: number;
 }): Promise<string | null> {
   const apiKey = resolveOpenRouterApiKey(options.apiKey, options.env);
-  if (!apiKey || apiKey.trim() === "") return null;
+  const keyTrimmed = apiKey ? apiKey.trim() : "";
 
-  const keyTrimmed = apiKey.trim();
+  // 检查 API Key 是否有效且未处于熔断期
+  const isKeyValid = keyTrimmed !== "" && (!keyRateLimitedUntil.has(keyTrimmed) || Date.now() >= (keyRateLimitedUntil.get(keyTrimmed) || 0));
 
-  // 如果该 API Key 当前处于限流熔断期中，直接返回 null 快速降级至本地高并发算法引擎，避免无效等待与 429 报错
-  const cooldownUntil = keyRateLimitedUntil.get(keyTrimmed);
-  if (cooldownUntil && Date.now() < cooldownUntil) {
-    return null;
-  }
+  if (isKeyValid) {
+    const model = normalizeModelId(options.model);
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs || 2500;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const model = normalizeModelId(options.model);
-  const controller = new AbortController();
-  const timeoutMs = options.timeoutMs || 2500;
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${keyTrimmed}`,
+          "HTTP-Referer": "https://cerlesse.ai",
+          "X-Title": "Cerlesse AI Agent"
+        },
+        body: JSON.stringify({
+          model,
+          temperature: options.temperature ?? 0.2,
+          max_tokens: options.maxTokens ?? 2200,
+          response_format: options.responseFormatJson !== false ? { type: "json_object" } : undefined,
+          messages: options.messages
+        }),
+        signal: controller.signal
+      });
 
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${keyTrimmed}`,
-        "HTTP-Referer": "https://cerlesse.ai",
-        "X-Title": "Cerlesse AI Agent"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: options.temperature ?? 0.2,
-        max_tokens: options.maxTokens ?? 2200,
-        response_format: options.responseFormatJson !== false ? { type: "json_object" } : undefined,
-        messages: options.messages
-      }),
-      signal: controller.signal
-    });
+      const resText = await res.text();
+      clearTimeout(timeoutId);
 
-    const resText = await res.text();
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      // 捕获 429 速率限制或 402/401 认证状态，启动保护性熔断
-      if (res.status === 429 || res.status === 402) {
-        let resetMs = Date.now() + 15 * 60 * 1000; // 默认熔断冷却 15 分钟
-        try {
-          const parsedErr = JSON.parse(resText);
-          const headerReset = parsedErr?.metadata?.headers?.["X-RateLimit-Reset"];
-          if (headerReset) {
-            const parsedResetNum = parseInt(headerReset, 10);
-            if (!isNaN(parsedResetNum) && parsedResetNum > Date.now()) {
-              resetMs = parsedResetNum;
+      if (!res.ok) {
+        // 捕获 401/403 鉴权失败或 429/402 额度超限，启动保护性熔断
+        if (res.status === 401 || res.status === 403) {
+          // Key 无效或未找到用户，长效熔断 24 小时避免无效重试
+          keyRateLimitedUntil.set(keyTrimmed, Date.now() + 24 * 60 * 60 * 1000);
+          console.info(`[OpenRouter Auth] API Key invalid or user not found (${res.status}). Circuit breaker active; smoothly falling back.`);
+        } else if (res.status === 429 || res.status === 402) {
+          let resetMs = Date.now() + 15 * 60 * 1000;
+          try {
+            const parsedErr = JSON.parse(resText);
+            const headerReset = parsedErr?.metadata?.headers?.["X-RateLimit-Reset"];
+            if (headerReset) {
+              const parsedResetNum = parseInt(headerReset, 10);
+              if (!isNaN(parsedResetNum) && parsedResetNum > Date.now()) {
+                resetMs = parsedResetNum;
+              }
             }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore json parse error
+          keyRateLimitedUntil.set(keyTrimmed, resetMs);
+          console.info(`[OpenRouter RateLimit] Model ${model} daily free tier quota reached (${res.status}). Circuit breaker active.`);
         }
-        keyRateLimitedUntil.set(keyTrimmed, resetMs);
-        console.info(`[OpenRouter RateLimit] Model ${model} daily free tier quota reached (${res.status}). Circuit breaker active; smoothly switching to instant algorithmic synthesis.`);
-      } else {
-        console.info(`[OpenRouter Status ${res.status}] ${model}: ${resText.slice(0, 100)}`);
+        // 尝试降级至 Gemini
+        return await callGeminiChat({
+          messages: options.messages,
+          responseFormatJson: options.responseFormatJson,
+          timeoutMs: options.timeoutMs,
+          temperature: options.temperature
+        });
       }
-      return null;
-    }
 
-    const parsedData = JSON.parse(resText);
-    let content = parsedData?.choices?.[0]?.message?.content || "";
-    content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-    return content || null;
-  } catch (e) {
-    clearTimeout(timeoutId);
-    return null;
+      const parsedData = JSON.parse(resText);
+      let content = parsedData?.choices?.[0]?.message?.content || "";
+      content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+      if (content) return content;
+    } catch (e) {
+      clearTimeout(timeoutId);
+    }
   }
+
+  // 若无 OpenRouter Key、OpenRouter 请求失败或处于熔断期，平滑尝试 Gemini
+  return await callGeminiChat({
+    messages: options.messages,
+    responseFormatJson: options.responseFormatJson,
+    timeoutMs: options.timeoutMs,
+    temperature: options.temperature
+  });
 }
 
 interface SynthesisOptions {

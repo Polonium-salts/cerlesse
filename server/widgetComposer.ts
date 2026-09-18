@@ -412,7 +412,7 @@ function composeTroubleshootingSuite(options: ComposeOptions): WidgetBlueprint {
     },
     {
       capability: "troubleshooting_audit",
-      type: "action_checklist",
+      type: "verification_checklist",
       data: {
         title: "分步排查与验证流程",
         steps: [

@@ -27,9 +27,11 @@ app.get("/api/health", (req, res) => {
 
 // System & Model Status
 app.get("/api/config", (req, res) => {
+  const geminiAvailable = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "" && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY");
+  const openRouterKey = Boolean(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim() !== "" && !process.env.OPENROUTER_API_KEY.startsWith("your_") && process.env.OPENROUTER_API_KEY !== "MY_OPENROUTER_KEY");
   res.json({
-    hasGeminiKey: false,
-    hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim() !== ""),
+    hasGeminiKey: geminiAvailable,
+    hasOpenRouterKey: openRouterKey,
     hasCustomSearxngUrl: Boolean(process.env.SEARXNG_URL && process.env.SEARXNG_URL.trim() !== ""),
     defaultModel: "openrouter/free",
     models: AVAILABLE_FREE_MODELS,

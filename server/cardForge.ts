@@ -7,9 +7,7 @@ import {
   WidgetAction,
   WidgetPlan,
   ProsConsData,
-  ActionChecklistData,
   ParameterMatrixData,
-  TimelineData,
   VerdictSummaryData,
   QuoteDossierData,
   ToolDiscoveryData,
@@ -78,7 +76,7 @@ export async function forgeUniqueCard(options: ForgeCardOptions): Promise<Custom
 }
 
 /**
- * Agent 自主根据检索结果批量并发锻造 1~2 张互补的高价值业务小组件 (严格并发无阻塞)
+ * Agent 自主根据检索结果按需锻造单张高价值业务小组件 (严格按需且无冗余双卡)
  */
 export async function forgeMultipleDynamicWidgets(options: {
   query: string;
@@ -94,8 +92,7 @@ export async function forgeMultipleDynamicWidgets(options: {
 
   const archetypes = detectMultipleArchetypes(query, validResults);
 
-  // 并发锻造主副两张互补卡片，耗时减半
-  const card1Promise = forgeUniqueCard({
+  const card = await forgeUniqueCard({
     query,
     results: validResults,
     widgetPlan,
@@ -107,32 +104,7 @@ export async function forgeMultipleDynamicWidgets(options: {
     env
   });
 
-  const card2Promise = (archetypes.length > 1 && archetypes[1] !== archetypes[0])
-    ? forgeUniqueCard({
-        query,
-        results: validResults,
-        widgetPlan,
-        archetype: archetypes[1],
-        userPrompt: userPrompt ? `${userPrompt} (互补维度)` : undefined,
-        themeColor: "emerald",
-        colSpan: 6,
-        apiKey,
-        env
-      }).catch(() => null)
-    : Promise.resolve(null);
-
-  const [card1, card2] = await Promise.all([card1Promise, card2Promise]);
-
-  const cards: CustomCardData[] = [];
-  if (card1) cards.push(card1);
-  if (card2) {
-    if (card2.id === card1?.id) {
-      card2.id = `custom-card-${Date.now()}-sec-${Math.random().toString(36).slice(2, 6)}`;
-    }
-    cards.push(card2);
-  }
-
-  return cards;
+  return card ? [card] : [];
 }
 
 /**
@@ -170,16 +142,7 @@ export function buildWidgetSchemaFromCard(card: Partial<CustomCardData>): Widget
   }
 
   // 3. 原型特定结构节点
-  if (card.checklistData?.tasks && card.checklistData.tasks.length > 0) {
-    components.push({
-      type: "checklist",
-      items: card.checklistData.tasks.map((t) => ({
-        id: t.id,
-        text: `${t.title}: ${t.instruction || ""}`,
-        done: Boolean(t.checked)
-      }))
-    });
-  } else if (card.matrixData && card.matrixData.rows && card.matrixData.rows.length > 0) {
+  if (card.matrixData && card.matrixData.rows && card.matrixData.rows.length > 0) {
     components.push({
       type: "table",
       headers: card.matrixData.columns || ["参数项", "基准值", "扩展", "说明"],
@@ -189,16 +152,6 @@ export function buildWidgetSchemaFromCard(card: Partial<CustomCardData>): Widget
         r.values?.[1] || "-",
         r.differenceNote || "-"
       ])
-    });
-  } else if (card.timelineData?.milestones && card.timelineData.milestones.length > 0) {
-    components.push({
-      type: "timeline",
-      events: card.timelineData.milestones.slice(0, 5).map((m) => ({
-        time: m.dateOrPeriod,
-        title: m.title,
-        desc: m.description,
-        status: m.status === "completed" ? "completed" : m.status === "current" ? "current" : "pending"
-      }))
     });
   } else if (card.prosConsData) {
     const kvItems = [
@@ -352,9 +305,7 @@ title (15字以内简短精炼), subtitle, category: "action", archetype: "${sug
         downloadHubData: parsed.downloadHubData,
         travelData: parsed.travelData,
         prosConsData: parsed.prosConsData,
-        checklistData: parsed.checklistData,
         matrixData: parsed.matrixData,
-        timelineData: parsed.timelineData,
         verdictData: parsed.verdictData,
         quoteData: parsed.quoteData,
         schema: parsed.schema
@@ -450,38 +401,14 @@ export function detectBestArchetype(
 }
 
 /**
- * Agent 自主侦测多维互补原型组合
+ * Agent 自主侦测单一最适卡片原型
  */
 export function detectMultipleArchetypes(
   query: string,
   results: SearchResult[] = []
 ): CustomCardArchetype[] {
-  const q = query.trim().toLowerCase();
   const primary = detectBestArchetype(query, results);
-  const detected: CustomCardArchetype[] = [primary];
-
-  if (/(对比|区别|优缺点|优劣|利弊|好还是|避坑|哪个好|\b(vs|versus|compare|comparison)\b)/i.test(q)) {
-    if (primary !== "verdict_summary") detected.push("verdict_summary");
-    else detected.push("pros_cons");
-  } else if (/(安装|下载|配置环境|部署|命令|镜像|\b(install|download|setup|docker)\b)/i.test(q)) {
-    if (primary !== "download_hub") detected.push("download_hub");
-    else detected.push("parameter_matrix");
-  } else if (/(工具|网站|平台|在线|生成器|\b(tool|tools|online|app)\b)/i.test(q)) {
-    if (primary !== "tool_discovery") detected.push("tool_discovery");
-    else detected.push("parameter_matrix");
-  } else if (/(旅游|攻略|游玩|景点|行程|\b(travel|itinerary|trip)\b)/i.test(q)) {
-    if (primary !== "travel_itinerary") detected.push("travel_itinerary");
-    else detected.push("parameter_matrix");
-  } else if (/(特性|新特性|演变|演进|历史|版本|更新|新功能|\b(feature|features|timeline|version|history)\b)/i.test(q)) {
-    if (primary !== "parameter_matrix") detected.push("parameter_matrix");
-    else detected.push("verdict_summary");
-  } else {
-    // Default complementary pair
-    if (primary === "parameter_matrix") detected.push("verdict_summary");
-    else detected.push("parameter_matrix");
-  }
-
-  return Array.from(new Set(detected)).slice(0, 2);
+  return [primary];
 }
 
 function generateAlgorithmicCard(
@@ -509,9 +436,7 @@ function generateAlgorithmicCard(
 
   let sections: CustomCardSection[] = [];
   let prosConsData: ProsConsData | undefined;
-  let checklistData: ActionChecklistData | undefined;
   let matrixData: ParameterMatrixData | undefined;
-  let timelineData: TimelineData | undefined;
   let verdictData: VerdictSummaryData | undefined;
   let quoteData: QuoteDossierData | undefined;
   let toolDiscoveryData: ToolDiscoveryData | undefined;
@@ -1038,19 +963,9 @@ function generateAlgorithmicCard(
           isVerified: true
         });
       }
-      if (checklistData?.tasks && checklistData.tasks.length > 0 && checklistData.tasks[0].commandOrCode) {
+      if (topSources[1]?.url) {
         actions.push({
           id: `act-auto-1`,
-          type: "copy",
-          tool: "install_command",
-          label: "复制执行命令",
-          command: checklistData.tasks[0].commandOrCode,
-          variant: "secondary",
-          isVerified: true
-        });
-      } else if (topSources[1]?.url) {
-        actions.push({
-          id: `act-auto-2`,
           type: "open_url",
           tool: "open_docs",
           label: "官方/社区文档",
@@ -1082,9 +997,7 @@ function generateAlgorithmicCard(
     userPrompt,
     isPinned: false,
     prosConsData,
-    checklistData,
     matrixData,
-    timelineData,
     verdictData,
     quoteData,
     toolDiscoveryData,

@@ -74,7 +74,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   weather: {
     intent: "weather",
     description: "实时天气、气温预报、空气质量与出行指数",
-    allowedWidgets: ["weather", "ai_answer", "related_links", "sources", "token_usage", "fast_chat"],
+    allowedWidgets: ["weather", "ai_answer", "related_links", "sources", "token_usage"],
     forbiddenWidgets: [
       "translation",
       "troubleshooting",
@@ -93,7 +93,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   translation: {
     intent: "translation",
     description: "多语言智能翻译、双语词典释义、发音与例句对照",
-    allowedWidgets: ["translation", "ai_answer", "related_links", "sources", "takeaways", "token_usage", "fast_chat"],
+    allowedWidgets: ["translation", "ai_answer", "related_links", "sources", "takeaways", "token_usage"],
     forbiddenWidgets: [
       "weather",
       "troubleshooting",
@@ -120,7 +120,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "related_links",
       "sources",
       "takeaways",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
@@ -141,7 +140,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "ai_answer",
       "sources",
       "takeaways",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
@@ -162,7 +160,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "sources",
       "mindmap",
       "related_links",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
@@ -182,7 +179,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "related_links",
       "takeaways",
       "sources",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting"],
@@ -204,7 +200,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "takeaways",
       "related_links",
       "verification_checklist",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
@@ -225,7 +220,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "related_links",
       "takeaways",
       "sources",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["troubleshooting", "translation"],
@@ -244,8 +238,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "search_engine",
       "takeaways",
       "sources",
-      "token_usage",
-      "fast_chat"
+      "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
     mandatoryWidgets: ["related_links", "ai_answer", "sources"],
@@ -263,8 +256,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "ai_answer",
       "takeaways",
       "sources",
-      "token_usage",
-      "fast_chat"
+      "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
     mandatoryWidgets: ["search_engine", "ai_answer", "related_links", "sources"],
@@ -283,7 +275,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "sources",
       "ai_answer",
       "takeaways",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
@@ -303,7 +294,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "sources",
       "custom_cards",
       "related_links",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
@@ -321,7 +311,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "takeaways",
       "sources",
       "related_links",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
@@ -341,8 +330,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "comparison",
       "mindmap",
       "related_links",
-      "token_usage",
-      "fast_chat"
+      "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
     mandatoryWidgets: ["ai_answer", "sources", "related_links"],
@@ -362,7 +350,6 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "sources",
       "takeaways",
       "search_engine",
-      "fast_chat",
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
@@ -376,7 +363,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   install: {
     intent: "software_download",
     description: "软件安装与下载",
-    allowedWidgets: ["custom_cards", "actions_toolbox", "related_links", "verification_checklist", "ai_answer", "sources", "takeaways", "fast_chat", "token_usage"],
+    allowedWidgets: ["custom_cards", "actions_toolbox", "related_links", "verification_checklist", "ai_answer", "sources", "takeaways", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
     mandatoryWidgets: ["custom_cards", "related_links", "ai_answer", "sources"],
     requiresImages: false,
@@ -387,7 +374,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   compare: {
     intent: "tech_comparison",
     description: "多方案对比与选型",
-    allowedWidgets: ["comparison", "custom_cards", "ai_answer", "takeaways", "sources", "mindmap", "related_links", "fast_chat", "token_usage"],
+    allowedWidgets: ["comparison", "custom_cards", "ai_answer", "takeaways", "sources", "mindmap", "related_links", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
     mandatoryWidgets: ["comparison", "ai_answer", "related_links", "sources"],
     requiresImages: false,
@@ -398,7 +385,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   tutorial: {
     intent: "study_tutorial",
     description: "操作教程与学习指南",
-    allowedWidgets: ["custom_cards", "actions_toolbox", "ai_answer", "mindmap", "sources", "takeaways", "related_links", "verification_checklist", "fast_chat", "token_usage"],
+    allowedWidgets: ["custom_cards", "actions_toolbox", "ai_answer", "mindmap", "sources", "takeaways", "related_links", "verification_checklist", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
     mandatoryWidgets: ["custom_cards", "ai_answer", "related_links", "sources"],
     requiresImages: false,
@@ -409,7 +396,7 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
   explain: {
     intent: "concept_explanation",
     description: "概念解释与原理",
-    allowedWidgets: ["ai_answer", "takeaways", "mindmap", "sources", "custom_cards", "related_links", "fast_chat", "token_usage"],
+    allowedWidgets: ["ai_answer", "takeaways", "mindmap", "sources", "custom_cards", "related_links", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
     mandatoryWidgets: ["ai_answer", "related_links", "sources"],
     requiresImages: false,

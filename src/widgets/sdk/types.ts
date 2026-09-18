@@ -6,7 +6,7 @@ import type { TileWidth } from "../../lib/tileLayoutEngine.js";
 // 必须一并转发导出，否则 registry.tsx 的具名导入无法解析（TS2459）。
 export type { ResultWidgetKey };
 
-export type WidgetCategoryType = "synthesis" | "analysis" | "action" | "portal" | "custom";
+export type WidgetCategoryType = "synthesis" | "analysis" | "action" | "portal" | "custom" | "official" | "remote";
 
 /**
  * Agent 提示词与实用性配置契约 (Widget Agent Prompt Hint & Practicality Profile)
@@ -25,6 +25,8 @@ export interface WidgetAgentPromptHint {
   triggerKeywords?: string[];
   /** 不推荐选取的反模式或互斥场景 */
   antiPatterns?: string[];
+  /** 是否允许 Agent 自主选取此组件 */
+  selectable?: boolean;
 }
 
 /**

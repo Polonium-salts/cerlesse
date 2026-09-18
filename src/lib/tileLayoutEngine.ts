@@ -106,11 +106,9 @@ export const WIDGET_RATIOS: Record<string, TileRatio> = {
 /** 自定义卡片原型 -> 固定宽高比（AI 锻造的独有卡片按其原型定型） */
 export const ARCHETYPE_RATIOS: Record<string, TileRatio> = {
   download_hub: "4:5",
-  timeline: "2:1",
   parameter_matrix: "16:9",
   tool_discovery: "16:9",
   travel_itinerary: "4:3",
-  action_checklist: "4:5",
   verdict_summary: "2:1",
   pros_cons: "4:3",
   quote_dossier: "3:1",

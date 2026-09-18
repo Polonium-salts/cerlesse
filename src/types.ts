@@ -208,7 +208,7 @@ export interface TokenUsageStats {
   contextTokens?: number;
 }
 
-export type ResultWidgetKey = 
+export type OfficialWidgetId =
   | "ai_answer"
   | "related_links"
   | "takeaways"
@@ -222,12 +222,16 @@ export type ResultWidgetKey =
   | "comparison"
   | "mindmap"
   | "actions_toolbox"
-  | "custom_cards"
-  | string;
+  | "verification_checklist"
+  | "custom_cards";
+
+export type RemoteWidgetId = string;
+
+export type ResultWidgetKey = OfficialWidgetId;
 
 /**
- * 可参与自动选型的小组件全集（前端注册中心已登记的模块 id）。
- * ai_answer / related_links / sources 是恒启用的三大阅读流与事实存证锚点；其余组件（如 weather, translation, troubleshooting, comparison, mindmap, image_gallery, takeaways, search_engine, token_usage, actions_toolbox, custom_cards 等）由 Agent 依据搜索意图与能力模型自主决策启停。
+ * 可参与自动选型的小组件全集（前端注册中心已登记的标准官方模块 14 个）。
+ * ai_answer / related_links / sources 是恒启用的三大阅读流与事实存证锚点；其余组件（如 weather, translation, troubleshooting, comparison, mindmap, image_gallery, takeaways, search_engine, token_usage, actions_toolbox, verification_checklist 等）由 Agent 依据搜索意图与能力模型自主决策启停。
  * 此清单同时是排版 Agent 的组件白名单来源。
  */
 export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
@@ -243,7 +247,8 @@ export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "troubleshooting",
   "comparison",
   "mindmap",
-  "actions_toolbox"
+  "actions_toolbox",
+  "verification_checklist"
 ];
 
 export interface WidgetStatusDetail {
@@ -376,7 +381,8 @@ export interface WidgetPlan {
   intent: QueryIntent;
   userGoal: string;
   suggestedArchetype: CustomCardArchetype;
-  capabilities: string[]; // ["official_url", "download", "install_command", "install_step", "try_online", "compare_table", "pros_cons", "timeline", "itinerary_timeline"]
+  allowCustomCard?: boolean; // 控制是否允许/需要锻造 AI 动态卡片
+  capabilities: string[]; // ["official_url", "download", "install_command", "install_step", "try_online", "compare_table", "pros_cons", "itinerary_timeline"]
   widgets: WidgetPlannedItem[]; // Decided widgets with priority, size and flex specifications
   widgetOrder?: ResultWidgetKey[]; // Flattened sequence of widget keys for direct consumption
   /** 第一阶段的语义分析结果，供排版相位对账与审计 */
@@ -818,24 +824,6 @@ export interface ProsConsData {
   tradeoffVerdict?: string;
 }
 
-export interface ChecklistTaskItem {
-  id: string;
-  title: string;
-  instruction: string;
-  stepNumber: number;
-  estimatedTime?: string;
-  difficulty?: "easy" | "medium" | "hard";
-  priority?: "critical" | "normal" | "optional";
-  commandOrCode?: string;
-  checked: boolean;
-  sourceTitle?: string;
-  sourceUrl?: string;
-}
-
-export interface ActionChecklistData {
-  tasks: ChecklistTaskItem[];
-}
-
 export interface ParameterMatrixRow {
   id: string;
   parameter: string;
@@ -851,23 +839,6 @@ export interface ParameterMatrixData {
   columns: string[];
   rows: ParameterMatrixRow[];
   categories?: string[];
-}
-
-export interface TimelineMilestone {
-  id: string;
-  phase: string;
-  dateOrPeriod: string;
-  title: string;
-  description: string;
-  status: "completed" | "current" | "upcoming";
-  tag?: string;
-  impactScore?: string;
-  sourceTitle?: string;
-  sourceUrl?: string;
-}
-
-export interface TimelineData {
-  milestones: TimelineMilestone[];
 }
 
 export interface VerdictScenario {
@@ -934,9 +905,7 @@ export interface CustomCardData {
   purpose?: string;
   // 各原型专属的高阶功能数据模型
   prosConsData?: ProsConsData;
-  checklistData?: ActionChecklistData;
   matrixData?: ParameterMatrixData;
-  timelineData?: TimelineData;
   verdictData?: VerdictSummaryData;
   quoteData?: QuoteDossierData;
   toolDiscoveryData?: ToolDiscoveryData;

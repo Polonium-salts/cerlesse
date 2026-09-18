@@ -9,12 +9,35 @@ import { OFFICIAL_WIDGET_MODULES } from "./modules/index.js";
 import { RemoteWidgetManifest, resolveCdnAssetUrl, fetchRemoteWidgetManifest } from "./sdk/cdnResolver.js";
 import { resolveManifestIcon, FALLBACK_MANIFEST_ICON } from "./manifests/icons.js";
 
+const OFFICIAL_IDS = new Set<string>([
+  "ai_answer",
+  "related_links",
+  "sources",
+  "takeaways",
+  "image_gallery",
+  "search_engine",
+  "token_usage",
+  "weather",
+  "translation",
+  "troubleshooting",
+  "comparison",
+  "mindmap",
+  "actions_toolbox",
+  "verification_checklist",
+  "custom_cards"
+]);
+
 /**
  * 全局小组件注册中心 (Central Widget Registry)
- * 统一管理官方组件模块、社区插件、以及 Agent 动态锻造生成的组件
+ * 严格分层管理：
+ * 1. 官方标准组件 (officialModules) - 14 个
+ * 2. 社区/远程组件 (remoteModules) - jsDelivr / GitHub 插件
+ * 3. 运行时 AI 动态卡片 (runtimeModules) - 仅运行时渲染实例，不污染组件商店
  */
 class WidgetRegistryClass {
-  private modules: Map<string, WidgetModule> = new Map();
+  private officialModules: Map<string, WidgetModule> = new Map();
+  private remoteModules: Map<string, WidgetModule> = new Map();
+  private runtimeModules: Map<string, WidgetModule> = new Map();
 
   /**
    * 官方小组件「补水器」。
@@ -65,18 +88,52 @@ class WidgetRegistryClass {
   }
 
   /**
-   * 注册标准 JS Widget 模块
+   * 注册标准 JS Widget 模块（根据 ID 与分类自动归类到分区）
    */
   public register(module: WidgetModule): void {
     if (!module || !module.id) {
-      // 静默丢弃是"部分小组件凭空消失"的元凶：必须显式报警
       console.warn(
         "[WidgetRegistry] 忽略无效的小组件模块（缺少 id）。来自官方清单时通常意味着该模块文件加载失败（导入路径失效或循环依赖）。",
         module
       );
       return;
     }
-    this.modules.set(String(module.id), module);
+
+    const idStr = String(module.id);
+    if (OFFICIAL_IDS.has(idStr) || module.category === "official") {
+      this.officialModules.set(idStr, module);
+    } else if (idStr.startsWith("custom_card__") || idStr.startsWith("custom-card-") || idStr.startsWith("schema-widget-")) {
+      this.runtimeModules.set(idStr, module);
+    } else {
+      this.remoteModules.set(idStr, module);
+    }
+  }
+
+  /**
+   * 注册官方组件
+   */
+  public registerOfficial(module: WidgetModule): void {
+    if (module && module.id) {
+      this.officialModules.set(String(module.id), module);
+    }
+  }
+
+  /**
+   * 注册社区/远程组件
+   */
+  public registerRemote(module: WidgetModule): void {
+    if (module && module.id) {
+      this.remoteModules.set(String(module.id), module);
+    }
+  }
+
+  /**
+   * 注册运行时动态组件
+   */
+  public registerRuntime(module: WidgetModule): void {
+    if (module && module.id) {
+      this.runtimeModules.set(String(module.id), module);
+    }
   }
 
   /**
@@ -103,19 +160,26 @@ class WidgetRegistryClass {
   }
 
   /**
-   * 注销模块
+   * 注销模块（全分区清理）
    */
   public unregister(id: string | ResultWidgetKey): void {
-    this.modules.delete(String(id));
+    const idStr = String(id);
+    this.officialModules.delete(idStr);
+    this.remoteModules.delete(idStr);
+    this.runtimeModules.delete(idStr);
   }
 
   /**
-   * 获取指定 ID 的组件模块
+   * 获取指定 ID 的组件模块（按官方 -> 远程 -> 运行时顺序逐级检索）
    */
   public get(id: string | ResultWidgetKey): WidgetModule | undefined {
-    // 未命中前先确保官方清单已补水，杜绝"注册晚于首次渲染"造成的空框
     this.hydrate();
-    return this.modules.get(String(id));
+    const idStr = String(id);
+    return (
+      this.officialModules.get(idStr) ||
+      this.remoteModules.get(idStr) ||
+      this.runtimeModules.get(idStr)
+    );
   }
 
   /**
@@ -123,19 +187,72 @@ class WidgetRegistryClass {
    */
   public has(id: string | ResultWidgetKey): boolean {
     this.hydrate();
-    return this.modules.has(String(id));
+    const idStr = String(id);
+    return (
+      this.officialModules.has(idStr) ||
+      this.remoteModules.has(idStr) ||
+      this.runtimeModules.has(idStr)
+    );
   }
 
   /**
-   * 获取所有已注册的组件模块列表
+   * 获取所有已注册的组件模块列表（官方 + 远程 + 运行时）
    */
   public getAll(): WidgetModule[] {
     this.hydrate();
-    return Array.from(this.modules.values());
+    return [
+      ...Array.from(this.officialModules.values()),
+      ...Array.from(this.remoteModules.values()),
+      ...Array.from(this.runtimeModules.values())
+    ];
   }
 
   /**
-   * 适配并将 Agent 锻造的 CustomCardData 动态注册为标准 Widget 模块
+   * 获取官方组件列表 (14个)
+   */
+  public getOfficialWidgets(): WidgetModule[] {
+    this.hydrate();
+    return Array.from(this.officialModules.values());
+  }
+
+  /**
+   * 获取社区/远程组件列表
+   */
+  public getRemoteWidgets(): WidgetModule[] {
+    return Array.from(this.remoteModules.values());
+  }
+
+  /**
+   * 获取运行时动态组件列表
+   */
+  public getRuntimeWidgets(): WidgetModule[] {
+    return Array.from(this.runtimeModules.values());
+  }
+
+  /**
+   * 获取小组件商店展示列表（严格仅展示 官方组件 + 远程社区组件，绝不混入 AI 动态生成的卡片）
+   */
+  public getMarketplaceWidgets(): WidgetModule[] {
+    this.hydrate();
+    return [
+      ...Array.from(this.officialModules.values()),
+      ...Array.from(this.remoteModules.values())
+    ];
+  }
+
+  /**
+   * 获取 Agent 可自主选型的组件白名单（官方组件 + 标记允许 Agent 调用的远程组件）
+   */
+  public getAgentSelectableWidgets(): WidgetModule[] {
+    this.hydrate();
+    const allowedRemotes = Array.from(this.remoteModules.values()).filter(
+      (m) => m.agentHint?.selectable !== false
+    );
+    return [...Array.from(this.officialModules.values()), ...allowedRemotes];
+  }
+
+  /**
+   * 适配并将 Agent 锻造的 CustomCardData 注册到专属运行时动态分区（不污染商店）
    */
   public registerCustomCard(
     card: CustomCardData, 
@@ -173,9 +290,9 @@ class WidgetRegistryClass {
       }
     };
 
-    this.register(customModule);
-    // 同时注册裸 ID 方便索引
-    this.register({ ...customModule, id: card.id });
+    // 仅注册进 runtimeModules 分区
+    this.registerRuntime(customModule);
+    this.registerRuntime({ ...customModule, id: card.id });
 
     return customModule;
   }

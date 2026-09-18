@@ -116,8 +116,13 @@ export interface WidgetCapabilityInfo {
 }
 
 export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilityInfo> = {
+  ai_answer: {
+    capabilities: ["direct_answer", "definition_snippet", "instant_verdict", "overview_synthesis", "summary_points", "bullet_conclusions"],
+    intentFit: ["deep_research", "quick_definition", "travel", "comparison", "balanced", "official_portal", "code_tutorial", "architecture", "troubleshooting", "fact_check", "news_trend", "install", "tool_discovery"],
+    isActionOriented: false
+  },
   custom_cards: {
-    capabilities: ["download_hub", "tool_discovery", "travel_itinerary", "parameter_matrix", "action_checklist", "verdict_summary", "pros_cons", "timeline"],
+    capabilities: ["download_hub", "tool_discovery", "travel_itinerary", "parameter_matrix", "verdict_summary", "pros_cons", "quote_dossier"],
     intentFit: ["install", "tool_discovery", "travel", "troubleshooting", "comparison", "code_tutorial", "deep_research", "architecture", "balanced"],
     isActionOriented: true
   },
@@ -126,7 +131,7 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["install", "troubleshooting", "code_tutorial", "tool_discovery", "official_portal", "quick_definition", "balanced"],
     isActionOriented: true
   },
-  official_portal: {
+  related_links: {
     capabilities: ["official_site", "verified_docs", "authoritative_entry"],
     intentFit: ["official_portal", "install", "tool_discovery", "travel"],
     isActionOriented: true
@@ -151,16 +156,6 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["architecture", "deep_research"],
     isActionOriented: false
   },
-  analytics_trend: {
-    capabilities: ["trend_signals", "sentiment_distribution", "temporal_evolution"],
-    intentFit: ["news_trend", "fact_check", "deep_research"],
-    isActionOriented: false
-  },
-  topic_digest: {
-    capabilities: ["faceted_deep_dive", "multi_aspect_summary"],
-    intentFit: ["deep_research", "code_tutorial", "balanced"],
-    isActionOriented: false
-  },
   takeaways: {
     capabilities: ["bullet_conclusions", "high_density_takeaways"],
     // 只要检索结果提炼出关键结论 (takeawayCount > 0)，对任意意图均有高实用价值，也是 75% 组件的最佳 25% 互补搭档
@@ -183,9 +178,6 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
   },
   image_gallery: {
     capabilities: ["image_gallery", "resource_preview"],
-    // 刻意不按意图设限：只要信源确实带图（或用户就是在找图片），图库对任何意图都是有用的
-    // —— 安装教程里的界面截图、故障排查里的报错截图同样值得看图。
-    // 真正的过滤器是 WIDGET_REGISTRY.image_gallery.requiresData，而不是意图白名单。
     intentFit: [
       "comparison",
       "architecture",
@@ -210,60 +202,26 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
   },
   search_engine: {
     capabilities: ["search_engine_redirect", "external_search_query", "web_search_portal", "engine_launcher", "quick_links"],
-    // 仅在明确的官网跳转/工具导航或经由 Agent 规划时匹配，不再默认泛化至所有阅读流
     intentFit: [
       "official_portal",
       "tool_discovery"
     ],
     isActionOriented: true
   },
-  fast_chat: {
-    capabilities: ["interactive_followup_chat", "question_answering"],
-    intentFit: ["balanced", "deep_research", "code_tutorial"],
-    isActionOriented: true
-  },
-  mobile_qr: {
-    capabilities: ["mobile_handoff", "qr_scan_action"],
-    intentFit: ["official_portal", "travel", "install"],
-    isActionOriented: true
-  },
-  followup: {
-    capabilities: ["smart_followup_prompts"],
-    intentFit: ["balanced", "deep_research"],
-    isActionOriented: false
-  },
-  metrics_telemetry: {
-    capabilities: ["source_telemetry", "confidence_meter"],
-    intentFit: ["fact_check", "deep_research", "balanced"],
-    isActionOriented: false
-  },
-  agent_workflow: {
-    capabilities: ["agent_telemetry", "dag_trace"],
-    intentFit: ["deep_research", "balanced"],
-    isActionOriented: false
-  },
   token_usage: {
     capabilities: ["token_metrics", "cost_analysis", "latency_telemetry", "throughput_stats", "model_monitoring"],
-    // 仅在深度研报/技术度量或用户主动开启时加载，默认不污染通用搜索结果
     intentFit: [
       "deep_research"
     ],
     isActionOriented: false
   },
-  ai_overview: {
-    capabilities: ["overview_synthesis"],
-    intentFit: ["balanced"],
-    isActionOriented: false
-  },
   weather: {
     capabilities: ["live_telemetry" as any, "weather_current" as any, "weather_forecast" as any],
-    // 仅在出行攻略或天气垂直场景中由意图激活，严禁默认全部加载
     intentFit: ["travel"],
     isActionOriented: false
   },
   translation: {
     capabilities: ["language_translation", "text_translation", "bilingual_comparison", "pronunciation_guide", "dictionary_lookup"],
-    // 仅在明确翻译意图下由 Agent 激活，严禁在常规搜索下默认加载
     intentFit: [
       "translation"
     ],
@@ -346,16 +304,6 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     category: "analytical",
     requiresData: (s) => s.mindMapBranches > 0
   },
-  official_portal: {
-    id: "official_portal",
-    label: "官方认证门户",
-    iconName: "ShieldCheck",
-    width: 50,
-    minWidth: 50,
-    basePriority: 9,
-    category: "primary",
-    requiresData: (s) => s.hasOfficial
-  },
   sources: {
     id: "sources",
     label: "文献信源库",
@@ -375,24 +323,6 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     basePriority: 7,
     category: "utility"
   },
-  fast_chat: {
-    id: "fast_chat",
-    label: "智能追问对话",
-    iconName: "MessageSquare",
-    width: 50,
-    minWidth: 25,
-    basePriority: 7,
-    category: "utility"
-  },
-  topic_digest: {
-    id: "topic_digest",
-    label: "分面专题解析",
-    iconName: "Layout",
-    width: 50,
-    minWidth: 25,
-    basePriority: 6,
-    category: "secondary"
-  },
   verification_checklist: {
     id: "verification_checklist",
     label: "事实核查审计",
@@ -401,62 +331,6 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     minWidth: 25,
     basePriority: 6,
     category: "analytical"
-  },
-  analytics_trend: {
-    id: "analytics_trend",
-    label: "信源相关度分布",
-    iconName: "TrendingUp",
-    width: 50,
-    minWidth: 25,
-    basePriority: 6,
-    category: "analytical"
-  },
-  followup: {
-    id: "followup",
-    label: "延伸探索建议",
-    iconName: "Compass",
-    width: 50,
-    minWidth: 25,
-    basePriority: 6,
-    category: "secondary",
-    requiresData: (s) => s.followUpCount > 0
-  },
-  metrics_telemetry: {
-    id: "metrics_telemetry",
-    label: "检索度量",
-    iconName: "Activity",
-    width: 25,
-    minWidth: 25,
-    basePriority: 5,
-    category: "utility"
-  },
-  mobile_qr: {
-    id: "mobile_qr",
-    label: "复制本页链接",
-    iconName: "Link2",
-    width: 25,
-    minWidth: 25,
-    basePriority: 4,
-    category: "utility",
-    requiresData: (s) => s.hasOfficial
-  },
-  agent_workflow: {
-    id: "agent_workflow",
-    label: "Agent 任务分派",
-    iconName: "Cpu",
-    width: 50,
-    minWidth: 25,
-    basePriority: 4,
-    category: "utility"
-  },
-  ai_overview: {
-    id: "ai_overview",
-    label: "AI 深度研报",
-    iconName: "FileText",
-    width: 100,
-    minWidth: 50,
-    basePriority: 3,
-    category: "secondary"
   },
   custom_cards: {
     id: "custom_cards",

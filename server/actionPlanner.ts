@@ -83,7 +83,7 @@ ${sourcesContext}
   "nextStepVerdict": "判断用户下一步最紧迫的操作，如：用户需要一键复制官方安装脚本并在终端执行",
   "hasExecutableAction": true,
   "requiresActionWidget": true,
-  "suggestedArchetype": "action_checklist | parameter_matrix | pros_cons | verdict_summary | timeline | quote_dossier",
+  "suggestedArchetype": "download_hub | tool_discovery | travel_itinerary | parameter_matrix | pros_cons | verdict_summary | quote_dossier",
   "primaryAction": {
     "tool": "install_command | official_url | open_docs | download",
     "type": "copy | open_url | download",
@@ -165,7 +165,7 @@ ${sourcesContext}
       nextStepVerdict: parsed.nextStepVerdict || "提供一键可执行的工具与入口直达",
       hasExecutableAction: true,
       requiresActionWidget: parsed.requiresActionWidget !== undefined ? parsed.requiresActionWidget : true,
-      suggestedArchetype: parsed.suggestedArchetype || "action_checklist",
+      suggestedArchetype: (parsed.suggestedArchetype && parsed.suggestedArchetype !== "action_checklist" && parsed.suggestedArchetype !== "timeline") ? parsed.suggestedArchetype : "parameter_matrix",
       primaryAction,
       tasks,
       guardrailAudit: {

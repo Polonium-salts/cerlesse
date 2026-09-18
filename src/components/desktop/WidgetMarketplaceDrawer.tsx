@@ -65,10 +65,10 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
   const [showCdnGuide, setShowCdnGuide] = useState<boolean>(false);
   const [refreshTick, setRefreshTick] = useState<number>(0);
 
-  // 获取所有已注册的官方与动态模块
-  const allModules = useMemo(() => {
+  // 获取所有已注册的官方与社区远程小组件（严格隔离运行时 AI 动态卡片）
+  const marketplaceModules = useMemo(() => {
     void refreshTick;
-    return WidgetRegistry.getAll();
+    return WidgetRegistry.getMarketplaceWidgets();
   }, [isOpen, refreshTick]);
 
   // 处理从 jsDelivr CDN 导入小组件
@@ -104,31 +104,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
 
   // 过滤模块列表
   const filteredModules = useMemo(() => {
-    const activeSet = new Set(allModules.map(m => m.id));
-
-    // 也确保 customCards 包含在列表内
-    const list = [...allModules];
-    customCards.forEach(card => {
-      const cardKey = `custom_card__${card.id}`;
-      if (!activeSet.has(cardKey)) {
-        list.push({
-          id: cardKey,
-          name: card.title,
-          version: "1.0.0",
-          description: card.subtitle || "AI 专属独有业务卡片",
-          category: "custom",
-          width: 75,
-          supportedWidths: [25, 50, 75, 100]
-        });
-      }
-    });
-
-    return list.filter(mod => {
-      // 避免重复带 custom_card__ 前缀和纯 ID 的重复显示
-      if (mod.category === "custom" && !String(mod.id).startsWith("custom_card__") && customCards.some(c => c.id === mod.id)) {
-        return false;
-      }
-
+    return marketplaceModules.filter(mod => {
       if (selectedCategory !== "all" && mod.category !== selectedCategory) {
         return false;
       }
@@ -140,7 +116,7 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
       }
       return true;
     });
-  }, [allModules, customCards, selectedCategory, searchQuery]);
+  }, [marketplaceModules, selectedCategory, searchQuery]);
 
   const activeIdSet = useMemo(() => new Set(activeTileIds), [activeTileIds]);
 

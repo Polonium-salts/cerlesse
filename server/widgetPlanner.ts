@@ -195,8 +195,8 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     flexible: true,
     isActionOriented: true
   },
-  official_portal: {
-    type: "official_portal",
+  related_links: {
+    type: "related_links",
     capabilities: ["official_site", "official_url", "verified_docs", "authoritative_entry", "official_portal", "booking_resources", "service_status", "contact_entry"],
     tags: OFFICIAL_WIDGET_PROFILES.related_links?.tags || ["官方入口", "官网直达", "多链接", "权威信源", "导航", "外部跳转"],
     description: OFFICIAL_WIDGET_PROFILES.related_links?.functionality || "识别官方正版网站、官方文档与服务入口并提供一键直达",
@@ -272,94 +272,6 @@ const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     selectionHeuristics: "严肃调研、学术研报与结论核实时必备",
     basePriority: 72,
     width: 50,
-    flexible: false,
-    isActionOriented: false
-  },
-  topic_digest: {
-    type: "topic_digest",
-    capabilities: ["faceted_deep_dive", "multi_aspect_summary", "code_explanation", "related_topics"],
-    tags: ["专题研读", "多面解读", "代码解析", "关联主题"],
-    description: "多维度深挖解读与延伸技术点",
-    selectionHeuristics: "综合调研与知识延展时实用性最高",
-    basePriority: 65,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  analytics_trend: {
-    type: "analytics_trend",
-    capabilities: ["trend_signals", "sentiment_distribution", "temporal_evolution", "temporal_analysis"],
-    tags: ["相关度分布", "趋势信号", "数据量化", "演化分析"],
-    description: "信源热度分析、时间趋势与情感分布统计",
-    selectionHeuristics: "舆情分析、趋势研判与统计量化场景下实用性最高",
-    basePriority: 60,
-    width: 50,
-    flexible: true,
-    isActionOriented: false
-  },
-  fast_chat: {
-    type: "fast_chat",
-    capabilities: ["interactive_followup_chat", "question_answering"],
-    tags: ["交互问答", "实时追问", "灵感延伸", "即时对话"],
-    description: "基于上下文的多轮交互式问答气泡",
-    selectionHeuristics: "用户需要持续追问、深度交互探索时实用性最高",
-    basePriority: 55,
-    width: 50,
-    flexible: true,
-    isActionOriented: true
-  },
-  followup: {
-    type: "followup",
-    capabilities: ["smart_followup_prompts"],
-    tags: ["延伸探索", "智能追问", "相关问题", "发散思考"],
-    description: "智能推荐高频延展问题与发散探索方向",
-    selectionHeuristics: "引导用户拓宽视野时实用性最高",
-    basePriority: 50,
-    width: 25,
-    flexible: true,
-    isActionOriented: false
-  },
-  metrics_telemetry: {
-    type: "metrics_telemetry",
-    capabilities: ["source_telemetry", "confidence_meter"],
-    tags: ["检索遥测", "置信度评分", "信源分析", "性能指标"],
-    description: "检索质量、模型置信度与响应遥测指标",
-    selectionHeuristics: "系统状态监控与信源质检时展示",
-    basePriority: 45,
-    width: 25,
-    flexible: true,
-    isActionOriented: false
-  },
-  mobile_qr: {
-    type: "mobile_qr",
-    capabilities: ["mobile_handoff", "qr_scan_action"],
-    tags: ["跨端流转", "扫码阅读", "移动端同步", "快速分享"],
-    description: "生成专属二维码，支持手机扫码快速续读与跨端流转",
-    selectionHeuristics: "需要随时随地分享或手机继续浏览时实用性最高",
-    basePriority: 40,
-    width: 25,
-    flexible: true,
-    isActionOriented: true
-  },
-  agent_workflow: {
-    type: "agent_workflow",
-    capabilities: ["agent_telemetry", "dag_trace"],
-    tags: ["Agent协同", "流水线追踪", "DAG链路", "阶段耗时"],
-    description: "可视化多 Agent 协同流水线、思考步骤与执行耗时",
-    selectionHeuristics: "展示 Agentic 思考过程与复杂执行流程时实用性最高",
-    basePriority: 35,
-    width: 50,
-    flexible: true,
-    isActionOriented: false
-  },
-  ai_overview: {
-    type: "ai_overview",
-    capabilities: ["overview_synthesis"],
-    tags: ["全景报告", "综合综述", "深度报告", "知识整合"],
-    description: "全景式深度分析长篇综述报告",
-    selectionHeuristics: "需要一站式长篇研报时实用性最高",
-    basePriority: 30,
-    width: 100,
     flexible: false,
     isActionOriented: false
   },
@@ -594,7 +506,7 @@ function resolveWidgetsFromCapabilities(
     if (key === "actions_toolbox" && (capSet.has("install_command") || capSet.has("download") || capSet.has("fix_command"))) {
       dynamicScore += 25;
     }
-    if (key === "official_portal" && (capSet.has("official_site") || capSet.has("official_url") || capSet.has("official_portal"))) {
+    if (key === "related_links" && (capSet.has("official_site") || capSet.has("official_url") || capSet.has("official_portal"))) {
       dynamicScore += 20;
     }
     if (key === "comparison" && (capSet.has("compare_table") || capSet.has("feature_matrix"))) {
