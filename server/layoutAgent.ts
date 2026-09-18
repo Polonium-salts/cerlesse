@@ -295,23 +295,29 @@ export async function planWidgetLayout(
     imageCount: options.signals?.imageCount
   });
 
-  // 2.1 阅读主序：以基线启用集为基准，确保组件一个都不丢
-  const enabledKeys: ResultWidgetKey[] = baseStrategy.enabledWidgets && baseStrategy.enabledWidgets.length > 0
-    ? [...baseStrategy.enabledWidgets]
-    : [...baseStrategy.componentOrder];
+  // 2.1 阅读主序：严格以 Selector (widgetPlan) 选定的组件集为基准，Layout Agent 绝不自行启停或追加组件
+  let enabledKeys: ResultWidgetKey[] = [];
+  if (widgetPlan?.widgetOrder && widgetPlan.widgetOrder.length > 0) {
+    enabledKeys = [...widgetPlan.widgetOrder];
+  } else if (widgetPlan?.widgets && widgetPlan.widgets.length > 0) {
+    enabledKeys = widgetPlan.widgets.map((w: any) => typeof w === "string" ? w : w.type).filter(Boolean);
+  } else if (baseStrategy.enabledWidgets && baseStrategy.enabledWidgets.length > 0) {
+    enabledKeys = [...baseStrategy.enabledWidgets];
+  } else {
+    enabledKeys = [...baseStrategy.componentOrder];
+  }
 
-  if (!enabledKeys.includes("image_gallery")) {
-    enabledKeys.push("image_gallery");
+  // 去重保底
+  enabledKeys = Array.from(new Set(enabledKeys));
+  if (enabledKeys.length === 0) {
+    enabledKeys = ["ai_answer"];
   }
 
   const baseOrder: ResultWidgetKey[] = [
     ...baseStrategy.componentOrder.filter((k) => enabledKeys.includes(k)),
     ...enabledKeys.filter((k) => !baseStrategy.componentOrder.includes(k))
   ];
-  let safeOrder = baseOrder.length > 0 ? baseOrder : [...enabledKeys];
-  if (!safeOrder.includes("image_gallery")) {
-    safeOrder.push("image_gallery");
-  }
+  const safeOrder = baseOrder.length > 0 ? baseOrder : [...enabledKeys];
 
   // 2.2 跨度求解：优先采纳小组件构建 Agent 的真实尺寸意图，其次回落基线栅格
   const plannedSpans: Partial<Record<ResultWidgetKey, number>> = {};
@@ -327,20 +333,16 @@ export async function planWidgetLayout(
 
   const spans: Partial<Record<ResultWidgetKey, number>> = {};
   for (const key of safeOrder) {
-    if (key === "image_gallery") {
-      spans[key] = 9;
-      continue;
-    }
+    const plannedItem = widgetPlan?.widgets?.find((w: any) => (typeof w === "string" ? w : w?.type) === key);
+    const plannedSize = typeof plannedItem === "object" ? plannedItem?.size : undefined;
+
     const preferred =
       plannedSpans[key] ??
+      (plannedSize ? widthToSpan(plannedSize) : undefined) ??
       baseStrategy.customWidgetSpans?.[key] ??
       baseStrategy.gridConfig?.[key]?.colSpanLg ??
-      widthToSpan(widgetPlan?.widgets?.find((w: any) => (typeof w === "string" ? w : w?.type) === key)?.size) ??
-      (key === "related_links" ? spanOfTileWidth(50, LAYOUT_PREVIEW_COLUMNS) : 6);
+      (key === "related_links" || key === "ai_answer" ? spanOfTileWidth(50, LAYOUT_PREVIEW_COLUMNS) : 6);
     spans[key] = normalizeWidgetSpan(preferred);
-  }
-  if (safeOrder.includes("image_gallery")) {
-    spans.image_gallery = 9;
   }
 
   // 官网跳转与 AI 智能回答都封顶半宽（50%），避免任一组件挤占整屏首屏。
@@ -489,7 +491,7 @@ export async function planWidgetLayout(
     intentLabel: baseStrategy.intentLabel,
     componentOrder: [...safeOrder],
     emphasizedWidget: emphasized,
-    spans: { ...spans, ...(safeOrder.includes("image_gallery") ? { image_gallery: 9 } : {}) },
+    spans: { ...spans },
     enabledWidgets: [...safeOrder],
     disabledWidgets,
     reasoning,
@@ -516,21 +518,13 @@ export async function planWidgetLayout(
     emphasizedWidget: emphasized,
     gridConfig: {
       ...baseStrategy.gridConfig,
-      ...packing.gridConfig,
-      ...(packing.gridConfig.image_gallery ? {
-        image_gallery: {
-          ...packing.gridConfig.image_gallery,
-          colSpanLg: 9,
-          width: 75,
-          isAutoFilled: false
-        }
-      } : {})
+      ...packing.gridConfig
     },
     totalRows: preview.totalRows,
     packingMethod: "semantic-css-grid",
     enabledWidgets: [...safeOrder],
     disabledWidgets,
-    customWidgetSpans: { ...spans, ...(safeOrder.includes("image_gallery") ? { image_gallery: 9 } : {}) },
+    customWidgetSpans: { ...spans },
     // 瀑布流不会去"补满行带"——留白由错落自然吸收，强行 dense 补位只会把磁贴挤成对齐的横条
     autoFillGaps: false,
     autoFillMode: "off",

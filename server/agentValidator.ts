@@ -1,7 +1,7 @@
 import type { ResultWidgetKey } from "../src/types.js";
 import type { CandidateWidget, ContentSignalsPayload, WidgetDecision, WidgetSelectionItem } from "../src/widgets/widgetContract.js";
 import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
-import { WIDGET_CATALOG } from "../src/widgets/widgetRetriever.js";
+import { getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
 
 export interface ValidationContext {
   query: string;
@@ -54,7 +54,7 @@ export function validateWidgetDecision(
     }
     keySet.add(item.key);
 
-    if (!WIDGET_CATALOG[item.key as ResultWidgetKey]) {
+    if (!getUnifiedCatalogItem(item.key)) {
       invalidKeys.push(item.key);
       violations.push(`非法组件键名 (未在 Catalog 中登记): ${item.key}`);
     }
@@ -152,7 +152,7 @@ export function repairWidgetDecision(
   // 2. 补齐缺失的必选组件
   for (const mandKey of report.missingMandatory) {
     if (!existingMap.has(mandKey)) {
-      const catItem = WIDGET_CATALOG[mandKey];
+      const catItem = getUnifiedCatalogItem(mandKey);
       const candidate = context.candidates.find((c) => c.key === mandKey);
       existingMap.set(mandKey, {
         key: mandKey,

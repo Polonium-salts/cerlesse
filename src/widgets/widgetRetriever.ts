@@ -464,7 +464,7 @@ export function resetOramaWidgetDb(): void {
   lastOramaFingerprint = "";
 }
 
-function extensionToCatalogItem(entry: ExtensionCatalogEntry): WidgetCatalogItem {
+export function extensionToCatalogItem(entry: ExtensionCatalogEntry): WidgetCatalogItem {
   return {
     id: entry.id as ResultWidgetKey,
     name: entry.name,
@@ -481,6 +481,33 @@ function extensionToCatalogItem(entry: ExtensionCatalogEntry): WidgetCatalogItem
     basePriority: entry.agent?.priority ?? 80,
     flexible: entry.agent?.flexible ?? true
   };
+}
+
+/**
+ * 获取特定组件的统一画像（Extension Catalog 优先，其次 Legacy WIDGET_CATALOG）
+ */
+export function getUnifiedCatalogItem(id: string): WidgetCatalogItem | undefined {
+  const ext = getExtensionCatalog().find(e => e.id === id);
+  if (ext) {
+    return extensionToCatalogItem(ext);
+  }
+  return WIDGET_CATALOG[id as ResultWidgetKey];
+}
+
+/**
+ * 获取全量统一组件画像列表（Extension Catalog 优先覆盖）
+ */
+export function getAllUnifiedCatalogItems(): WidgetCatalogItem[] {
+  const catalogMap = new Map<string, WidgetCatalogItem>();
+  for (const ext of getExtensionCatalog()) {
+    catalogMap.set(ext.id, extensionToCatalogItem(ext));
+  }
+  for (const [key, item] of Object.entries(WIDGET_CATALOG)) {
+    if (!catalogMap.has(key)) {
+      catalogMap.set(key, item);
+    }
+  }
+  return Array.from(catalogMap.values());
 }
 
 /**

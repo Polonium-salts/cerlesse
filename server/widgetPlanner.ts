@@ -13,25 +13,9 @@ import { classifyQueryIntent, planTaskCapabilities } from "./intentAgent.js";
 import { synthesizeToolActions } from "./toolRegistry.js";
 import { analyzeWidgetIntent, INTENT_CAPABILITIES_MAP } from "./widgetIntentAnalyzer.js";
 import { normalizeCapabilities, INTENT_TAXONOMY_ALIGNMENT, GENERIC_INTENTS, INTENT_CONFIDENCE_OVERRIDE_THRESHOLD, INTENT_GOAL_LABELS, ARCHETYPE_PROFILES, OFFICIAL_WIDGET_PROFILES, type CanonicalCapability } from "../src/widgets/capabilityTaxonomy.js";
-import { retrieveWidgets } from "../src/widgets/widgetRetriever.js";
+import { retrieveWidgets, getAllUnifiedCatalogItems, getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
 import { selectAndReRankWidgets } from "./widgetSelector.js";
 import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
-
-// ==========================================
-// 1. Archetype Capability Registry (原型能力与标签库)
-// 业务原型声明所能提供的能力集合、语义标签与选型准则
-// ==========================================
-interface ArchetypeDefinition {
-  archetype: CustomCardArchetype;
-  capabilities: string[];
-  tags: string[];
-  description: string;
-  selectionHeuristics: string;
-  themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
-  iconName: string;
-  width: TileWidth;
-  matchPatterns?: RegExp;
-}
 
 /**
  * 彻底禁用的原型名单 (Hard Disabled Archetypes)
@@ -46,423 +30,18 @@ export function isArchetypeAllowed(archetype: string): boolean {
   return !DISABLED_ARCHETYPES.has(archetype);
 }
 
-const ARCHETYPE_REGISTRY: Record<CustomCardArchetype, ArchetypeDefinition> = {
-  download_hub: {
-    archetype: "download_hub",
-    capabilities: ["download", "releases", "binary", "system_requirements", "package_manager", "installer", "install_command"],
-    tags: ARCHETYPE_PROFILES.download_hub?.tags || ["软件下载", "版本发布", "客户端", "安装包"],
-    description: ARCHETYPE_PROFILES.download_hub?.functionality || "多平台安装包聚合、版本发布与环境核对",
-    selectionHeuristics: ARCHETYPE_PROFILES.download_hub?.selectionHeuristics || "搜索涉及软件/工具下载时实用性最高",
-    themeColor: "blue",
-    iconName: "Download",
-    width: 75,
-    matchPatterns: /(下载|安装包|release|installer|client|客户端|安装教程)/i
-  },
-  tool_discovery: {
-    archetype: "tool_discovery",
-    capabilities: ["tool_cards", "demo_button", "try_online", "software_directory", "online_tool", "free_tool", "pricing_comparison"],
-    tags: ARCHETYPE_PROFILES.tool_discovery?.tags || ["在线工具", "神器推荐", "免安装", "在线体验"],
-    description: ARCHETYPE_PROFILES.tool_discovery?.functionality || "聚合多款同类实用工具与在线服务",
-    selectionHeuristics: ARCHETYPE_PROFILES.tool_discovery?.selectionHeuristics || "寻找实用工具与替代品时实用性最高",
-    themeColor: "emerald",
-    iconName: "Wrench",
-    width: 75,
-    matchPatterns: /(工具|在线|推荐|转换器|免安装|体验|网站推荐)/i
-  },
-  travel_itinerary: {
-    archetype: "travel_itinerary",
-    capabilities: ["itinerary_timeline", "travel_budget", "booking_resources", "attractions_map", "sightseeing", "route_plan"],
-    tags: ARCHETYPE_PROFILES.travel_itinerary?.tags || ["旅游攻略", "行程路线", "景点规划", "出行门票"],
-    description: ARCHETYPE_PROFILES.travel_itinerary?.functionality || "分天数规划游玩路线、景点地图与出行预算",
-    selectionHeuristics: ARCHETYPE_PROFILES.travel_itinerary?.selectionHeuristics || "用户查询旅游行程与出行规划时实用性最高",
-    themeColor: "amber",
-    iconName: "Compass",
-    width: 100,
-    matchPatterns: /(旅游|攻略|行程|路线|景点|门票|自驾|几日游)/i
-  },
-  pros_cons: {
-    archetype: "pros_cons",
-    capabilities: ["pros_cons", "tradeoffs", "risk_mitigation", "advantages_disadvantages"],
-    tags: ARCHETYPE_PROFILES.pros_cons?.tags || ["优缺点", "利弊权衡", "优劣对比", "客观评价"],
-    description: ARCHETYPE_PROFILES.pros_cons?.functionality || "双栏对比核心优势与局限不足",
-    selectionHeuristics: ARCHETYPE_PROFILES.pros_cons?.selectionHeuristics || "用户犹豫不决或探寻某事物好坏时实用性最高",
-    themeColor: "violet",
-    iconName: "Scale",
-    width: 75,
-    matchPatterns: /(优缺点|利弊|权衡|避坑|优势与不足)/i
-  },
-  verdict_summary: {
-    archetype: "verdict_summary",
-    capabilities: ["verdict_recommendation", "scenario_selection", "best_choice", "decision_matrix", "final_advice"],
-    tags: ARCHETYPE_PROFILES.verdict_summary?.tags || ["最终裁决", "场景选型", "推荐建议", "购买指南"],
-    description: ARCHETYPE_PROFILES.verdict_summary?.functionality || "针对不同场景的权威推荐结论与决策建议",
-    selectionHeuristics: ARCHETYPE_PROFILES.verdict_summary?.selectionHeuristics || "用户直接发问'哪个好/买哪个'时实用性最高",
-    themeColor: "violet",
-    iconName: "Scale",
-    width: 75,
-    matchPatterns: /(谁更好|推荐|买哪个|选型|裁决|选哪个|pk)/i
-  },
-  parameter_matrix: {
-    archetype: "parameter_matrix",
-    capabilities: ["parameter_matrix", "spec_matrix", "spec_comparison", "benchmark_table", "feature_matrix", "concept_definition", "deep_report", "industry_matrix"],
-    tags: ARCHETYPE_PROFILES.parameter_matrix?.tags || ["参数表格", "规格对比", "性能基准", "指标矩阵"],
-    description: ARCHETYPE_PROFILES.parameter_matrix?.functionality || "结构化二维多维对比表格，逐项对齐核心参数",
-    selectionHeuristics: ARCHETYPE_PROFILES.parameter_matrix?.selectionHeuristics || "用户对比多个型号或技术参数时实用性最高",
-    themeColor: "zinc",
-    iconName: "Layers",
-    width: 100,
-    matchPatterns: /(参数|指标|规格|基准|配置对比|矩阵|概念|原理|什么是)/i
-  },
-  quote_dossier: {
-    archetype: "quote_dossier",
-    capabilities: ["quote_dossier", "expert_opinion", "literature_archive", "viewpoints"],
-    tags: ARCHETYPE_PROFILES.quote_dossier?.tags || ["名家观点", "权威言论", "多方评语", "引文档案"],
-    description: ARCHETYPE_PROFILES.quote_dossier?.functionality || "汇集行业专家观点与多方争议言论引用",
-    selectionHeuristics: ARCHETYPE_PROFILES.quote_dossier?.selectionHeuristics || "用户探寻业界观点与多方争议时实用性最高",
-    themeColor: "blue",
-    iconName: "Quote",
-    width: 75,
-    matchPatterns: /(言论|评价|争议|观点|评语)/i
-  },
-  schema: {
-    archetype: "schema",
-    capabilities: ["custom_schema", "declarative_ui", "dynamic_components"],
-    tags: ["动态蓝图", "声明式UI", "定制卡片", "业务组件"],
-    description: "自适应渲染任意数据结构的动态声明式组件树",
-    selectionHeuristics: "当无预置模板可完美承载时实用性最高",
-    themeColor: "blue",
-    iconName: "Box",
-    width: 75,
-    matchPatterns: /(schema|组件|蓝图|动态组件)/i
-  }
+const ARCHETYPE_METADATA: Record<string, { themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc"; iconName: string; pattern?: RegExp }> = {
+  download_hub: { themeColor: "blue", iconName: "Download", pattern: /(下载|安装包|release|installer|client|客户端|安装教程)/i },
+  tool_discovery: { themeColor: "emerald", iconName: "Wrench", pattern: /(工具|在线|推荐|转换器|免安装|体验|网站推荐)/i },
+  travel_itinerary: { themeColor: "amber", iconName: "Compass", pattern: /(旅游|攻略|行程|路线|景点|门票|自驾|几日游)/i },
+  pros_cons: { themeColor: "violet", iconName: "Scale", pattern: /(优缺点|利弊|权衡|避坑|优势与不足)/i },
+  verdict_summary: { themeColor: "violet", iconName: "Scale", pattern: /(谁更好|推荐|买哪个|选型|裁决|选哪个|pk)/i },
+  parameter_matrix: { themeColor: "zinc", iconName: "Layers", pattern: /(参数|指标|规格|基准|配置对比|矩阵|概念|原理|什么是)/i },
+  quote_dossier: { themeColor: "blue", iconName: "Quote", pattern: /(言论|评价|争议|观点|评语)/i },
+  schema: { themeColor: "blue", iconName: "Box", pattern: /(schema|组件|蓝图|动态组件)/i }
 };
 
-// ==========================================
-// 2. Widget Capability Registry (小组件能力注册表)
-// 包含组件所承载的能力、默认尺寸与基础权重
-// ==========================================
-interface WidgetDefinition {
-  type: ResultWidgetKey;
-  capabilities: string[];
-  tags: string[];
-  description: string;
-  selectionHeuristics: string;
-  basePriority: number; // 1 - 100
-  width: TileWidth;
-  flexible: boolean;
-  isActionOriented: boolean;
-}
 
-const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
-  actions_toolbox: {
-    type: "actions_toolbox",
-    capabilities: ["install_command", "copy_text", "quick_action", "cli_execution", "quick_links", "code_snippet", "fix_command", "download", "git_clone"],
-    tags: ["快捷指令", "安装命令", "代码执行", "一键复制", "行动工具"],
-    description: "提供一键运行 CLI、安装命令复制、代码片段与快捷链接",
-    selectionHeuristics: "在技术实施、命令行执行、快速安装等场景下实用性最高",
-    basePriority: 88,
-    width: 50,
-    flexible: true,
-    isActionOriented: true
-  },
-  related_links: {
-    type: "related_links",
-    capabilities: ["official_site", "official_url", "verified_docs", "authoritative_entry", "official_portal", "booking_resources", "service_status", "contact_entry"],
-    tags: OFFICIAL_WIDGET_PROFILES.related_links?.tags || ["官方入口", "官网直达", "多链接", "权威信源", "导航", "外部跳转"],
-    description: OFFICIAL_WIDGET_PROFILES.related_links?.functionality || "识别官方正版网站、官方文档与服务入口并提供一键直达",
-    selectionHeuristics: OFFICIAL_WIDGET_PROFILES.related_links?.selectionHeuristics || "查询涉及品牌、软件名或寻找官网时实用性最高",
-    basePriority: 85,
-    width: 50,
-    flexible: true,
-    isActionOriented: true
-  },
-  verification_checklist: {
-    type: "verification_checklist",
-    capabilities: ["troubleshooting_audit", "fact_check", "prerequisites_check", "security_audit", "environment_checklist", "error_diagnosis", "verification_checklist"],
-    tags: ["核验清单", "故障排查", "环境核对", "安全审计", "排错诊断"],
-    description: "前置依赖检查、故障排查诊断与多项核验清单",
-    selectionHeuristics: "遇到报错、依赖冲突或环境安装时实用性最高",
-    basePriority: 80,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
-  comparison: {
-    type: "comparison",
-    capabilities: ["compare_table", "feature_matrix", "cross_compare", "dimension_pk", "spec_comparison", "benchmark_table"],
-    tags: ["多维对比", "参数矩阵", "特性对比", "性能基准", "横向PK"],
-    description: "多维度横向对比表格与技术指标 PK",
-    selectionHeuristics: "用户面临二选一或多选一对决选型时实用性最高",
-    basePriority: 86,
-    width: 100,
-    flexible: false,
-    isActionOriented: false
-  },
-  mindmap: {
-    type: "mindmap",
-    capabilities: ["knowledge_topology", "architecture_tree", "subsystem_mapping", "mindmap_tree", "concept_definition", "roadmap_step", "core_principles", "typical_scenarios"],
-    tags: ["思维导图", "知识图谱", "技术架构", "核心原理", "体系梳理"],
-    description: "层级知识树、系统拓扑与核心架构导图",
-    selectionHeuristics: "解析复杂系统、技术原理与概念全景时实用性最高",
-    basePriority: 82,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  takeaways: {
-    type: "takeaways",
-    capabilities: ["bullet_conclusions", "high_density_takeaways", "summary_points"],
-    tags: ["核心结论", "要点提炼", "关键洞察", "速览摘要"],
-    description: "高密度条目式核心结论提炼与洞察速览",
-    selectionHeuristics: "长文内容研报需要快速抓住要点时实用性最高",
-    basePriority: 84,
-    // 与 src/widgets/manifests/takeaways.json 的 grid.width 保持一致（25% 窄栏，3 格）。
-    // 规划层宽度是该组件的最终上桌宽度来源，二者一旦漂移，清单改尺寸就不生效。
-    width: 25,
-    flexible: true,
-    isActionOriented: false
-  },
-  image_gallery: {
-    type: "image_gallery",
-    capabilities: ["image_gallery", "resource_preview", "resource_search"],
-    tags: OFFICIAL_WIDGET_PROFILES.image_gallery?.tags || ["相关图片", "图片墙", "视觉素材", "缩略图", "图集"],
-    description: OFFICIAL_WIDGET_PROFILES.image_gallery?.functionality || "聚合检索结果中的相关图片，以自适应网格墙呈现并支持放大预览与图源溯源",
-    selectionHeuristics: OFFICIAL_WIDGET_PROFILES.image_gallery?.selectionHeuristics || "查询对象具备明确视觉形态且信源含图片时实用性最高",
-    basePriority: 74,
-    // 与 src/widgets/manifests/image_gallery.json 的 grid.width 保持一致（75% 主宽，9 格）
-    width: 75,
-    flexible: false,
-    isActionOriented: false
-  },
-  sources: {
-    type: "sources",
-    capabilities: ["evidence_chain", "citation_retrieval", "literature_archive", "literature_sources"],
-    tags: ["权威信源", "存证引文", "文献溯源", "佐证依据"],
-    description: "全网信源引文出处、发布时间与存证溯源",
-    selectionHeuristics: "严肃调研、学术研报与结论核实时必备",
-    basePriority: 72,
-    width: 50,
-    flexible: false,
-    isActionOriented: false
-  },
-  search_engine: {
-    type: "search_engine",
-    capabilities: [
-      "search_engine_redirect",
-      "external_search_query",
-      "web_search_portal",
-      "engine_launcher",
-      "quick_links"
-    ],
-    tags: ["搜索引擎", "搜索跳转", "Google", "Bing", "百度", "快捷搜索", "外部检索"],
-    description: "提供主流搜索引擎（Google、Bing、百度等）快速搜索栏，支持直接输入并一键跳转检索结果页",
-    selectionHeuristics: "当搜索词涉及 Google、Bing、百度等搜索引擎或用户希望直接外部跳转检索时实用性最高",
-    basePriority: 92,
-    width: 50,
-    flexible: true,
-    isActionOriented: true
-  },
-  translation: {
-    type: "translation",
-    capabilities: [
-      "language_translation",
-      "text_translation",
-      "bilingual_comparison",
-      "pronunciation_guide",
-      "dictionary_lookup"
-    ],
-    tags: ["翻译", "双语", "多语言", "词典", "英译中", "中译英", "Translate", "发音"],
-    description: "多语言智能翻译与双语词典，支持中英日韩互译、音标发音、例句对照与一键复制",
-    selectionHeuristics: "当搜索词涉及翻译、外语查词、中译英、日译中等语言转换诉求时实用性最高，必须优先置顶展示",
-    basePriority: 96,
-    width: 50,
-    flexible: true,
-    isActionOriented: true
-  },
-  token_usage: {
-    type: "token_usage",
-    capabilities: [
-      "token_metrics",
-      "cost_analysis",
-      "latency_telemetry",
-      "throughput_stats",
-      "model_monitoring"
-    ],
-    tags: ["Token", "消耗统计", "吞吐效率", "大模型度量", "成本监控", "性能度量"],
-    description: "展示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
-    selectionHeuristics: "当用户关注 Token 使用量、生成成本或 AI 性能分析时启用，采用 25% 紧凑磁贴形态呈现",
-    basePriority: 80,
-    width: 25,
-    flexible: false,
-    isActionOriented: false
-  },
-  ai_answer: {
-    type: "ai_answer",
-    capabilities: [
-      "direct_answer",
-      "definition_snippet",
-      "instant_verdict",
-      "overview_synthesis",
-      "summary_points",
-      "bullet_conclusions"
-    ],
-    tags: OFFICIAL_WIDGET_PROFILES.ai_answer?.tags || ["AI回答", "全网总结", "深度要点", "问答", "结论"],
-    description: OFFICIAL_WIDGET_PROFILES.ai_answer?.functionality || "基于全网检索多路信源进行深度综合与推理，输出格式化回答与核心决策结论",
-    selectionHeuristics: OFFICIAL_WIDGET_PROFILES.ai_answer?.selectionHeuristics || "用户查询属于知识探索、综合分析或需要研报结论时实用性最高",
-    basePriority: 90,
-    width: 50,
-    flexible: true,
-    isActionOriented: false
-  },
-  weather: {
-    type: "weather",
-    capabilities: [
-      "weather_current",
-      "weather_forecast",
-      "weather_indices",
-      "air_quality",
-      "clothing_advice",
-      "location_map"
-    ],
-    tags: ["天气预报", "气象", "实时天气", "气温", "预报", "降水", "生活指数"],
-    description: "实时气温实况、未来天气走势预报与生活气象指数",
-    selectionHeuristics: "当搜索词涉及天气、气象、气温、下雨、穿衣指数等时实用性最高",
-    basePriority: 94,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  troubleshooting: {
-    type: "troubleshooting",
-    capabilities: [
-      "error_diagnosis",
-      "fix_command",
-      "troubleshooting_audit",
-      "verification_checklist",
-      "prerequisites_check",
-      "cli_execution",
-      "copy_text",
-      "quick_action"
-    ],
-    tags: ["排错流程", "报错排查", "根因分析", "分步修复", "核验清单", "避坑指南"],
-    description: "结构化错误现象分析、根因诊断、分步修复执行指令与交互式验证清单",
-    selectionHeuristics: "当用户遇到报错、系统崩溃、构建失败、依赖冲突或排错修复诉求时实用性最高，必须优先置顶展示",
-    basePriority: 96,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
-  software_info: {
-    type: "software_info",
-    capabilities: ["software_info", "version_history", "copy_text", "official_site", "license_info"],
-    tags: ["软件信息", "版本", "开发者", "支持平台", "开源许可证", "规格参数"],
-    description: "展示软件名称、版本、支持平台、开发者、开源许可证与核心规格",
-    selectionHeuristics: "查询特定软件工具详情时实用性最高",
-    basePriority: 88,
-    width: 50,
-    flexible: true,
-    isActionOriented: false
-  },
-  download: {
-    type: "download",
-    capabilities: ["download", "releases", "release_binary", "install_command", "package_manager", "official_site"],
-    tags: ["下载中心", "安装包", "Release", "Homebrew", "npm", "pip", "多平台"],
-    description: "提供多平台安装包下载、包管理器一键安装指令、版本镜像与校验",
-    selectionHeuristics: "用户需要下载或安装软件时优先级最高",
-    basePriority: 95,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
-  release_history: {
-    type: "release_history",
-    capabilities: ["version_history", "releases", "timeline_evolution", "milestones", "history"],
-    tags: ["版本历史", "更新日志", "Changelog", "迭代路线", "新特性"],
-    description: "展示软件/项目的历史版本演进、更新日志、重大特性与破坏性变更",
-    selectionHeuristics: "关注项目更新记录与版本变动时使用",
-    basePriority: 82,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  repository: {
-    type: "repository",
-    capabilities: ["git_clone", "software_info", "trend_signals", "copy_text", "verified_docs"],
-    tags: ["GitHub", "GitLab", "代码库", "Star趋势", "快速克隆", "开源生态"],
-    description: "展示 GitHub/GitLab 仓库详情、Star/Fork 统计、语言构成、快速克隆指令",
-    selectionHeuristics: "涉及开源项目与 GitHub 仓库时使用",
-    basePriority: 86,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
-  code_playground: {
-    type: "code_playground",
-    capabilities: ["code_snippet", "code_run", "copy_text", "cli_execution"],
-    tags: ["代码演练", "在线运行", "调试", "控制台", "多语言示例"],
-    description: "提供交互式代码编辑、即时运行控制台、多语言代码片段与控制台输出模拟",
-    selectionHeuristics: "教程、排错与技术实现场景下实用性最高",
-    basePriority: 85,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
-  tool_discovery: {
-    type: "tool_discovery",
-    capabilities: ["tool_cards", "try_online", "software_directory", "free_tool", "pricing_comparison"],
-    tags: ["工具发现", "替代品", "精选工具", "开源竞品", "效率神器"],
-    description: "发现精选效能工具、竞品与开源替代方案，包含价格模型与核心优势对比",
-    selectionHeuristics: "用户寻找工具或替代方案时使用",
-    basePriority: 84,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  },
-  document_preview: {
-    type: "document_preview",
-    capabilities: ["verified_docs", "literature_archive", "citation_retrieval", "evidence_chain"],
-    tags: ["文档速览", "白皮书", "PDF研报", "Markdown规范", "学术论文"],
-    description: "快速预览技术规范、PDF 研报、Markdown 手册与学术证据链摘要",
-    selectionHeuristics: "长篇研报与权威文档速读时使用",
-    basePriority: 83,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  news_feed: {
-    type: "news_feed",
-    capabilities: ["temporal_analysis", "temporal_evolution", "citation_retrieval", "overview_synthesis"],
-    tags: ["时事资讯", "最新动态", "行业要闻", "快讯", "新闻流"],
-    description: "汇聚全网即时要闻、热点资讯、科技动态与时序演进摘要",
-    selectionHeuristics: "查询最新时事资讯与动态时使用",
-    basePriority: 81,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  trend_chart: {
-    type: "trend_chart",
-    capabilities: ["trend_signals", "temporal_evolution", "sentiment_distribution", "temporal_analysis"],
-    tags: ["趋势图表", "增长走势", "时序数据", "Star曲线", "数据分析"],
-    description: "可视化时序趋势走势、行业增长曲线、Star 增长率与对比图表",
-    selectionHeuristics: "需要查看时序演进与增长走势时使用",
-    basePriority: 84,
-    width: 75,
-    flexible: true,
-    isActionOriented: false
-  },
-  map: {
-    type: "map",
-    capabilities: ["location_map", "attractions_map", "route_plan", "itinerary_timeline"],
-    tags: ["地图导览", "地理位置", "周边POI", "景点推荐", "交通出行"],
-    description: "展示地理位置、周边 POI 兴趣点探索、路线规划与旅行交通建议",
-    selectionHeuristics: "涉及地理位置、旅游出行与周边探索时使用",
-    basePriority: 85,
-    width: 75,
-    flexible: true,
-    isActionOriented: true
-  }
-};
 
 /**
  * 纯能力匹配求解卡片原型 (Dynamic Capability Archetype Resolver)
@@ -478,29 +57,25 @@ function resolveArchetypeFromCapabilities(
     : "parameter_matrix";
   let maxScore = 0;
 
-  for (const [archKey, def] of Object.entries(ARCHETYPE_REGISTRY) as [CustomCardArchetype, ArchetypeDefinition][]) {
+  for (const [archKey, meta] of Object.entries(ARCHETYPE_METADATA) as [CustomCardArchetype, { themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc"; iconName: string; pattern?: RegExp }][]) {
     if (!isArchetypeAllowed(archKey)) continue;
     let score = 0;
-
-    // 1. 能力交集打分 (每命中一个关键能力 +10 分)
-    for (const cap of def.capabilities) {
-      if (capSet.has(cap.toLowerCase())) {
-        score += 10;
+    const profile = ARCHETYPE_PROFILES[archKey];
+    if (profile?.tags) {
+      for (const tag of profile.tags) {
+        if (capSet.has(tag.toLowerCase())) score += 10;
       }
     }
-
-    // 2. 查询词语义特征增强打分 (+15 分)
-    if (def.matchPatterns && def.matchPatterns.test(query)) {
+    if (meta.pattern && meta.pattern.test(query)) {
       score += 15;
     }
-
     if (score > maxScore) {
       maxScore = score;
       bestArchetype = archKey;
     }
   }
 
-  const resolvedDef = ARCHETYPE_REGISTRY[bestArchetype] || ARCHETYPE_REGISTRY.parameter_matrix;
+  const resolvedDef = ARCHETYPE_METADATA[bestArchetype] || ARCHETYPE_METADATA.parameter_matrix;
   return {
     archetype: bestArchetype,
     themeColor: resolvedDef.themeColor,
@@ -532,7 +107,7 @@ const MAX_PLANNED_WIDGETS = 9;
 
 /**
  * 纯能力匹配求解组件集与排版规格 (Dynamic Capability Widget Resolver)
- * 彻底消除 switch(intent)，输出含有优先级、尺寸和自适应属性的富结构
+ * 彻底消除 switch(intent)，基于统一 Extension Catalog 输出含有优先级、尺寸和自适应属性的富结构
  */
 function resolveWidgetsFromCapabilities(
   capabilities: string[],
@@ -543,16 +118,14 @@ function resolveWidgetsFromCapabilities(
   const capSet = new Set(capabilities.map(c => c.toLowerCase()));
   const scoredWidgets: Array<{ item: WidgetPlannedItem; score: number }> = [];
 
-  // 能力特异性（IDF）预计算：一项能力被越多组件声明，就越"通用"，越不足以证明语义对齐。
-  // 这条约束专治"声明一大串能力就能霸榜"：旧实现按命中条数等权加分 (matchCount * 12)，
-  // 如果组件声明过多能力，按特异性加权压制通用能力，突出真正对口的组件。
+  const catalogItems = getAllUnifiedCatalogItems();
   const declaredBy = new Map<string, number>();
-  for (const def of Object.values(WIDGET_REGISTRY) as WidgetDefinition[]) {
+  for (const def of catalogItems) {
     for (const cap of new Set(def.capabilities.map(c => c.toLowerCase()))) {
       declaredBy.set(cap, (declaredBy.get(cap) || 0) + 1);
     }
   }
-  const widgetTotal = Object.keys(WIDGET_REGISTRY).length;
+  const widgetTotal = catalogItems.length;
   /** 独家能力 ≈ 1.0；被多数组件共享的通用能力被压到 0.3 附近 */
   const capabilityWeight = (cap: string): number => {
     const owners = declaredBy.get(cap) || 1;
@@ -562,8 +135,9 @@ function resolveWidgetsFromCapabilities(
   /** 一份"独家且对口"的能力折算多少分 */
   const CAPABILITY_UNIT = 26;
 
-  // 对全量注册表中的组件进行能力交集与适配度打分
-  for (const [key, def] of Object.entries(WIDGET_REGISTRY) as [ResultWidgetKey, WidgetDefinition][]) {
+  // 对全量统一注册表中的组件进行能力交集与适配度打分
+  for (const def of catalogItems) {
+    const key = def.id;
     const matchedCaps = def.capabilities.filter(c => capSet.has(c.toLowerCase()));
     const matchCount = matchedCaps.length;
     // 相关度 = 命中能力的特异性之和，而不是命中条数
@@ -629,10 +203,10 @@ function resolveWidgetsFromCapabilities(
       // 避免一个泛化组件仅靠堆命中数就吃掉首屏大块版面。
       let finalSize = def.flexible
         ? scaleTileWidth(
-            def.width,
+            def.defaultSpan,
             specificity >= 2.2 ? 1 : specificity > 0 && specificity <= 0.8 ? -1 : 0
           )
-        : def.width;
+        : def.defaultSpan;
 
       if (key === "image_gallery") {
         finalSize = 75;

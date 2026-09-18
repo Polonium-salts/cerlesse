@@ -5,7 +5,7 @@ import {
   type CandidateWidget,
   type ContentSignalsPayload
 } from "../src/widgets/widgetContract.js";
-import { WIDGET_CATALOG } from "../src/widgets/widgetRetriever.js";
+import { getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
 import { callOpenRouterChat } from "./openrouter.js";
 import {
   getRouteForIntent,
@@ -61,7 +61,7 @@ export function deterministicReRankWidgets(
   // 3. 优先注入必选组件 (Mandatory Widgets)
   for (const mandKey of route.mandatoryWidgets) {
     const cand = sorted.find(c => c.key === mandKey);
-    const catItem = WIDGET_CATALOG[mandKey];
+    const catItem = getUnifiedCatalogItem(mandKey);
     if (cand || catItem) {
       selectedMap.set(mandKey, {
         key: mandKey,
