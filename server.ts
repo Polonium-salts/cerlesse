@@ -6,7 +6,6 @@ import { runSearchAgent } from "./server/agent.js";
 import { AVAILABLE_FREE_MODELS } from "./server/openrouter.js";
 import { searchAndRankOnce } from "./server/retrievalAgent.js";
 import { SUPPORTED_LANGUAGES } from "./server/language.js";
-import { forgeUniqueCard } from "./server/cardForge.js";
 import { planWidgetLayout } from "./server/layoutAgent.js";
 import { searchSearxngImages } from "./server/searxng.js";
 import { translateText } from "./server/translationAgent.js";
@@ -205,30 +204,6 @@ app.post(["/api/agent/run", "/api/agent/synthesize"], async (req, res) => {
   }
 });
 
-// Dynamic Unique Card Forge Endpoint
-app.post("/api/cards/forge", async (req, res) => {
-  try {
-    const { query, results, archetype, userPrompt, themeColor, colSpan, iconName } = req.body;
-    if (!query || typeof query !== "string" || query.trim() === "") {
-      return res.status(400).json({ error: "缺少搜索关键词" });
-    }
-
-    const card = await forgeUniqueCard({
-      query: query.trim(),
-      results: Array.isArray(results) ? results : [],
-      archetype,
-      userPrompt,
-      themeColor,
-      colSpan: typeof colSpan === "number" ? colSpan : 6,
-      iconName
-    });
-
-    res.json({ card });
-  } catch (error: any) {
-    console.error("Card forge error:", error);
-    res.status(500).json({ error: error.message || "创建独有卡片失败" });
-  }
-});
 
 // Dedicated Widget Layout Agent Endpoint
 // 小组件排版 Agent：输入组件清单与任务，输出 12 栅格排版决策单与可直接渲染的排版策略

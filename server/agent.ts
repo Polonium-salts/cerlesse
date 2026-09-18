@@ -1,6 +1,5 @@
 import { searchSearxng, searchSearxngImages } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, AVAILABLE_FREE_MODELS, normalizeModelId } from "./openrouter.js";
-import { forgeMultipleDynamicWidgets, detectMultipleArchetypes } from "./cardForge.js";
 import { planWidgetStrategy } from "./widgetPlanner.js";
 import { planWidgetLayout, WIDGET_LAYOUT_AGENT_NAME } from "./layoutAgent.js";
 import { searchAndRankOnce } from "./retrievalAgent.js";
@@ -16,13 +15,11 @@ import {
   ResultWidgetKey,
   LayoutIntentType,
   ActionPlan,
-  WidgetPlan,
-  CustomCardData
+  WidgetPlan
 } from "../src/types.js";
 import { detectQueryLanguage, resolveTargetLanguage, getStepLocalization } from "./language.js";
 import {
   OFFICIAL_WIDGET_PROFILES,
-  ARCHETYPE_PROFILES,
   formatAgentWidgetGuidancePrompt,
   CanonicalCapability
 } from "../src/widgets/capabilityTaxonomy.js";
@@ -274,33 +271,27 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     "running"
   );
 
-  const [synthesisRes, customCards] = await Promise.all([
-    // AI 深度研报提炼
-    (async () => {
-      try {
-        return await synthesizeWithOpenRouter({
-          query,
-          plan,
-          results: filteredResults,
-          apiKey: options.openRouterApiKey,
-          model: selectedModel,
-          targetLanguage: targetLang,
-          detectedLanguage: detectedLang
-        });
-      } catch (err: any) {
-        console.info("[Search Agent] Algorithmic synthesis fallback:", err?.message || err);
-        return generateAlgorithmicSynthesis(
-          query,
-          plan,
-          filteredResults,
-          `${selectedModel} (自适应降级兜底)`,
-          targetLang.code
-        );
-      }
-    })(),
-    // 独有卡片锻造已彻底停用 (Agent 仅使用官方与社区标准小组件)
-    (async () => [] as CustomCardData[])()
-  ]);
+  let synthesisRes: Awaited<ReturnType<typeof synthesizeWithOpenRouter>>;
+  try {
+    synthesisRes = await synthesizeWithOpenRouter({
+      query,
+      plan,
+      results: filteredResults,
+      apiKey: options.openRouterApiKey,
+      model: selectedModel,
+      targetLanguage: targetLang,
+      detectedLanguage: detectedLang
+    });
+  } catch (err: any) {
+    console.info("[Search Agent] Algorithmic synthesis fallback:", err?.message || err);
+    synthesisRes = generateAlgorithmicSynthesis(
+      query,
+      plan,
+      filteredResults,
+      `${selectedModel} (自适应降级兜底)`,
+      targetLang.code
+    );
+  }
 
   updateStep(
     "synthesize",
@@ -342,7 +333,6 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     mindMapBranches: synthesisRes.mindMap?.children?.length || 0,
     followUpCount: (synthesisRes.followUpQuestions || []).length,
     hasOfficial: filteredResults.some(r => r.isOfficial),
-    customCardCount: customCards.length,
     // 图片数据就绪信号：图片检索产出 + 信源自带缩略图。
     // 必须显式下发 —— 排版 Agent 只看得到 filteredResults，拿不到检索回来的图。
     imageCount: relatedImages.length + filteredResults.filter((r) => Boolean(r.thumbnail)).length
@@ -442,7 +432,6 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     targetLanguage: targetLang.code,
     layoutStrategy,
     widgetPlan,
-    customCards,
     tokenUsage
   };
 }

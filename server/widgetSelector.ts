@@ -96,32 +96,28 @@ export function deterministicReRankWidgets(
     });
   }
 
-  // 5. 确保三大基底 (ai_answer, related_links, sources) 稳定存在
-  if (!selectedMap.has("ai_answer") && !isWidgetForbidden("ai_answer", canonicalIntent)) {
+  // 5. 确保当前意图的核心必选组件 (Mandatory Widgets) 得到满足
+  for (const mandKey of route.mandatoryWidgets) {
+    if (!selectedMap.has(mandKey) && !isWidgetForbidden(mandKey, canonicalIntent)) {
+      const catItem = getUnifiedCatalogItem(mandKey);
+      selectedMap.set(mandKey, {
+        key: mandKey,
+        priority: catItem?.basePriority || 90,
+        size: catItem?.defaultSpan || 50,
+        reason: `意图 [${canonicalIntent}] 核心必备组件`,
+        confidence: 0.95
+      });
+    }
+  }
+
+  // 若仍无任何组件入选，以核心速答组件兜底
+  if (selectedMap.size === 0 && !isWidgetForbidden("ai_answer", canonicalIntent)) {
     selectedMap.set("ai_answer", {
       key: "ai_answer",
       priority: 95,
       size: 50,
       reason: "全网检索核心速答基底",
       confidence: 0.95
-    });
-  }
-  if (!selectedMap.has("related_links") && !isWidgetForbidden("related_links", canonicalIntent)) {
-    selectedMap.set("related_links", {
-      key: "related_links",
-      priority: 90,
-      size: 50,
-      reason: "官方认证入口与导航直达",
-      confidence: 0.9
-    });
-  }
-  if (!selectedMap.has("sources") && !isWidgetForbidden("sources", canonicalIntent)) {
-    selectedMap.set("sources", {
-      key: "sources",
-      priority: 85,
-      size: 50,
-      reason: "权威信源存证与文献引用",
-      confidence: 0.85
     });
   }
 

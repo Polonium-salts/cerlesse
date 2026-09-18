@@ -13,7 +13,8 @@
     "test": "tsx --test tests/**/*.test.ts",
     "widgets:scan": "tsx scripts/widgets/scan.ts",
     "widgets:validate": "tsx scripts/widgets/validate.ts",
-    "widgets:generate": "tsx scripts/widgets/generate.ts"
+    "widgets:generate": "tsx scripts/widgets/generate.ts",
+    "ci": "tsc --noEmit && tsx scripts/widgets/scan.ts && tsx scripts/widgets/validate.ts && tsx --test tests/**/*.test.ts && vite build"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

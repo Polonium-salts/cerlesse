@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import {
   SearchSynthesisResult,
-  UserSettings,
-  CustomCardData
+  UserSettings
 } from "../types.js";
 import {
   Sparkles,
@@ -23,9 +22,6 @@ interface CockpitWorkspaceProps {
   onSwitchToBentoGrid?: () => void;
   initialTab?: "answer" | "links" | "reasoning";
   isDark?: boolean;
-  customCards?: CustomCardData[];
-  onUpdateCard?: (updated: CustomCardData) => void;
-  onDeleteCard?: (id: string) => void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
 }

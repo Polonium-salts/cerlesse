@@ -24,407 +24,9 @@ export interface WidgetCatalogItem {
 }
 
 /**
- * 全局统一组件目录 (Widget Catalog - Single Source of Truth)
+ * 所有已登记的标准 Widget Key 列表（完全来自 Extension Catalog）
  */
-export const WIDGET_CATALOG: Record<ResultWidgetKey, WidgetCatalogItem> = {
-  ai_answer: {
-    id: "ai_answer",
-    name: "AI 智能回答",
-    description: "基于全网检索多路信源深度综合与推理，输出格式化回答、核心决策结论与智能拓展",
-    category: "synthesis",
-    capabilities: [
-      "direct_answer",
-      "definition_snippet",
-      "instant_verdict",
-      "overview_synthesis",
-      "summary_points",
-      "bullet_conclusions",
-      "high_density_takeaways"
-    ],
-    intents: ["explain", "research", "general_knowledge", "study_tutorial", "concept_explanation", "tech_comparison"],
-    keywords: ["是什么", "为什么", "如何", "总结", "分析", "原理", "介绍", "概况", "解释", "含义", "核心要点"],
-    examples: ["什么是量子退火算法", "光伏发电原理与应用", "React 和 Vue 核心理念解析"],
-    defaultSpan: 50,
-    minConfidence: 0.5,
-    basePriority: 90,
-    flexible: true
-  },
-  related_links: {
-    id: "related_links",
-    name: "官网跳转 / 权威入口",
-    description: "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道与站点说明",
-    category: "portal",
-    capabilities: [
-      "official_site",
-      "official_url",
-      "verified_docs",
-      "authoritative_entry",
-      "official_portal",
-      "quick_links"
-    ],
-    intents: ["software_download", "portal_navigation", "tool_discovery", "official_portal", "install"],
-    keywords: ["官网", "官方网站", "入口", "登录", "下载", "主页", "文档", "平台", "网址", "official", "portal"],
-    examples: ["Node.js 官方网站", "Docker 官方文档入口", "GitHub 登录直达"],
-    defaultSpan: 50,
-    minConfidence: 0.6,
-    basePriority: 85,
-    flexible: true
-  },
-  takeaways: {
-    id: "takeaways",
-    name: "核心要点 / 结论速览",
-    description: "高密度提炼研报结论，提炼关键数据、核心差异与核心洞察",
-    category: "synthesis",
-    capabilities: ["bullet_conclusions", "high_density_takeaways", "summary_points"],
-    intents: ["explain", "research", "compare", "tech_comparison", "study_tutorial", "general_knowledge"],
-    keywords: ["要点", "核心", "结论", "速览", "总结", "提炼", "洞察", "摘录", "干货", "takeaways"],
-    examples: ["量子计算核心突破要点", "2024 AI 趋势关键结论", "Rust 语言核心优势"],
-    requiredData: ["takeaways"],
-    defaultSpan: 25,
-    minConfidence: 0.6,
-    basePriority: 84,
-    flexible: true
-  },
-  image_gallery: {
-    id: "image_gallery",
-    name: "相关图片 / 视觉图集",
-    description: "全网检索图片素材与缩略图墙，支持点击大图预览、实物外观对照与图源溯源",
-    category: "synthesis",
-    capabilities: ["image_gallery", "resource_preview", "resource_search"],
-    intents: ["resource_search", "travel", "general_knowledge", "software_download", "study_tutorial", "tech_comparison", "troubleshooting", "portal_navigation", "concept_explanation"],
-    keywords: ["图片", "壁纸", "图库", "照片", "高清图", "截图", "外观", "长什么样", "图集", "image", "photo", "wallpaper", "gallery"],
-    examples: ["东京风景高清壁纸", "金毛犬照片", "iPhone 16 外观实拍图"],
-    negativeIntents: [],
-    requiredData: [],
-    defaultSpan: 75,
-    minConfidence: 0.5,
-    basePriority: 80,
-    flexible: false
-  },
-  search_engine: {
-    id: "search_engine",
-    name: "搜索引擎直达",
-    description: "提供主流搜索引擎（Google、Bing、百度等）快速搜索栏与一键跳转",
-    category: "action",
-    capabilities: ["search_engine_redirect", "external_search_query", "web_search_portal", "engine_launcher", "quick_links"],
-    intents: ["tool_discovery", "search_engine_portal", "portal_navigation"],
-    keywords: ["google", "bing", "baidu", "百度", "必应", "谷歌", "搜索引擎", "搜狗", "sogou", "duckduckgo", "360", "search", "engine", "搜一下", "全网搜"],
-    examples: ["百度一下 人工智能", "Google search deep learning", "必应检索 最新论文"],
-    negativeIntents: ["weather", "translation"],
-    defaultSpan: 50,
-    minConfidence: 0.8,
-    basePriority: 92,
-    flexible: true
-  },
-  translation: {
-    id: "translation",
-    name: "多语言翻译",
-    description: "即时文本与词汇翻译、双语词典释义、发音与例句对照",
-    category: "action",
-    capabilities: ["language_translation", "text_translation", "bilingual_comparison", "pronunciation_guide", "dictionary_lookup"],
-    intents: ["translation"],
-    keywords: ["翻译", "英文", "英语", "日语", "韩语", "德语", "法语", "西语", "俄语", "translate", "translation", "怎么说", "什么意思", "英译中", "中译英", "双语", "查词", "音标"],
-    examples: ["苹果用英语怎么说", "Serendipity 什么意思", "日译中 樱花盛开"],
-    negativeIntents: ["weather", "software_download", "install"],
-    defaultSpan: 50,
-    minConfidence: 0.75,
-    basePriority: 96,
-    flexible: true
-  },
-  weather: {
-    id: "weather",
-    name: "实时天气与出行指南",
-    description: "目标城市实时气温、天气状况、未来预报、空气质量与穿衣出行建议",
-    category: "action",
-    capabilities: ["weather_current", "weather_forecast", "weather_indices", "air_quality", "clothing_advice"],
-    intents: ["weather", "travel"],
-    keywords: ["天气", "气象", "气温", "下雨", "下雪", "降水", "温度", "穿衣指南", "预报", "雷阵雨", "多云", "晴天", "阴天", "weather", "forecast", "temperature", "rain", "climate", "台风", "空气质量"],
-    examples: ["北京今天天气怎么样", "上海周末下雨吗", "东京未来三天天气预报"],
-    negativeIntents: ["translation", "troubleshooting", "software_download", "code_tutorial"],
-    defaultSpan: 75,
-    minConfidence: 0.75,
-    basePriority: 95,
-    flexible: true
-  },
-  token_usage: {
-    id: "token_usage",
-    name: "Token 消耗与性能监控",
-    description: "展示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
-    category: "analysis",
-    capabilities: ["token_metrics", "cost_analysis", "latency_telemetry", "throughput_stats", "model_monitoring"],
-    intents: ["research", "system_monitor"],
-    keywords: ["token", "代币", "耗费", "模型耗时", "成本", "吞吐", "cost", "throughput", "token_usage", "开销"],
-    examples: ["模型 token 消耗统计", "这次生成花了多少 token"],
-    negativeIntents: ["weather", "travel", "translation"],
-    defaultSpan: 25,
-    minConfidence: 0.6,
-    basePriority: 70,
-    flexible: true
-  },
-  comparison: {
-    id: "comparison",
-    name: "多维对比评测矩阵",
-    description: "展示两个或多个技术方案、产品或方案的横向参数对比矩阵、优缺点评测与选型裁决",
-    category: "analysis",
-    capabilities: ["compare_table", "feature_matrix", "cross_compare", "dimension_pk", "spec_comparison", "benchmark_table"],
-    intents: ["comparison", "compare", "tech_comparison", "research"],
-    keywords: ["区别", "对比", "比较", "优缺点", "哪个好", "vs", "pk", "二选一", "选型", "评测", "差异", "优劣"],
-    examples: ["Docker 和 Podman 区别", "React 和 Vue 对比", "Photoshop 和 Affinity Photo 区别", "MacBook Pro 和 Air 选哪个"],
-    negativeIntents: ["weather", "translation"],
-    requiredData: ["multiple_entities"],
-    defaultSpan: 100,
-    minConfidence: 0.7,
-    basePriority: 88,
-    flexible: true
-  },
-  verification_checklist: {
-    id: "verification_checklist",
-    name: "故障排查与核验清单",
-    description: "前置依赖检查、故障排查诊断、实操避坑与交互式核验步骤",
-    category: "action",
-    capabilities: [
-      "troubleshooting_audit",
-      "fact_check",
-      "prerequisites_check",
-      "security_audit",
-      "environment_checklist",
-      "error_diagnosis",
-      "verification_checklist",
-      "checklist",
-      "install_step"
-    ],
-    intents: ["troubleshooting", "install", "software_download"],
-    keywords: ["报错", "解决", "异常", "排查", "修复", "失败", "error", "failed", "bug", "crash", "清单", "checklist", "核验", "避坑"],
-    examples: ["npm ERESOLVE 怎么解决", "Docker 启动报错 failed to start daemon", "Python 依赖冲突排查"],
-    negativeIntents: ["weather", "travel", "translation"],
-    defaultSpan: 75,
-    minConfidence: 0.7,
-    basePriority: 86,
-    flexible: true
-  },
-  troubleshooting: {
-    id: "troubleshooting",
-    name: "故障排查与修复流程",
-    description: "全流程错误现象分析、根因诊断、分步修复指令、交互式验证与避坑指南",
-    category: "action",
-    capabilities: [
-      "error_diagnosis",
-      "fix_command",
-      "troubleshooting_audit",
-      "verification_checklist",
-      "prerequisites_check",
-      "cli_execution",
-      "copy_text",
-      "quick_action"
-    ],
-    intents: ["troubleshooting", "debug", "error_fix"],
-    keywords: ["报错", "错误", "修复", "排错", "诊断", "异常", "故障", "崩溃", "无法启动", "解决办法", "error", "failed", "bug", "crash", "troubleshooting", "exception"],
-    examples: ["npm ERR! code ERESOLVE 无法安装", "Docker 启动报错 permission denied", "502 Bad Gateway 解决流程", "CORS 跨域排查"],
-    negativeIntents: ["weather", "travel", "translation"],
-    defaultSpan: 75,
-    minConfidence: 0.65,
-    basePriority: 94,
-    flexible: true
-  },
-  actions_toolbox: {
-    id: "actions_toolbox",
-    name: "行动工具箱 / 快捷指令",
-    description: "提供一键运行 CLI、安装命令复制、实战代码片段与快捷链接",
-    category: "action",
-    capabilities: ["install_command", "copy_text", "quick_action", "cli_execution", "quick_links", "code_snippet", "fix_command"],
-    intents: ["install", "troubleshooting", "study_tutorial", "github_project"],
-    keywords: ["命令", "运行", "代码", "cli", "脚本", "command", "安装命令", "终端", "bash", "npm install", "pip install"],
-    examples: ["Homebrew 安装命令", "Git 克隆加速指令", "Docker 一键启动脚本"],
-    negativeIntents: ["weather", "translation"],
-    defaultSpan: 50,
-    minConfidence: 0.65,
-    basePriority: 85,
-    flexible: true
-  },
-  mindmap: {
-    id: "mindmap",
-    name: "知识架构导图 / 认知拓扑",
-    description: "交互式层级知识树、系统拓扑、核心原理解析与技术进阶路线",
-    category: "analysis",
-    capabilities: [
-      "knowledge_topology",
-      "architecture_tree",
-      "subsystem_mapping",
-      "mindmap_tree",
-      "concept_definition",
-      "core_principles",
-      "roadmap_step"
-    ],
-    intents: ["explain", "concept_explanation", "study_tutorial", "research"],
-    keywords: ["架构", "拓扑", "路线图", "体系", "脑图", "思维导图", "知识树", "结构", "mindmap", "全景", "原理", "底层逻辑"],
-    examples: ["什么是量子计算", "分布式系统知识架构", "Kubernetes 核心架构导图"],
-    negativeIntents: ["weather", "translation"],
-    defaultSpan: 75,
-    minConfidence: 0.65,
-    basePriority: 82,
-    flexible: true
-  },
-  sources: {
-    id: "sources",
-    name: "权威信源存证",
-    description: "全网信源引文出处、发布时间、权重与存证追溯",
-    category: "portal",
-    capabilities: ["evidence_chain", "citation_retrieval", "literature_archive", "literature_sources"],
-    intents: ["research", "explain", "comparison", "general_knowledge", "fact_check"],
-    keywords: ["信源", "出处", "引用", "文献", "证据", "参考", "论文", "溯源", "sources", "citations"],
-    examples: ["学术论文引文出处", "新规出台官方文件溯源"],
-    requiredData: ["sources"],
-    defaultSpan: 50,
-    minConfidence: 0.5,
-    basePriority: 72,
-    flexible: true
-  },
-  software_info: {
-    id: "software_info",
-    name: "软件信息",
-    description: "展示软件名称、版本、支持平台、开发者、开源许可证与核心规格",
-    category: "portal",
-    capabilities: ["software_info", "version_history", "copy_text", "official_site", "license_info"],
-    intents: ["software_download", "github_project", "tool_discovery"],
-    keywords: ["软件", "版本", "开发者", "平台", "许可证", "license", "version", "developer", "software"],
-    examples: ["VS Code 软件信息", "Docker 版本与支持平台", "Node.js 运行环境与许可证"],
-    defaultSpan: 50,
-    minConfidence: 0.7,
-    basePriority: 88,
-    flexible: true
-  },
-  download: {
-    id: "download",
-    name: "下载中心",
-    description: "提供多平台安装包下载、包管理器一键安装指令、版本镜像与 SHA256 校验",
-    category: "action",
-    capabilities: ["download", "releases", "release_binary", "install_command", "package_manager", "official_site"],
-    intents: ["software_download", "github_project"],
-    keywords: ["下载", "安装", "installer", "dmg", "exe", "release", "brew", "npm", "pip", "curl", "download"],
-    examples: ["Node.js 安装包下载", "Docker Desktop 客户端下载", "VS Code macOS 与 Windows 下载"],
-    defaultSpan: 75,
-    minConfidence: 0.75,
-    basePriority: 95,
-    flexible: true
-  },
-  release_history: {
-    id: "release_history",
-    name: "版本历史",
-    description: "展示软件/项目的历史版本演进、更新日志 (Changelog)、重大特性与破坏性变更",
-    category: "analysis",
-    capabilities: ["version_history", "releases", "timeline_evolution", "milestones", "history"],
-    intents: ["software_download", "github_project", "research"],
-    keywords: ["版本历史", "更新日志", "changelog", "releases", "更新了什么", "新特性", "历史版本"],
-    examples: ["React 19 更新日志与破坏性改动", "Next.js 历史版本演进", "Tailwind CSS v4 发布说明"],
-    defaultSpan: 75,
-    minConfidence: 0.7,
-    basePriority: 82,
-    flexible: true
-  },
-  repository: {
-    id: "repository",
-    name: "开源代码库",
-    description: "展示 GitHub/GitLab 仓库详情、Star/Fork 统计、语言构成、快速克隆指令与健康度",
-    category: "portal",
-    capabilities: ["git_clone", "software_info", "trend_signals", "copy_text", "verified_docs"],
-    intents: ["github_project", "study_tutorial", "software_download"],
-    keywords: ["github", "gitlab", "repo", "repository", "开源", "star", "git clone", "代码库", "源码"],
-    examples: ["facebook/react GitHub 仓库", "vercel/next.js 代码库与 Star 趋势"],
-    defaultSpan: 75,
-    minConfidence: 0.75,
-    basePriority: 86,
-    flexible: true
-  },
-  code_playground: {
-    id: "code_playground",
-    name: "代码演练场",
-    description: "提供交互式代码编辑、即时运行控制台、多语言代码片段与控制台输出模拟",
-    category: "action",
-    capabilities: ["code_snippet", "code_run", "copy_text", "cli_execution"],
-    intents: ["study_tutorial", "troubleshooting", "concept_explanation"],
-    keywords: ["代码", "运行", "playground", "code", "snippet", "调试", "控制台", "输出", "示例代码"],
-    examples: ["JavaScript 异步并发控制代码运行", "Python 列表推导式与数据处理示例"],
-    defaultSpan: 75,
-    minConfidence: 0.7,
-    basePriority: 85,
-    flexible: true
-  },
-  tool_discovery: {
-    id: "tool_discovery",
-    name: "工具发现与替代品",
-    description: "发现精选效能工具、竞品与开源替代方案，包含价格模型与核心优势对比",
-    category: "portal",
-    capabilities: ["tool_cards", "try_online", "software_directory", "free_tool", "pricing_comparison"],
-    intents: ["tool_discovery", "software_download", "tech_comparison"],
-    keywords: ["工具", "替代品", "alternative", "推荐", "好用", "开源替代", "竞品", "类似软件"],
-    examples: ["Notion 开源替代品推荐", "Figma 替代设计工具"],
-    defaultSpan: 75,
-    minConfidence: 0.72,
-    basePriority: 84,
-    flexible: true
-  },
-  document_preview: {
-    id: "document_preview",
-    name: "文档速览与研报",
-    description: "快速预览技术规范、PDF 研报、Markdown 手册与学术证据链摘要",
-    category: "analysis",
-    capabilities: ["verified_docs", "literature_archive", "citation_retrieval", "evidence_chain"],
-    intents: ["research", "concept_explanation", "study_tutorial"],
-    keywords: ["文档", "预览", "pdf", "markdown", "论文", "白皮书", "研报", "规范", "rfc", "手册"],
-    examples: ["TypeScript 5.0 规范白皮书速览", "深度学习模型论文摘要与证据链"],
-    defaultSpan: 75,
-    minConfidence: 0.72,
-    basePriority: 83,
-    flexible: true
-  },
-  news_feed: {
-    id: "news_feed",
-    name: "时事资讯",
-    description: "汇聚全网即时要闻、热点资讯、科技动态与时序演进摘要",
-    category: "synthesis",
-    capabilities: ["temporal_analysis", "temporal_evolution", "citation_retrieval", "overview_synthesis"],
-    intents: ["general_knowledge", "research"],
-    keywords: ["新闻", "资讯", "news", "时事", "热点", "最新动态", "快讯", "要闻"],
-    examples: ["AI 人工智能最新行业要闻", "全球开源大模型前沿发布快讯"],
-    defaultSpan: 75,
-    minConfidence: 0.72,
-    basePriority: 81,
-    flexible: true
-  },
-  trend_chart: {
-    id: "trend_chart",
-    name: "趋势与时序图表",
-    description: "可视化时序趋势走势、行业增长曲线、Star 增长率与对比图表",
-    category: "analysis",
-    capabilities: ["trend_signals", "temporal_evolution", "sentiment_distribution", "temporal_analysis"],
-    intents: ["research", "tech_comparison", "github_project"],
-    keywords: ["趋势", "走势", "图表", "增长", "数据", "统计", "chart", "trend", "历史走势"],
-    examples: ["AI 大模型关注度增长走势图", "React vs Vue npm 下载量趋势"],
-    defaultSpan: 75,
-    minConfidence: 0.72,
-    basePriority: 84,
-    flexible: true
-  },
-  map: {
-    id: "map",
-    name: "地理位置与地图导览",
-    description: "展示地理位置、周边 POI 兴趣点探索、路线规划与旅行交通建议",
-    category: "portal",
-    capabilities: ["location_map", "attractions_map", "route_plan", "itinerary_timeline"],
-    intents: ["travel", "general_knowledge"],
-    keywords: ["地图", "位置", "地址", "景点", "路线", "导航", "交通", "周边", "map", "location"],
-    examples: ["杭州西湖旅游地图与周边景点", "东京新宿美食与交通路线导览"],
-    defaultSpan: 75,
-    minConfidence: 0.75,
-    basePriority: 85,
-    flexible: true
-  }
-};
-
-/**
- * 所有已登记的标准 Widget Key 列表
- */
-export const ALL_CATALOG_WIDGET_KEYS: ResultWidgetKey[] = Object.keys(WIDGET_CATALOG) as ResultWidgetKey[];
+export const ALL_CATALOG_WIDGET_KEYS: ResultWidgetKey[] = getExtensionCatalog().map(e => e.id as ResultWidgetKey);
 
 /**
  * 专为中英文混合设计的 CJK + Latin 字符分词器
@@ -484,34 +86,22 @@ export function extensionToCatalogItem(entry: ExtensionCatalogEntry): WidgetCata
 }
 
 /**
- * 获取特定组件的统一画像（Extension Catalog 优先，其次 Legacy WIDGET_CATALOG）
+ * 获取特定组件的统一画像（100% 依据 Extension Catalog）
  */
 export function getUnifiedCatalogItem(id: string): WidgetCatalogItem | undefined {
   const ext = getExtensionCatalog().find(e => e.id === id);
-  if (ext) {
-    return extensionToCatalogItem(ext);
-  }
-  return WIDGET_CATALOG[id as ResultWidgetKey];
+  return ext ? extensionToCatalogItem(ext) : undefined;
 }
 
 /**
- * 获取全量统一组件画像列表（Extension Catalog 优先覆盖）
+ * 获取全量统一组件画像列表（100% 依据 Extension Catalog）
  */
 export function getAllUnifiedCatalogItems(): WidgetCatalogItem[] {
-  const catalogMap = new Map<string, WidgetCatalogItem>();
-  for (const ext of getExtensionCatalog()) {
-    catalogMap.set(ext.id, extensionToCatalogItem(ext));
-  }
-  for (const [key, item] of Object.entries(WIDGET_CATALOG)) {
-    if (!catalogMap.has(key)) {
-      catalogMap.set(key, item);
-    }
-  }
-  return Array.from(catalogMap.values());
+  return getExtensionCatalog().map(extensionToCatalogItem);
 }
 
 /**
- * 获取或创建 Orama 小组件检索索引（融合 Extension Catalog 主来源与 Legacy Catalog）
+ * 获取或创建 Orama 小组件检索索引（100% 源自 Extension Catalog）
  */
 export async function getOramaWidgetDb(): Promise<AnyOrama> {
   const extCatalog = getExtensionCatalog();
@@ -536,20 +126,9 @@ export async function getOramaWidgetDb(): Promise<AnyOrama> {
     }
   });
 
-  // 1. 优先载入 Extension Catalog（插件化主来源）
-  const catalogMap = new Map<string, WidgetCatalogItem>();
+  // 纯粹以 Extension Catalog 作为唯一索引数据源
   for (const ext of extCatalog) {
-    catalogMap.set(ext.id, extensionToCatalogItem(ext));
-  }
-
-  // 2. 补齐 Legacy WIDGET_CATALOG（尚未迁移的旧组件兼容层）
-  for (const [key, item] of Object.entries(WIDGET_CATALOG)) {
-    if (!catalogMap.has(key)) {
-      catalogMap.set(key, item);
-    }
-  }
-
-  for (const item of catalogMap.values()) {
+    const item = extensionToCatalogItem(ext);
     await insert(db, {
       id: item.id,
       name: item.name,
@@ -677,16 +256,11 @@ export async function retrieveWidgets(
     if (hit.score > maxRawScore) maxRawScore = hit.score;
   }
 
-  // 2. 遍历评估所有组件候选 (Extension Catalog 优先 + Legacy WIDGET_CATALOG 兼容)
+  // 2. 遍历评估所有组件候选 (以 Extension Catalog 为唯一真理来源)
   const candidates: CandidateWidget[] = [];
   const evaluatedCatalogMap = new Map<string, WidgetCatalogItem>();
   for (const ext of getExtensionCatalog()) {
     evaluatedCatalogMap.set(ext.id, extensionToCatalogItem(ext));
-  }
-  for (const [key, item] of Object.entries(WIDGET_CATALOG)) {
-    if (!evaluatedCatalogMap.has(key)) {
-      evaluatedCatalogMap.set(key, item);
-    }
   }
 
   for (const item of evaluatedCatalogMap.values()) {

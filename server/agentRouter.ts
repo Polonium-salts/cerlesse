@@ -12,7 +12,7 @@ export interface IntentRouteConfig {
   forbiddenWidgets: ResultWidgetKey[];
   mandatoryWidgets: ResultWidgetKey[];
   requiresImages: boolean;
-  recommendedArchetype: CustomCardArchetype;
+  recommendedArchetype?: CustomCardArchetype;
   defaultCapabilities: string[];
 }
 
@@ -84,9 +84,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "mindmap",
       "image_gallery"
     ],
-    mandatoryWidgets: ["weather", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["weather"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["weather_current", "weather_forecast", "weather_indices", "air_quality", "clothing_advice"]
   },
 
@@ -103,9 +102,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "mindmap",
       "image_gallery"
     ],
-    mandatoryWidgets: ["translation", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["translation"],
     requiresImages: false,
-    recommendedArchetype: "verdict_summary",
     defaultCapabilities: ["language_translation", "text_translation", "bilingual_comparison", "pronunciation_guide", "dictionary_lookup"]
   },
 
@@ -124,9 +122,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["troubleshooting", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["troubleshooting"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["error_diagnosis", "fix_command", "troubleshooting_audit", "verification_checklist", "cli_execution"]
   },
 
@@ -148,9 +145,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["software_info", "download", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["software_info", "download"],
     requiresImages: false,
-    recommendedArchetype: "download_hub",
     defaultCapabilities: ["software_info", "download", "releases", "install_command", "official_site"]
   },
 
@@ -169,9 +165,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["comparison", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["comparison"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["compare_table", "feature_matrix", "cross_compare", "dimension_pk", "pros_cons"]
   },
 
@@ -187,9 +182,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting"],
-    mandatoryWidgets: ["image_gallery", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["image_gallery"],
     requiresImages: true,
-    recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["image_gallery", "resource_preview", "resource_search"]
   },
 
@@ -210,9 +204,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer"],
     requiresImages: false,
-    recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["roadmap_step", "code_snippet", "core_principles"]
   },
 
@@ -230,9 +223,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["troubleshooting", "translation"],
-    mandatoryWidgets: ["map", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["map"],
     requiresImages: false,
-    recommendedArchetype: "travel_itinerary",
     defaultCapabilities: ["location_map", "attractions_map", "itinerary_timeline", "travel_budget", "weather_forecast", "resource_preview"]
   },
 
@@ -248,9 +240,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["related_links", "ai_answer", "sources"],
+    mandatoryWidgets: ["related_links"],
     requiresImages: false,
-    recommendedArchetype: "verdict_summary",
     defaultCapabilities: ["official_site", "authoritative_entry", "verified_docs", "quick_links"]
   },
 
@@ -266,9 +257,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["search_engine", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["search_engine"],
     requiresImages: false,
-    recommendedArchetype: "verdict_summary",
     defaultCapabilities: ["search_engine_redirect", "external_search_query", "web_search_portal"]
   },
 
@@ -290,9 +280,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["repository", "related_links", "ai_answer", "sources"],
+    mandatoryWidgets: ["repository"],
     requiresImages: false,
-    recommendedArchetype: "download_hub",
     defaultCapabilities: ["git_clone", "software_info", "download", "install_command", "official_site"]
   },
 
@@ -310,9 +299,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["direct_answer", "concept_definition", "core_principles", "knowledge_topology"]
   },
 
@@ -330,9 +318,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["direct_answer", "summary_points", "bullet_conclusions", "evidence_chain"]
   },
 
@@ -352,9 +339,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["ai_answer", "sources", "related_links"],
+    mandatoryWidgets: ["ai_answer", "sources"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["overview_synthesis", "bullet_conclusions", "evidence_chain", "literature_archive", "token_metrics"]
   },
 
@@ -374,9 +360,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
       "token_usage"
     ],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["tool_discovery", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["tool_discovery"],
     requiresImages: false,
-    recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["tool_discovery", "try_online", "software_info", "quick_links"]
   },
 
@@ -386,9 +371,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "软件安装与下载",
     allowedWidgets: ["actions_toolbox", "related_links", "verification_checklist", "ai_answer", "sources", "takeaways", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["related_links", "ai_answer", "sources"],
+    mandatoryWidgets: ["actions_toolbox"],
     requiresImages: false,
-    recommendedArchetype: "download_hub",
     defaultCapabilities: ["software_info", "download", "releases", "install_command", "official_site"]
   },
 
@@ -397,9 +381,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "多方案对比与选型",
     allowedWidgets: ["comparison", "ai_answer", "takeaways", "sources", "mindmap", "related_links", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["comparison", "ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["comparison"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["compare_table", "feature_matrix", "cross_compare", "dimension_pk", "pros_cons"]
   },
 
@@ -408,9 +391,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "操作教程与学习指南",
     allowedWidgets: ["actions_toolbox", "ai_answer", "mindmap", "sources", "takeaways", "related_links", "verification_checklist", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "image_gallery"],
-    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer"],
     requiresImages: false,
-    recommendedArchetype: "tool_discovery",
     defaultCapabilities: ["roadmap_step", "code_snippet", "core_principles"]
   },
 
@@ -419,9 +401,8 @@ export const INTENT_ROUTING_TABLE: Record<AgentIntent, IntentRouteConfig> = {
     description: "概念解释与原理",
     allowedWidgets: ["ai_answer", "takeaways", "mindmap", "sources", "related_links", "token_usage"],
     forbiddenWidgets: ["weather", "translation", "troubleshooting", "image_gallery"],
-    mandatoryWidgets: ["ai_answer", "related_links", "sources"],
+    mandatoryWidgets: ["ai_answer"],
     requiresImages: false,
-    recommendedArchetype: "parameter_matrix",
     defaultCapabilities: ["direct_answer", "concept_definition", "core_principles", "knowledge_topology"]
   }
 };

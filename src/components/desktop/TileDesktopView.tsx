@@ -9,7 +9,6 @@ import {
   ResultWidgetKey,
   AdaptiveLayoutStrategy,
   WidgetPlan,
-  CustomCardData,
   SearchSynthesisResult
 } from "../../types.js";
 import {
@@ -36,26 +35,20 @@ interface TileDesktopViewProps {
   strategy: AdaptiveLayoutStrategy;
   enabledWidgets: ResultWidgetKey[];
   widgetPlan?: WidgetPlan;
-  customCards?: CustomCardData[];
   activeResult: SearchSynthesisResult;
   isWideCanvas?: boolean;
   onOpenMarketplace?: () => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
   onNavigateTab?: (tab: "bento" | "images" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
-  onUpdateCard?: (updated: CustomCardData) => void;
-  onDeleteCard?: (id: string) => void;
 }
 
 export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   strategy,
   enabledWidgets,
   widgetPlan,
-  customCards = [],
   activeResult,
   onExecuteSearch,
-  onNavigateTab,
-  onUpdateCard,
-  onDeleteCard
+  onNavigateTab
 }) => {
   // 左右换位偏好：针对 75% 与 25% 互补小组件，支持在行内左侧或右侧互补对调
   const [userSides, setUserSides] = useState<Record<string, "left" | "right">>({});
@@ -155,11 +148,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     const hasTakeaways = Boolean(activeResult.keyTakeaways && activeResult.keyTakeaways.length > 0);
     if (!hasTakeaways) {
       list = list.filter(k => k !== "takeaways");
-    }
-
-    // 保证用户指令：图片小组件保持启用（除非用户在当前会话中显式关闭）
-    if (!hiddenTileIds.has("image_gallery") && !list.includes("image_gallery")) {
-      list.push("image_gallery");
     }
 
     // 过滤用户已显式隐藏的组件，并确保注册中心有对应模块
@@ -267,7 +255,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     agentSpans,
     agentFocusKey,
     strategy.layoutPlan?.featured,
-    customCards,
     hiddenTileIds,
     userSides,
     activeColumns,
@@ -427,7 +414,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     }
 
     return rawItems;
-  }, [tileInputs, customCards, activeResult, customMuuriOrder, muuriDragEnabled, onNavigateTab, onExecuteSearch, onUpdateCard, onDeleteCard]);
+  }, [tileInputs, activeResult, customMuuriOrder, muuriDragEnabled, onNavigateTab, onExecuteSearch]);
 
   return (
     <div className="w-full">

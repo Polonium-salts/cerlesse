@@ -17,71 +17,7 @@ import { retrieveWidgets, getAllUnifiedCatalogItems, getUnifiedCatalogItem } fro
 import { selectAndReRankWidgets } from "./widgetSelector.js";
 import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
 
-/**
- * 彻底禁用的原型名单 (Hard Disabled Archetypes)
- * 即使历史提示词、缓存或 LLM 生成了这些原型，也会在进入规划/选择阶段前被强制拦截并丢弃。
- */
-export const DISABLED_ARCHETYPES = new Set<string>([
-  "action_checklist",
-  "timeline",
-]);
-
-export function isArchetypeAllowed(archetype: string): boolean {
-  return !DISABLED_ARCHETYPES.has(archetype);
-}
-
-const ARCHETYPE_METADATA: Record<string, { themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc"; iconName: string; pattern?: RegExp }> = {
-  download_hub: { themeColor: "blue", iconName: "Download", pattern: /(下载|安装包|release|installer|client|客户端|安装教程)/i },
-  tool_discovery: { themeColor: "emerald", iconName: "Wrench", pattern: /(工具|在线|推荐|转换器|免安装|体验|网站推荐)/i },
-  travel_itinerary: { themeColor: "amber", iconName: "Compass", pattern: /(旅游|攻略|行程|路线|景点|门票|自驾|几日游)/i },
-  pros_cons: { themeColor: "violet", iconName: "Scale", pattern: /(优缺点|利弊|权衡|避坑|优势与不足)/i },
-  verdict_summary: { themeColor: "violet", iconName: "Scale", pattern: /(谁更好|推荐|买哪个|选型|裁决|选哪个|pk)/i },
-  parameter_matrix: { themeColor: "zinc", iconName: "Layers", pattern: /(参数|指标|规格|基准|配置对比|矩阵|概念|原理|什么是)/i },
-  quote_dossier: { themeColor: "blue", iconName: "Quote", pattern: /(言论|评价|争议|观点|评语)/i },
-  schema: { themeColor: "blue", iconName: "Box", pattern: /(schema|组件|蓝图|动态组件)/i }
-};
-
-
-
-/**
- * 纯能力匹配求解卡片原型 (Dynamic Capability Archetype Resolver)
- * 彻底消除 switch(intent)，通过能力交集与语义特征动态打分
- */
-function resolveArchetypeFromCapabilities(
-  capabilities: string[],
-  query: string
-): { archetype: CustomCardArchetype; themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc"; iconName: string } {
-  const capSet = new Set(capabilities.map(c => c.toLowerCase()));
-  let bestArchetype: CustomCardArchetype = /(言论|评价|争议|观点)/i.test(query)
-    ? "quote_dossier"
-    : "parameter_matrix";
-  let maxScore = 0;
-
-  for (const [archKey, meta] of Object.entries(ARCHETYPE_METADATA) as [CustomCardArchetype, { themeColor: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc"; iconName: string; pattern?: RegExp }][]) {
-    if (!isArchetypeAllowed(archKey)) continue;
-    let score = 0;
-    const profile = ARCHETYPE_PROFILES[archKey];
-    if (profile?.tags) {
-      for (const tag of profile.tags) {
-        if (capSet.has(tag.toLowerCase())) score += 10;
-      }
-    }
-    if (meta.pattern && meta.pattern.test(query)) {
-      score += 15;
-    }
-    if (score > maxScore) {
-      maxScore = score;
-      bestArchetype = archKey;
-    }
-  }
-
-  const resolvedDef = ARCHETYPE_METADATA[bestArchetype] || ARCHETYPE_METADATA.parameter_matrix;
-  return {
-    archetype: bestArchetype,
-    themeColor: resolvedDef.themeColor,
-    iconName: resolvedDef.iconName
-  };
-}
+// 纯能力驱动的规划器组件规格配置
 
 /**
  * 磁贴宽度阶梯（按占用面积从小到大）：25% → 50% → 75% → 100%
@@ -111,7 +47,6 @@ const MAX_PLANNED_WIDGETS = 9;
  */
 function resolveWidgetsFromCapabilities(
   capabilities: string[],
-  archetype: CustomCardArchetype,
   userGoal: string,
   query: string
 ): WidgetPlannedItem[] {
@@ -242,34 +177,15 @@ function resolveWidgetsFromCapabilities(
   // 按相关度截断后提取 WidgetPlannedItem：
   const resultList = scoredWidgets.slice(0, MAX_PLANNED_WIDGETS).map(s => s.item);
 
-  // 保证三大核心基底锚点稳定上桌 (ai_answer, related_links, sources)
-  if (!resultList.some(w => w.type === "ai_answer")) {
-    resultList.unshift({
+  // 若结果集为空，则以核心速答组件兜底
+  if (resultList.length === 0) {
+    resultList.push({
       type: "ai_answer",
       priority: 95,
       size: 50,
       flexible: true,
       reason: "全网检索核心速答基底"
     });
-  }
-  if (!resultList.some(w => w.type === "related_links")) {
-    resultList.push({
-      type: "related_links",
-      priority: 90,
-      size: 50,
-      flexible: true,
-      reason: "官方认证入口与导航直达"
-    });
-  }
-  if (!resultList.some(w => w.type === "sources")) {
-    const sourceItem: WidgetPlannedItem = {
-      type: "sources",
-      priority: 85,
-      size: 50,
-      flexible: false,
-      reason: "信源存证与文献追溯"
-    };
-    resultList.push(sourceItem);
   }
 
   // 仅在明确命中图片图集能力或视觉素材搜索时才纳入 image_gallery
@@ -382,8 +298,10 @@ export async function planWidgetStrategy(options: {
     ? INTENT_GOAL_LABELS[analyzerIntent] || userGoal
     : userGoal;
 
-  // 5. 纯能力驱动：匹配最适卡片原型 (Archetype)
-  const { archetype: suggestedArchetype, themeColor, iconName } = resolveArchetypeFromCapabilities(capabilities, query);
+  // 5. 纯能力驱动：小组件主题配置
+  const suggestedArchetype: CustomCardArchetype = "parameter_matrix";
+  const themeColor = "blue";
+  const iconName = "Layers";
 
   // 6. 生成可执行的真实 Tool Registry 动作
   const primaryActions: WidgetAction[] = synthesizeToolActions(query, results, intent as any);
@@ -418,7 +336,7 @@ export async function planWidgetStrategy(options: {
     widgetOrder = selectorResult.widgetOrder;
   } catch (err) {
     console.warn("[WidgetPlanner] Error in semantic retrieval / re-ranking, falling back to capability baseline:", err);
-    plannedWidgets = resolveWidgetsFromCapabilities(capabilities, suggestedArchetype, resolvedUserGoal, query);
+    plannedWidgets = resolveWidgetsFromCapabilities(capabilities, resolvedUserGoal, query);
     widgetOrder = plannedWidgets.map(w => w.type);
   }
 

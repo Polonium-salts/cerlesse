@@ -1,5 +1,6 @@
 import { extensionRegistry, ExtensionRegistry } from "./extensionRegistry.js";
 import type { WidgetManifest } from "../sdk/manifest.js";
+import { GENERATED_EXTENSION_CATALOG } from "./generatedCatalog.js";
 
 /**
  * 纯 JSON 格式的扩展 Catalog 条目 (无任何 React/函数/DOM)
@@ -67,10 +68,14 @@ export function manifestToCatalogEntry(manifest: WidgetManifest): ExtensionCatal
 }
 
 /**
- * 从注册中心获取全部 Extension 的纯 JSON Catalog 列表
+ * 从注册中心获取全部 Extension 的纯 JSON Catalog 列表（优先 Extension Registry，Node 环境兜底静态生成清单）
  */
 export function getExtensionCatalog(
   targetRegistry: ExtensionRegistry = extensionRegistry
 ): ExtensionCatalogEntry[] {
-  return targetRegistry.getAll().map(ext => manifestToCatalogEntry(ext.manifest));
+  const registered = targetRegistry.getAll().map(ext => manifestToCatalogEntry(ext.manifest));
+  if (registered.length > 0) {
+    return registered;
+  }
+  return GENERATED_EXTENSION_CATALOG;
 }

@@ -19,7 +19,6 @@ import {
 import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetModule, WidgetCategoryType } from "../../widgets/sdk/types.js";
 import { TileWidth, TILE_WIDTH_LABELS } from "../../lib/tileLayoutEngine.js";
-import { CustomCardData } from "../../types.js";
 import { Button } from "../ui/button.js";
 import { Badge } from "../ui/badge.js";
 import { Input } from "../ui/input.js";
@@ -28,7 +27,6 @@ interface WidgetMarketplaceDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   activeTileIds: string[];
-  customCards?: CustomCardData[];
   onAddTile: (id: string, size?: TileWidth) => void;
   onRemoveTile: (id: string) => void;
 }
@@ -46,7 +44,6 @@ export const WidgetMarketplaceDrawer: React.FC<WidgetMarketplaceDrawerProps> = (
   isOpen,
   onClose,
   activeTileIds,
-  customCards = [],
   onAddTile,
   onRemoveTile
 }) => {

@@ -6,26 +6,45 @@ import type { ExtensionCatalogEntry } from "./extensionCatalog.js";
 
 export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
   {
-    "id": "test_extension",
-    "name": "Test Extension",
+    "id": "actions_toolbox",
+    "name": "行动工具箱",
     "version": "1.0.0",
     "apiVersion": 1,
-    "description": "Widget Extension SDK 测试组件",
-    "category": "analysis",
+    "description": "一键运行 CLI、环境配置脚本、命令复制与实用工具链",
+    "category": "action",
     "tags": [
-      "test"
+      "工具",
+      "命令",
+      "脚本",
+      "CLI",
+      "actions",
+      "toolbox"
     ],
     "capabilities": [
-      "direct_answer"
+      "install_command",
+      "fix_command",
+      "cli_execution",
+      "copy_text"
     ],
     "intents": [
-      "general_knowledge"
+      "software_download",
+      "troubleshooting",
+      "study_tutorial"
     ],
     "keywords": [
-      "test"
+      "命令",
+      "安装",
+      "运行",
+      "执行",
+      "脚本",
+      "command",
+      "bash",
+      "cli"
     ],
     "examples": [
-      "测试组件"
+      "npm install 安装命令",
+      "Docker 启动脚本",
+      "系统故障修复指令"
     ],
     "layout": {
       "defaultWidth": 50,
@@ -33,7 +52,72 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       "maxWidth": 75
     },
     "agent": {
-      "selectable": false
+      "selectable": true,
+      "minConfidence": 0.6,
+      "priority": 85,
+      "flexible": true
+    }
+  },
+  {
+    "id": "ai_answer",
+    "name": "AI 智能回答",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "基于全网信源的 AI 深度结构化回答、要点提炼与智能拓展追问",
+    "category": "synthesis",
+    "tags": [
+      "AI回答",
+      "全网总结",
+      "深度要点",
+      "问答",
+      "结论",
+      "知识综合",
+      "多信源提炼"
+    ],
+    "capabilities": [
+      "direct_answer",
+      "definition_snippet",
+      "instant_verdict",
+      "overview_synthesis",
+      "summary_points",
+      "bullet_conclusions",
+      "high_density_takeaways"
+    ],
+    "intents": [
+      "concept_explanation",
+      "research",
+      "general_knowledge",
+      "study_tutorial",
+      "tech_comparison"
+    ],
+    "keywords": [
+      "是什么",
+      "为什么",
+      "如何",
+      "总结",
+      "分析",
+      "原理",
+      "介绍",
+      "概况",
+      "解释",
+      "含义",
+      "核心要点"
+    ],
+    "examples": [
+      "什么是量子退火算法",
+      "光伏发电原理与应用",
+      "React 和 Vue 核心理念解析"
+    ],
+    "layout": {
+      "defaultWidth": 50,
+      "minWidth": 25,
+      "maxWidth": 100
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.5,
+      "priority": 95,
+      "flexible": true
     }
   },
   {
@@ -89,6 +173,56 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       "selectable": true,
       "minConfidence": 0.7,
       "priority": 85,
+      "flexible": true
+    }
+  },
+  {
+    "id": "comparison",
+    "name": "对比评测矩阵",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "技术方案与实体横向参数评测、优缺点裁决与选型指南",
+    "category": "analysis",
+    "tags": [
+      "对比",
+      "矩阵",
+      "PK",
+      "区别",
+      "选型",
+      "comparison"
+    ],
+    "capabilities": [
+      "compare_table",
+      "feature_matrix",
+      "instant_verdict"
+    ],
+    "intents": [
+      "tech_comparison",
+      "research"
+    ],
+    "keywords": [
+      "对比",
+      "区别",
+      "vs",
+      "versus",
+      "哪个好",
+      "选型",
+      "优劣",
+      "横评"
+    ],
+    "examples": [
+      "React vs Vue 核心差异对比",
+      "PostgreSQL 与 MySQL 选型评估"
+    ],
+    "layout": {
+      "defaultWidth": 75,
+      "minWidth": 50,
+      "maxWidth": 100
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.6,
+      "priority": 88,
       "flexible": true
     }
   },
@@ -209,6 +343,62 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     }
   },
   {
+    "id": "image_gallery",
+    "name": "相关图片 / 视觉图集",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "聚合全网检索结果中的相关图片与视觉素材，支持点击放大预览与图源溯源",
+    "category": "media",
+    "tags": [
+      "相关图片",
+      "图片墙",
+      "视觉素材",
+      "缩略图",
+      "图集",
+      "媒体预览",
+      "配图参考"
+    ],
+    "capabilities": [
+      "image_gallery",
+      "resource_preview",
+      "resource_search"
+    ],
+    "intents": [
+      "resource_search",
+      "travel",
+      "general_knowledge",
+      "software_download"
+    ],
+    "keywords": [
+      "图片",
+      "照片",
+      "图集",
+      "壁纸",
+      "素材",
+      "外观",
+      "长什么样",
+      "截图",
+      "image",
+      "photo"
+    ],
+    "examples": [
+      "金门大桥实景照片",
+      "东京秋叶原街景图集",
+      "iPhone 16 外观配色"
+    ],
+    "layout": {
+      "defaultWidth": 75,
+      "minWidth": 50,
+      "maxWidth": 100
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.5,
+      "priority": 80,
+      "flexible": false
+    }
+  },
+  {
     "id": "map",
     "name": "地理位置与地图导览",
     "version": "1.0.0",
@@ -266,6 +456,55 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     }
   },
   {
+    "id": "mindmap",
+    "name": "思维导图与知识全景",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "可视化树状思维导图，呈现核心概念、分支知识与层级脉络",
+    "category": "analysis",
+    "tags": [
+      "思维导图",
+      "架构",
+      "拓扑",
+      "路线图",
+      "mindmap"
+    ],
+    "capabilities": [
+      "mindmap_tree",
+      "knowledge_topology",
+      "architecture_tree"
+    ],
+    "intents": [
+      "concept_explanation",
+      "study_tutorial",
+      "research"
+    ],
+    "keywords": [
+      "思维导图",
+      "架构",
+      "拓扑",
+      "知识树",
+      "导图",
+      "mindmap",
+      "体系"
+    ],
+    "examples": [
+      "计算机系统知识全景思维导图",
+      "前端技术路线导图"
+    ],
+    "layout": {
+      "defaultWidth": 75,
+      "minWidth": 50,
+      "maxWidth": 100
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.6,
+      "priority": 82,
+      "flexible": true
+    }
+  },
+  {
     "id": "news_feed",
     "name": "时事资讯",
     "version": "1.0.0",
@@ -315,6 +554,65 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       "selectable": true,
       "minConfidence": 0.72,
       "priority": 81,
+      "flexible": true
+    }
+  },
+  {
+    "id": "related_links",
+    "name": "官网跳转 / 权威入口",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道",
+    "category": "portal",
+    "tags": [
+      "官方入口",
+      "官网直达",
+      "多链接",
+      "权威信源",
+      "导航",
+      "外部跳转",
+      "防钓鱼"
+    ],
+    "capabilities": [
+      "official_site",
+      "official_url",
+      "verified_docs",
+      "authoritative_entry",
+      "official_portal",
+      "quick_links"
+    ],
+    "intents": [
+      "software_download",
+      "portal_navigation",
+      "tool_discovery"
+    ],
+    "keywords": [
+      "官网",
+      "官方网站",
+      "入口",
+      "登录",
+      "下载",
+      "主页",
+      "文档",
+      "平台",
+      "网址",
+      "official",
+      "portal"
+    ],
+    "examples": [
+      "Node.js 官方网站",
+      "Docker 官方文档入口",
+      "GitHub 登录直达"
+    ],
+    "layout": {
+      "defaultWidth": 50,
+      "minWidth": 25,
+      "maxWidth": 75
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.6,
+      "priority": 85,
       "flexible": true
     }
   },
@@ -432,6 +730,66 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     }
   },
   {
+    "id": "search_engine",
+    "name": "搜索引擎直达",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "提供主流搜索引擎（Google、Bing、百度等）快速搜索栏与一键跳转",
+    "category": "action",
+    "tags": [
+      "搜索引擎",
+      "搜索直达",
+      "Google",
+      "Bing",
+      "百度",
+      "外部搜索",
+      "一键跳转"
+    ],
+    "capabilities": [
+      "search_engine_redirect",
+      "external_search_query",
+      "web_search_portal",
+      "engine_launcher",
+      "quick_links"
+    ],
+    "intents": [
+      "tool_discovery",
+      "search_engine_portal",
+      "portal_navigation"
+    ],
+    "keywords": [
+      "google",
+      "bing",
+      "baidu",
+      "百度",
+      "必应",
+      "谷歌",
+      "搜索引擎",
+      "搜狗",
+      "sogou",
+      "duckduckgo",
+      "360",
+      "search",
+      "engine"
+    ],
+    "examples": [
+      "百度一下 人工智能",
+      "Google search deep learning",
+      "必应检索 最新论文"
+    ],
+    "layout": {
+      "defaultWidth": 50,
+      "minWidth": 25,
+      "maxWidth": 75
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.8,
+      "priority": 92,
+      "flexible": true
+    }
+  },
+  {
     "id": "software_info",
     "name": "软件信息",
     "version": "1.0.0",
@@ -484,6 +842,160 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       "selectable": true,
       "minConfidence": 0.7,
       "priority": 88,
+      "flexible": true
+    }
+  },
+  {
+    "id": "sources",
+    "name": "权威信源与存证",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "全网引用文献溯源、权威认证标识与可信证据链",
+    "category": "portal",
+    "tags": [
+      "信源",
+      "文献",
+      "引用",
+      "存证",
+      "sources",
+      "citations"
+    ],
+    "capabilities": [
+      "citation_retrieval",
+      "evidence_chain",
+      "verified_docs"
+    ],
+    "intents": [
+      "research",
+      "general_knowledge",
+      "concept_explanation"
+    ],
+    "keywords": [
+      "信源",
+      "文献",
+      "参考来源",
+      "引用",
+      "出处",
+      "证据",
+      "sources"
+    ],
+    "examples": [
+      "AI 最新研究报告信源",
+      "学术论文引用文献"
+    ],
+    "layout": {
+      "defaultWidth": 50,
+      "minWidth": 25,
+      "maxWidth": 75
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.5,
+      "priority": 85,
+      "flexible": true
+    }
+  },
+  {
+    "id": "takeaways",
+    "name": "核心要点 / 结论速览",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "高密度条目式核心结论提炼，支持逐条勾选并本地记忆掌握进度",
+    "category": "synthesis",
+    "tags": [
+      "核心要点",
+      "结论提炼",
+      "速记清单",
+      "关键洞察",
+      "要点速览"
+    ],
+    "capabilities": [
+      "bullet_conclusions",
+      "high_density_takeaways",
+      "summary_points"
+    ],
+    "intents": [
+      "research",
+      "tech_comparison",
+      "study_tutorial",
+      "general_knowledge"
+    ],
+    "keywords": [
+      "要点",
+      "核心",
+      "结论",
+      "速览",
+      "总结",
+      "提炼",
+      "洞察",
+      "摘录",
+      "干货",
+      "takeaways"
+    ],
+    "examples": [
+      "量子计算核心突破要点",
+      "2024 AI 趋势关键结论",
+      "Rust 语言核心优势"
+    ],
+    "layout": {
+      "defaultWidth": 25,
+      "minWidth": 25,
+      "maxWidth": 50
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.6,
+      "priority": 84,
+      "flexible": true
+    }
+  },
+  {
+    "id": "token_usage",
+    "name": "Token 消耗统计",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "显示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
+    "category": "developer",
+    "tags": [
+      "Token",
+      "消耗统计",
+      "吞吐效率",
+      "大模型度量",
+      "成本监控",
+      "性能度量"
+    ],
+    "capabilities": [
+      "agent_telemetry",
+      "source_telemetry",
+      "confidence_meter"
+    ],
+    "intents": [
+      "research",
+      "tech_comparison"
+    ],
+    "keywords": [
+      "token",
+      "消耗",
+      "开销",
+      "成本",
+      "字数",
+      "吞吐",
+      "速度",
+      "模型用量"
+    ],
+    "examples": [
+      "大模型 Token 消耗监控",
+      "生成吞吐速率度量"
+    ],
+    "layout": {
+      "defaultWidth": 25,
+      "minWidth": 25,
+      "maxWidth": 50
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.7,
+      "priority": 70,
       "flexible": true
     }
   },
@@ -795,6 +1307,37 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "agent": {
       "selectable": true,
       "minConfidence": 0.75
+    }
+  },
+  {
+    "id": "test_extension",
+    "name": "Test Extension",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "Widget Extension SDK 测试组件",
+    "category": "analysis",
+    "tags": [
+      "test"
+    ],
+    "capabilities": [
+      "direct_answer"
+    ],
+    "intents": [
+      "general_knowledge"
+    ],
+    "keywords": [
+      "test"
+    ],
+    "examples": [
+      "测试组件"
+    ],
+    "layout": {
+      "defaultWidth": 50,
+      "minWidth": 25,
+      "maxWidth": 75
+    },
+    "agent": {
+      "selectable": false
     }
   }
 ];

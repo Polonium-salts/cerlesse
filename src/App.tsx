@@ -30,7 +30,6 @@ import {
   LayoutAlignmentMode,
   AutoFillGapsMode,
   AgentTeamReport,
-  CustomCardData,
   WidgetPlannedSize,
   ALL_RESULT_WIDGET_KEYS
 } from "./types.js";
@@ -124,71 +123,6 @@ export default function App() {
 
   const [sharedCopied, setSharedCopied] = useState(false);
 
-  // Dynamic Unique Custom Cards state
-  const [customCards, setCustomCards] = useState<CustomCardData[]>(() => {
-    try {
-      const saved = localStorage.getItem("cerlesse_custom_cards");
-      if (!saved) return [];
-      const parsed: CustomCardData[] = JSON.parse(saved);
-      // Clean up duplicates on boot
-      const seen = new Set<string>();
-      return parsed.filter(c => {
-        const key = `${(c.basedOnQuery || "").trim().toLowerCase()}__${c.archetype}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    } catch {
-      return [];
-    }
-  });
-
-  const mergeCustomCards = (prev: CustomCardData[], incoming: CustomCardData[]): CustomCardData[] => {
-    let list = [...prev];
-    for (const newCard of incoming) {
-      const normNewQ = (newCard.basedOnQuery || "").trim().toLowerCase();
-      const existingIdx = list.findIndex(c => {
-        if (c.id === newCard.id) return true;
-        const normQ = (c.basedOnQuery || "").trim().toLowerCase();
-        return normQ === normNewQ && c.archetype === newCard.archetype;
-      });
-      if (existingIdx >= 0) {
-        list[existingIdx] = {
-          ...newCard,
-          isPinned: list[existingIdx].isPinned ?? newCard.isPinned
-        };
-      } else {
-        list = [newCard, ...list];
-      }
-    }
-
-    const seen = new Set<string>();
-    const deduplicated = list.filter(c => {
-      const key = `${(c.basedOnQuery || "").trim().toLowerCase()}__${c.archetype}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    return deduplicated;
-  };
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("cerlesse_custom_cards", JSON.stringify(customCards));
-    } catch (e) {
-      console.error("Failed to persist custom cards:", e);
-    }
-  }, [customCards]);
-
-  const handleUpdateCard = (updated: CustomCardData) => {
-    setCustomCards(prev => prev.map(c => c.id === updated.id ? updated : c));
-  };
-
-  const handleDeleteCard = (id: string) => {
-    setCustomCards(prev => prev.filter(c => c.id !== id));
-  };
-
   // Adaptive Layout state: automatically arranged based on query & agent intent
   const [layoutPreset, setLayoutPreset] = useState<LayoutIntentType | "custom">("deep_research");
   const [customWidgetOrder, setCustomWidgetOrder] = useState<ResultWidgetKey[] | null>(null);
@@ -259,9 +193,6 @@ export default function App() {
   // When a new search completes or activeResult changes, automatically adopt Agent's intent recommendation
   useEffect(() => {
     if (activeResult) {
-      if (activeResult.customCards && activeResult.customCards.length > 0) {
-        setCustomCards(prev => mergeCustomCards(prev, activeResult.customCards!));
-      }
       if (activeResult.layoutStrategy) {
         if (activeResult.layoutStrategy.gridConfig?.image_gallery) {
           activeResult.layoutStrategy.gridConfig.image_gallery.colSpanLg = 9;
@@ -521,9 +452,6 @@ export default function App() {
         const result: SearchSynthesisResult = await res.json();
         setActiveResult(result);
         setAgentSteps(result.steps || []);
-        if (result.customCards && result.customCards.length > 0) {
-          setCustomCards(prev => mergeCustomCards(prev, result.customCards!));
-        }
         setIsLoading(false);
 
         setHistory(prev => {
@@ -594,9 +522,6 @@ export default function App() {
             hasCompleted = true;
             setActiveResult(result);
             setAgentSteps(result.steps || []);
-            if (result.customCards && result.customCards.length > 0) {
-              setCustomCards(prev => mergeCustomCards(prev, result.customCards!));
-            }
             setIsLoading(false);
 
             setHistory(prev => {
@@ -960,9 +885,6 @@ export default function App() {
                         onExecuteSearch={(q, deep) => executeSearch(q, deep)}
                         onSwitchToBentoGrid={() => handleToggleInteractionMode("bento")}
                         isDark={darkMode}
-                        customCards={customCards}
-                        onUpdateCard={handleUpdateCard}
-                        onDeleteCard={handleDeleteCard}
                       />
                     ) : (
                       /* Mode B: 动态 Live Tile 12 栅格磁贴桌面系统 (iOS 毛玻璃拟物 + Windows Phone Live Tile) */
@@ -971,23 +893,11 @@ export default function App() {
                           strategy={currentStrategy}
                           enabledWidgets={currentStrategy.componentOrder}
                           widgetPlan={activeResult.widgetPlan}
-                          customCards={
-                            (customCards && customCards.length > 0 ? customCards : (activeResult.customCards || []))
-                              .filter(c => {
-                                if (c.isPinned) return true;
-                                const q1 = (c.basedOnQuery || "").trim().toLowerCase();
-                                const q2 = (activeResult?.query || "").trim().toLowerCase();
-                                if (!q1 || !q2) return true;
-                                return q1 === q2 || q1.includes(q2) || q2.includes(q1);
-                              })
-                          }
                           activeResult={activeResult}
                           isWideCanvas={isWideCanvas}
                           onOpenMarketplace={() => setIsMarketplaceOpen(true)}
                           onExecuteSearch={(q, deep) => executeSearch(q, deep)}
                           onNavigateTab={(tab) => goToPage(tab)}
-                          onUpdateCard={handleUpdateCard}
-                          onDeleteCard={handleDeleteCard}
                         />
                       </div>
                     )}
@@ -1043,9 +953,6 @@ export default function App() {
           setActiveResult(res);
           setCurrentQuery(res.query);
           setAgentSteps(res.steps || []);
-          if (res.customCards && res.customCards.length > 0) {
-            setCustomCards(prev => mergeCustomCards(prev, res.customCards!));
-          }
           navigate("bento", res.query.trim(), { replace: false });
         }}
         onClear={handleClearHistory}
@@ -1056,7 +963,6 @@ export default function App() {
         isOpen={isMarketplaceOpen}
         onClose={() => setIsMarketplaceOpen(false)}
         activeTileIds={(currentStrategy?.componentOrder || []).map(String)}
-        customCards={customCards.length > 0 ? customCards : activeResult?.customCards}
         onAddTile={(id) => {
           setCustomEnabledWidgets((prev) => {
             const current = prev || currentStrategy?.componentOrder || [];

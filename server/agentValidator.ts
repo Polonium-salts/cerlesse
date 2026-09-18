@@ -188,32 +188,14 @@ export function repairWidgetDecision(
     }
   }
 
-  // 4. 确保三大基底 (ai_answer + related_links + sources) 完整存在
-  if (!existingMap.has("ai_answer") && route.allowedWidgets.includes("ai_answer")) {
+  // 4. 若修复后组件依然少于 2 个且核心速答被允许，则以 ai_answer 兜底
+  if (existingMap.size < 2 && !existingMap.has("ai_answer") && route.allowedWidgets.includes("ai_answer")) {
     existingMap.set("ai_answer", {
       key: "ai_answer",
       priority: 95,
       size: 50,
       reason: "核心知识与综合速答基底",
       confidence: 0.95
-    });
-  }
-  if (!existingMap.has("related_links") && route.allowedWidgets.includes("related_links")) {
-    existingMap.set("related_links", {
-      key: "related_links",
-      priority: 90,
-      size: 50,
-      reason: "官方信源与快速跳转直达",
-      confidence: 0.9
-    });
-  }
-  if (!existingMap.has("sources") && route.allowedWidgets.includes("sources")) {
-    existingMap.set("sources", {
-      key: "sources",
-      priority: 85,
-      size: 50,
-      reason: "权威文献溯源与存证记录",
-      confidence: 0.85
     });
   }
 

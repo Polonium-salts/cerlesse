@@ -4,8 +4,6 @@ import { onRequest as handleHealth } from "../functions/api/health.js";
 import { onRequest as handleSearch } from "../functions/api/search.js";
 import { onRequest as handleIntent } from "../functions/api/intent.js";
 import { onRequest as handlePlanner } from "../functions/api/planner.js";
-import { onRequest as handleComposer } from "../functions/api/composer.js";
-import { onRequest as handleForge } from "../functions/api/cards/forge.js";
 import { onRequest as handleAgent } from "../functions/api/agent.js";
 import { onRequest as handleAgentRun } from "../functions/api/agent/run.js";
 import { onRequest as handleAgentStream } from "../functions/api/agent/stream.js";
@@ -18,8 +16,6 @@ const routes: Record<string, PagesFunction> = {
   "/api/search": handleSearch,
   "/api/intent": handleIntent,
   "/api/planner": handlePlanner,
-  "/api/composer": handleComposer,
-  "/api/cards/forge": handleForge,
   "/api/agent/stream": handleAgentStream,
   "/api/agent/run": handleAgentRun,
   "/api/agent/synthesize": handleAgentRun,
