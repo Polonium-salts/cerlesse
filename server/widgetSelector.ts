@@ -5,7 +5,8 @@ import {
   type CandidateWidget,
   type ContentSignalsPayload
 } from "../src/widgets/widgetContract.js";
-import { getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
+import { getUnifiedCatalogItem, getAllUnifiedCatalogItems } from "../src/widgets/widgetRetriever.js";
+import { validateWidgetRegistryConsistency } from "../src/widgets/registry/registryHealth.js";
 import { callOpenRouterChat } from "./openrouter.js";
 import {
   getRouteForIntent,
@@ -35,6 +36,25 @@ export interface WidgetSelectorResult {
   plannedWidgets: WidgetPlannedItem[];
   widgetOrder: ResultWidgetKey[];
   reRankedBy: "llm_agent" | "rule_engine";
+}
+
+function enforceCatalogConsistency(
+  plannedWidgets: WidgetPlannedItem[],
+  widgetOrder: ResultWidgetKey[]
+): { plannedWidgets: WidgetPlannedItem[]; widgetOrder: ResultWidgetKey[] } {
+  const catalogKeys = getAllUnifiedCatalogItems().map(item => String(item.id));
+  const missing = validateWidgetRegistryConsistency(
+    widgetOrder.map(String),
+    catalogKeys
+  );
+  if (missing.length > 0) {
+    console.warn(`[WidgetSelector] 自动过滤未在 Catalog/Registry 注册的组件: ${missing.join(", ")}`);
+    const catalogSet = new Set(catalogKeys);
+    const validPlanned = plannedWidgets.filter(w => catalogSet.has(String(w.type)));
+    const validOrder = widgetOrder.filter(k => catalogSet.has(String(k)));
+    return { plannedWidgets: validPlanned, widgetOrder: validOrder };
+  }
+  return { plannedWidgets, widgetOrder };
 }
 
 /**
@@ -191,20 +211,25 @@ export async function selectAndReRankWidgets(
   // 若无可用候选或未配置 API Key，直接执行确定性兜底重排
   if (!allowedCandidates || allowedCandidates.length === 0 || !apiKey) {
     const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals);
-    const plannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
+    const rawPlannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
       type: w.key as ResultWidgetKey,
       priority: w.priority,
       size: w.size || 50,
       flexible: true,
       reason: w.reason
     }));
+    const { plannedWidgets, widgetOrder } = enforceCatalogConsistency(
+      rawPlannedWidgets,
+      rawPlannedWidgets.map(w => w.type)
+    );
     return {
       decision: fallbackDecision,
       plannedWidgets,
-      widgetOrder: plannedWidgets.map(w => w.type),
+      widgetOrder,
       reRankedBy: "rule_engine"
     };
   }
+
 
   // 2. 构造具有全量打分证据的高密度 Prompt
   const candidateListStr = formatCandidatesForLLM(allowedCandidates);
@@ -270,17 +295,21 @@ ${candidateListStr}
           const report = validateWidgetDecision(decision, validationContext);
 
           if (report.passed) {
-            const plannedWidgets = decision.selectedWidgets.map(w => ({
+            const rawPlannedWidgets = decision.selectedWidgets.map(w => ({
               type: w.key as ResultWidgetKey,
               priority: w.priority,
               size: w.size || 50,
               flexible: true,
               reason: w.reason
             }));
+            const { plannedWidgets, widgetOrder } = enforceCatalogConsistency(
+              rawPlannedWidgets,
+              rawPlannedWidgets.map(w => w.type)
+            );
             return {
               decision,
               plannedWidgets,
-              widgetOrder: plannedWidgets.map(w => w.type),
+              widgetOrder,
               reRankedBy: "llm_agent"
             };
           } else {
@@ -293,17 +322,21 @@ ${candidateListStr}
             } else {
               // 重试后仍有瑕疵，使用 Validator 自动修复
               const repaired = repairWidgetDecision(decision, validationContext, report);
-              const plannedWidgets = repaired.selectedWidgets.map(w => ({
+              const rawPlannedWidgets = repaired.selectedWidgets.map(w => ({
                 type: w.key as ResultWidgetKey,
                 priority: w.priority,
                 size: w.size || 50,
                 flexible: true,
                 reason: w.reason
               }));
+              const { plannedWidgets, widgetOrder } = enforceCatalogConsistency(
+                rawPlannedWidgets,
+                rawPlannedWidgets.map(w => w.type)
+              );
               return {
                 decision: repaired,
                 plannedWidgets,
-                widgetOrder: plannedWidgets.map(w => w.type),
+                widgetOrder,
                 reRankedBy: "llm_agent"
               };
             }
@@ -318,18 +351,23 @@ ${candidateListStr}
   // 所有尝试均失败，降级确定性重排兜底
   console.info("[WidgetSelector] 回退至确定性规则重排引擎");
   const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals);
-  const plannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
+  const rawPlannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
     type: w.key as ResultWidgetKey,
     priority: w.priority,
     size: w.size || 50,
     flexible: true,
     reason: w.reason
   }));
+  const { plannedWidgets, widgetOrder } = enforceCatalogConsistency(
+    rawPlannedWidgets,
+    rawPlannedWidgets.map(w => w.type)
+  );
 
   return {
     decision: fallbackDecision,
     plannedWidgets,
-    widgetOrder: plannedWidgets.map(w => w.type),
+    widgetOrder,
     reRankedBy: "rule_engine"
   };
+
 }

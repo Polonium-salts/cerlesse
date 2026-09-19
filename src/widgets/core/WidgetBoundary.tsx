@@ -2,16 +2,26 @@ import React from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button.js";
 
+export type WidgetFailureReason =
+  | "module_not_found"
+  | "adapter_error"
+  | "render_error"
+  | "unknown";
+
 interface WidgetBoundaryProps {
   widgetId: string;
   children: React.ReactNode;
   fallback?: React.ReactNode;
+  reason?: WidgetFailureReason;
+  stage?: string;
   onError?: (error: Error, info: React.ErrorInfo) => void;
 }
 
 interface WidgetBoundaryState {
   hasError: boolean;
   error?: Error;
+  reason?: WidgetFailureReason;
+  stage?: string;
 }
 
 export class WidgetBoundary extends React.Component<WidgetBoundaryProps, WidgetBoundaryState> {
@@ -22,7 +32,9 @@ export class WidgetBoundary extends React.Component<WidgetBoundaryProps, WidgetB
   static getDerivedStateFromError(error: Error): WidgetBoundaryState {
     return {
       hasError: true,
-      error
+      error,
+      reason: "render_error",
+      stage: "render"
     };
   }
 
@@ -34,7 +46,9 @@ export class WidgetBoundary extends React.Component<WidgetBoundaryProps, WidgetB
   handleRetry = (): void => {
     this.setState({
       hasError: false,
-      error: undefined
+      error: undefined,
+      reason: undefined,
+      stage: undefined
     });
   };
 
@@ -43,6 +57,9 @@ export class WidgetBoundary extends React.Component<WidgetBoundaryProps, WidgetB
       if (this.props.fallback) {
         return this.props.fallback;
       }
+
+      const activeStage = this.state.stage || this.props.stage || "render";
+      const activeReason = this.state.reason || this.props.reason || "render_error";
 
       return (
         <div 
@@ -54,10 +71,13 @@ export class WidgetBoundary extends React.Component<WidgetBoundaryProps, WidgetB
           </div>
           <div className="space-y-1">
             <div className="text-xs font-semibold text-foreground">
-              小组件加载失败 ({this.props.widgetId})
+              小组件加载失败
             </div>
-            <div className="text-[11px] text-muted-foreground line-clamp-2 max-w-[260px]">
-              {this.state.error?.message || "组件运行时发生未捕获的渲染异常"}
+            <div className="text-[11px] font-mono text-muted-foreground">
+              组件: {this.props.widgetId} | 阶段: {activeStage}
+            </div>
+            <div className="text-[11px] text-destructive/90 line-clamp-2 max-w-[280px]">
+              {this.state.error?.message || `组件在 ${activeStage} 阶段发生未捕获异常 (${activeReason})`}
             </div>
           </div>
           <Button
@@ -76,3 +96,4 @@ export class WidgetBoundary extends React.Component<WidgetBoundaryProps, WidgetB
     return this.props.children;
   }
 }
+

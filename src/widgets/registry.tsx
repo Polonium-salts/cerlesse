@@ -101,6 +101,21 @@ class WidgetRegistryClass {
   }
 
   /**
+   * 诊断指定组件的注册状态
+   */
+  public diagnose(id: string | ResultWidgetKey) {
+    const idStr = String(id);
+    return {
+      id: idStr,
+      inExtensionRegistry: extensionRegistry.has(idStr),
+      inRemoteRegistry: this.remoteModules.has(idStr),
+      inRuntimeRegistry: this.runtimeModules.has(idStr),
+      totalExtensions: extensionRegistry.getAll().length,
+      totalWidgets: this.getAll().length
+    };
+  }
+
+  /**
    * 获取指定 ID 的组件模块（按独立扩展 -> 远程 -> 运行时 顺序逐级检索）
    */
   public get(id: string | ResultWidgetKey): WidgetModule | undefined {
@@ -109,10 +124,21 @@ class WidgetRegistryClass {
     if (ext) {
       return createModuleFromExtension(ext);
     }
-    return (
-      this.remoteModules.get(idStr) ||
-      this.runtimeModules.get(idStr)
+    const remote = this.remoteModules.get(idStr);
+    if (remote) {
+      return remote;
+    }
+    const runtime = this.runtimeModules.get(idStr);
+    if (runtime) {
+      return runtime;
+    }
+
+    console.error(
+      "[WidgetRegistry] Widget not found",
+      this.diagnose(idStr)
     );
+
+    return undefined;
   }
 
   /**

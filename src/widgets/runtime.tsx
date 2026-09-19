@@ -14,6 +14,32 @@ import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { Button } from "../components/ui/button.js";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
+/**
+ * 安全解析小组件数据适配器，防御并捕获适配器内部抛出的未捕获异常
+ */
+export function resolveWidgetData<T = any>(
+  module: WidgetModule<T>,
+  activeResult?: SearchSynthesisResult,
+  fallback?: T
+): { data?: T; error?: Error } {
+  try {
+    if (typeof module.data === "function") {
+      return { data: module.data(activeResult) };
+    }
+    return {
+      data: fallback !== undefined ? fallback : (activeResult as unknown as T)
+    };
+  } catch (error) {
+    console.error(
+      `[WidgetRuntime] Data adapter failed for [${module.id}]:`,
+      error
+    );
+    return {
+      error: error instanceof Error ? error : new Error(String(error))
+    };
+  }
+}
+
 interface WidgetRuntimeProps {
   module?: WidgetModule;
   extension?: WidgetExtension;
@@ -158,15 +184,14 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
     return actionMap;
   }, [module.actions, module.id]);
 
+  // 安全解析数据适配器，防御异常
+  const { data: resolvedData, error: dataError } = useMemo(
+    () => resolveWidgetData(module, activeResult, data),
+    [module, activeResult, data]
+  );
+
   // 构造受控安全运行时 Context
   const context: WidgetContext = useMemo(() => {
-    // 允许模块自身提供数据映射清洗器
-    const resolvedData = module.data
-      ? module.data(activeResult)
-      : data !== undefined
-      ? data
-      : activeResult;
-
     return {
       data: resolvedData,
       activeResult,
@@ -184,8 +209,7 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
       storage: scopedStorage
     };
   }, [
-    module,
-    data, 
+    resolvedData,
     activeResult, 
     effectiveSize, 
     isCompact, 
@@ -200,6 +224,31 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
     copyText, 
     scopedStorage
   ]);
+
+  if (dataError) {
+    return (
+      <div 
+        data-widget-id={String(module.id)} 
+        className="w-full h-full min-h-[140px] p-4 rounded-xl border border-destructive/30 bg-destructive/5 flex flex-col items-center justify-center text-center gap-2"
+      >
+        <div className="w-8 h-8 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
+          <AlertCircle className="w-4 h-4" />
+        </div>
+        <div className="space-y-1">
+          <div className="text-xs font-semibold text-foreground">
+            小组件加载失败
+          </div>
+          <div className="text-[11px] font-mono text-muted-foreground">
+            组件: {String(module.id)} | 阶段: data
+          </div>
+          <div className="text-[11px] text-destructive/90 line-clamp-2 max-w-[280px]">
+            数据适配阶段异常 (adapter_error): {dataError.message}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 
   // 渲染单一视图（处理声明式 TileSchemaDescriptor 或直接 ReactNode）
   const renderViewContent = (viewNode: React.ReactNode | TileSchemaDescriptor | undefined) => {

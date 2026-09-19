@@ -67,6 +67,10 @@ export function manifestToCatalogEntry(manifest: WidgetManifest): ExtensionCatal
   };
 }
 
+import { getWidgetRegistryHealth, type WidgetRegistryHealth } from "./registryHealth.js";
+
+export { getWidgetRegistryHealth, type WidgetRegistryHealth };
+
 /**
  * 从注册中心获取全部 Extension 的纯 JSON Catalog 列表（优先 Extension Registry，Node 环境兜底静态生成清单）
  */
@@ -77,5 +81,18 @@ export function getExtensionCatalog(
   if (registered.length > 0) {
     return registered;
   }
+
+  // 浏览器开发环境（Vite DEV）或显式声明严格模式下，若扩展注册中心为空，直接抛错以便快速暴露初始化故障，禁止静默掩盖
+  const isDevBrowser = typeof window !== "undefined" && Boolean((import.meta as any)?.env?.DEV);
+  const isStrict = process.env.CERLESSE_STRICT_CATALOG === "true";
+
+  if (isDevBrowser || isStrict) {
+    throw new Error(
+      "[WidgetCatalog] Extension Registry is empty. Widget extension initialization failed."
+    );
+  }
+
   return GENERATED_EXTENSION_CATALOG;
 }
+
+

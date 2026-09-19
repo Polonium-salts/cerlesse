@@ -48,11 +48,23 @@ export function loadExtensions(
       entries = scanExtensionEntries();
     } catch (err: any) {
       console.error("[ExtensionLoader] 自动扫描 Extension 失败:", err);
+      result.failed.push({
+        id: "__scanner__",
+        error: err instanceof Error ? err.message : String(err)
+      });
       return result;
     }
 
     for (const entry of entries) {
       const id = entry.extension?.manifest?.id || entry.directoryId || "unknown";
+
+      if (entry.error || !entry.extension) {
+        const errorMsg = entry.error || "Missing extension export";
+        result.failed.push({ id, error: errorMsg });
+        console.error(`[WidgetExtension] ✗ ${id}: ${errorMsg}`);
+        continue;
+      }
+
       try {
         validateManifest(entry.extension.manifest, entry.directoryId);
         targetRegistry.register(entry.extension, { replace: allowReplace });
@@ -67,6 +79,7 @@ export function loadExtensions(
 
     return result;
   }
+
 
   // 显式传入 extensions 的情况
   for (const ext of extensions) {

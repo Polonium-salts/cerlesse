@@ -61,4 +61,17 @@ export class ExtensionRegistry {
   }
 }
 
-export const extensionRegistry = new ExtensionRegistry();
+interface ExtensionRegistryGlobal {
+  __CERLESSE_EXTENSION_REGISTRY__?: ExtensionRegistry;
+}
+
+const extensionRegistryGlobal = globalThis as unknown as ExtensionRegistryGlobal;
+
+export const extensionRegistry: ExtensionRegistry =
+  extensionRegistryGlobal.__CERLESSE_EXTENSION_REGISTRY__ ??
+  (extensionRegistryGlobal.__CERLESSE_EXTENSION_REGISTRY__ = new ExtensionRegistry());
+
+export function getExtensionRegistry(): ExtensionRegistry {
+  return extensionRegistry;
+}
+

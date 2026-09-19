@@ -647,9 +647,32 @@ export default function App() {
     // 插件系统架构核心：统一通过 WidgetRegistry 调度渲染所有官方插件模块
     const widgetModule = WidgetRegistry.get(key);
     if (!widgetModule) {
-      console.warn(`Widget module not found in registry: ${key}`);
-      return null;
+      const isDev = Boolean((import.meta as any)?.env?.DEV);
+      if (isDev) {
+        console.error("[WidgetRegistry] Missing requested widget:", {
+          requestedWidget: key,
+          registeredWidgets: WidgetRegistry.getAll().map(w => String(w.id))
+        });
+      }
+      return (
+        <div
+          key={String(key)}
+          data-widget-id={String(key)}
+          className="w-full min-h-[140px] rounded-xl border border-dashed border-destructive/40 bg-destructive/5 p-4 flex flex-col justify-center"
+        >
+          <div className="text-xs font-semibold text-destructive">
+            小组件不可用
+          </div>
+          <div className="mt-1 text-[11px] font-mono text-muted-foreground">
+            {String(key)}
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            组件可能未成功注册，或 Registry 与 Catalog 状态不一致。
+          </div>
+        </div>
+      );
     }
+
 
     // 注入应用层动作回调 (Actions)
     const boundModule = {

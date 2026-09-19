@@ -361,7 +361,13 @@ export async function planWidgetStrategy(options: {
     }
   }
 
+  // 严格保证选出的每一个组件均在 Registry / Catalog 中真实存在，禁止虚构/未注册组件
+  const catalogKeys = new Set(getAllUnifiedCatalogItems().map(item => item.id));
+  plannedWidgets = plannedWidgets.filter(w => catalogKeys.has(w.type));
+  widgetOrder = widgetOrder.filter(k => catalogKeys.has(k));
+
   return {
+
     intent: canonicalIntent,
     userGoal: resolvedUserGoal,
     suggestedArchetype,

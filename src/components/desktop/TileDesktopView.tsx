@@ -150,11 +150,11 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       list = list.filter(k => k !== "takeaways");
     }
 
-    // 过滤用户已显式隐藏的组件，并确保注册中心有对应模块
+    // 过滤用户已显式隐藏的组件
     const visibleList = list.filter(k => !hiddenTileIds.has(String(k)));
-    const uniqueKeys = Array.from(new Set(visibleList));
-    return uniqueKeys.filter((k) => Boolean(resolveWidgetModule(String(k))));
+    return Array.from(new Set(visibleList));
   }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, widgetPlan]);
+
 
   // 监听各个小组件实际内容高度，当内容变化时自动扩充磁贴高度以一次性显示全部内容
   useEffect(() => {
@@ -225,7 +225,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       const planned = plannedMap.get(key);
       const keyStr = String(key);
       const module = resolveWidgetModule(keyStr);
-      if (!module) continue;
       const isEmphasized = key === agentFocusKey || key === strategy.layoutPlan?.featured;
       const priority = (planned?.priority ?? 50) + (isEmphasized ? 30 : 0);
 
@@ -260,6 +259,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     activeColumns,
     contentHeights
   ]);
+
 
   // 4. 调用 TileLayoutEngine 二维装箱求解（固定比例求解）
   const layoutSolution = useMemo(() => {
@@ -310,8 +310,24 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     // 官方或已注册模块
     const widgetModule = resolveWidgetModule(id);
     if (!widgetModule) {
-      return null;
+      return (
+        <div
+          data-widget-id={id}
+          className="w-full h-full min-h-[140px] rounded-2xl md:rounded-3xl border border-dashed border-destructive/40 bg-destructive/5 p-4 flex flex-col justify-center text-center items-center"
+        >
+          <div className="text-xs font-semibold text-destructive">
+            小组件不可用
+          </div>
+          <div className="mt-1 text-[11px] font-mono text-muted-foreground">
+            {id}
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground max-w-[240px]">
+            组件可能未成功注册，或 Registry 与 Catalog 状态不一致。
+          </div>
+        </div>
+      );
     }
+
 
     const boundModule = {
       ...widgetModule,
