@@ -15,7 +15,7 @@ import { analyzeWidgetIntent, INTENT_CAPABILITIES_MAP } from "./widgetIntentAnal
 import { normalizeCapabilities, INTENT_TAXONOMY_ALIGNMENT, GENERIC_INTENTS, INTENT_CONFIDENCE_OVERRIDE_THRESHOLD, INTENT_GOAL_LABELS, ARCHETYPE_PROFILES, OFFICIAL_WIDGET_PROFILES, type CanonicalCapability } from "../src/widgets/capabilityTaxonomy.js";
 import { retrieveWidgets, getAllUnifiedCatalogItems, getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
 import { selectAndReRankWidgets } from "./widgetSelector.js";
-import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
+import { getRouteForIntent, getMergedRouteForIntents, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
 
 // 纯能力驱动的规划器组件规格配置
 
@@ -232,42 +232,27 @@ export async function planWidgetStrategy(options: {
 
   // 2. 基础意图分类与目标研判
   const { intent, userGoal } = await classifyQueryIntent(query, results, { env, apiKey });
-
-  // 4. 聚合语义分析所需能力与任务能力清单
-  //    关键：所有来源（intentAgent 任务能力 + LLM 自由输出 + 意图分析器）都必须先归一化到
-  //    能力分类法规范 ID，否则无法命中 WIDGET_REGISTRY，组件选择会退化为锚点兜底。
   const taskCaps = await planTaskCapabilities(intent, userGoal, query, results, { env, apiKey });
 
-  // 4.1 两个意图分类器的一致性裁决
-  //     intentAgent 只看 query 关键词，语义分析器同时看检索结果，二者判定可能冲突。
-  //     冲突时若无条件并集能力，会把无关业务域的能力注入任务
-  //     （实测: query="Photoshop" -> intentAgent 落 explain 兜底 -> 注入 concept_definition/
-  //      mindmap_tree，导致下载任务里思维导图排到下载入口之前）。
-  const analyzerIntent = intentAnalysis.intent;
-  const analyzerConfidence = intentAnalysis.confidence ?? 0;
-  const alignedIntents = INTENT_TAXONOMY_ALIGNMENT[intent] || [];
-  const analyzerIsSpecific =
-    !GENERIC_INTENTS.includes(analyzerIntent) &&
-    analyzerConfidence >= INTENT_CONFIDENCE_OVERRIDE_THRESHOLD;
-  const intentsDisagree = analyzerIsSpecific && !alignedIntents.includes(analyzerIntent);
+  // 4. 聚合语义分析所需能力与任务能力清单 (支持 Capability Union 并集)
+  const primaryIntent = intentAnalysis.primaryIntent || intentAnalysis.intent || intent;
+  const secondaryIntents = intentAnalysis.secondaryIntents || [];
+  const allIntents = Array.from(new Set([primaryIntent, intent, ...secondaryIntents].filter(Boolean)));
 
-  let rawCapabilities: string[];
-  if (intentsDisagree) {
-    // 语义分析器看到了检索结果，证据更强 -> 以其能力为准，阻断跨域任务能力注入
-    rawCapabilities = [...(intentAnalysis.requiredCapabilities || [])];
-    console.warn(
-      `[WidgetPlanner] 意图分类冲突: intentAgent="${intent}" vs analyzer="${analyzerIntent}"` +
-        `(confidence=${analyzerConfidence})，采用语义分析器结果，丢弃 intentAgent 的 ` +
-        `${(taskCaps.required_capabilities || []).length} 项任务能力`
-    );
-  } else {
-    rawCapabilities = [
-      ...(taskCaps.required_capabilities || []),
-      ...(intentAnalysis.requiredCapabilities || [])
-    ];
+  const capabilityPool = new Set<string>();
+  for (const cap of taskCaps.required_capabilities || []) {
+    capabilityPool.add(cap);
+  }
+  for (const cap of intentAnalysis.requiredCapabilities || []) {
+    capabilityPool.add(cap);
+  }
+  if (intentAnalysis.optionalCapabilities) {
+    for (const cap of intentAnalysis.optionalCapabilities) {
+      capabilityPool.add(cap);
+    }
   }
 
-  const normalized = normalizeCapabilities(rawCapabilities);
+  const normalized = normalizeCapabilities(Array.from(capabilityPool));
   const capabilities: string[] = normalized.canonical;
 
   if (normalized.unmapped.length > 0) {
@@ -293,10 +278,7 @@ export async function planWidgetStrategy(options: {
     }
   }
 
-  // 冲突时 userGoal 文案同步采用语义分析器的目标，避免与能力集自相矛盾
-  const resolvedUserGoal = intentsDisagree
-    ? INTENT_GOAL_LABELS[analyzerIntent] || userGoal
-    : userGoal;
+  const resolvedUserGoal = intentAnalysis.goal || userGoal;
 
   // 5. 纯能力驱动：小组件主题配置
   const suggestedArchetype: CustomCardArchetype = "parameter_matrix";
@@ -312,8 +294,10 @@ export async function planWidgetStrategy(options: {
 
   try {
     const candidates = await retrieveWidgets(query, {
-      intent,
+      intent: primaryIntent,
+      intents: allIntents,
       capabilities,
+      entity: intentAnalysis.entity,
       signals: {
         sourceCount: results.length,
         hasOfficial: results.some(r => r.isOfficial),
@@ -325,7 +309,11 @@ export async function planWidgetStrategy(options: {
 
     const selectorResult = await selectAndReRankWidgets({
       query,
-      intent,
+      intent: primaryIntent,
+      primaryIntent,
+      secondaryIntents,
+      requiredCapabilities: capabilities,
+      taskComplexity: intentAnalysis.taskComplexity || "medium",
       userGoal: resolvedUserGoal,
       candidates,
       apiKey: options.apiKey,
@@ -340,15 +328,15 @@ export async function planWidgetStrategy(options: {
     widgetOrder = plannedWidgets.map(w => w.type);
   }
 
-  // 严格依据 Agent Router 过滤黑名单组件
-  const canonicalIntent = normalizeIntent(intent);
-  plannedWidgets = plannedWidgets.filter(w => !isWidgetForbidden(w.type, canonicalIntent));
-  widgetOrder = widgetOrder.filter(k => !isWidgetForbidden(k, canonicalIntent));
+  // 严格依据 多意图 Agent Router 过滤黑名单组件
+  const canonicalIntent = normalizeIntent(primaryIntent);
+  const mergedRoute = getMergedRouteForIntents(allIntents);
+  plannedWidgets = plannedWidgets.filter(w => !mergedRoute.forbiddenWidgets.includes(w.type));
+  widgetOrder = widgetOrder.filter(k => !mergedRoute.forbiddenWidgets.includes(k));
 
   // 仅在明确符合意图与能力时补充 image_gallery
-  const route = getRouteForIntent(canonicalIntent);
-  const shouldHaveImages = route.requiresImages || capabilities.includes("image_gallery") || capabilities.includes("resource_preview");
-  if (shouldHaveImages && !isWidgetForbidden("image_gallery", canonicalIntent) && !plannedWidgets.some(w => w.type === "image_gallery")) {
+  const shouldHaveImages = mergedRoute.requiresImages || capabilities.includes("image_gallery") || capabilities.includes("resource_preview");
+  if (shouldHaveImages && !mergedRoute.forbiddenWidgets.includes("image_gallery") && !plannedWidgets.some(w => w.type === "image_gallery")) {
     plannedWidgets.push({
       type: "image_gallery",
       priority: 74,

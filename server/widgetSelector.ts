@@ -23,12 +23,43 @@ import {
 export interface WidgetSelectorOptions {
   query: string;
   intent: string;
+  primaryIntent?: string;
+  secondaryIntents?: string[];
+  requiredCapabilities?: string[];
+  taskComplexity?: "simple" | "medium" | "complex";
   userGoal?: string;
   candidates: CandidateWidget[];
   signals?: ContentSignalsPayload;
   apiKey?: string;
   model?: string;
   targetLanguage?: string;
+}
+
+/**
+ * 依据任务复杂度和意图数量动态计算组件预算配额
+ */
+export function getWidgetBudget(
+  complexity: "simple" | "medium" | "complex" = "medium",
+  primaryIntent: string = "general_knowledge",
+  secondaryIntents: string[] = [],
+  capabilityCount: number = 0
+): { min: number; max: number } {
+  let min = 2;
+  let max = 4;
+  if (complexity === "medium") {
+    min = 3;
+    max = 5;
+  } else if (complexity === "complex") {
+    min = 4;
+    max = 7;
+  }
+  if (secondaryIntents.length >= 2) {
+    max = Math.min(7, max + 1);
+  }
+  if (capabilityCount >= 6) {
+    max = Math.min(7, max + 1);
+  }
+  return { min, max };
 }
 
 export interface WidgetSelectorResult {
@@ -58,17 +89,30 @@ function enforceCatalogConsistency(
 }
 
 /**
- * 确定性重排兜底引擎 (基于 Agent Router + Orama 综合分数的确定性排序)
+ * 确定性重排兜底引擎 (结合能力覆盖最大化与动态预算)
  */
 export function deterministicReRankWidgets(
   query: string,
   intent: string,
   userGoal: string,
   candidates: CandidateWidget[],
-  signals?: ContentSignalsPayload
+  signals?: ContentSignalsPayload,
+  contextOpts?: {
+    primaryIntent?: string;
+    secondaryIntents?: string[];
+    requiredCapabilities?: string[];
+    taskComplexity?: "simple" | "medium" | "complex";
+  }
 ): WidgetDecision {
   const canonicalIntent = normalizeIntent(intent);
   const route = getRouteForIntent(canonicalIntent);
+
+  const budget = getWidgetBudget(
+    contextOpts?.taskComplexity || "medium",
+    contextOpts?.primaryIntent || canonicalIntent,
+    contextOpts?.secondaryIntents || [],
+    (contextOpts?.requiredCapabilities || []).length
+  );
 
   // 1. 硬性排除黑名单组件
   const allowedCandidates = filterAllowedCandidates(candidates, canonicalIntent);
@@ -93,18 +137,52 @@ export function deterministicReRankWidgets(
     }
   }
 
-  // 4. 补充高分候选组件 (排除已选和低于阈值的项)
-  for (const c of sorted) {
-    if (selectedMap.size >= 4) break;
-    if (selectedMap.has(c.key)) continue;
-    if (c.finalScore < 0.25) continue;
+  // 4. 动态预算补充高分与边际能力增加最强组件
+  const reqCaps = new Set((contextOpts?.requiredCapabilities || []).map(c => c.toLowerCase()));
+
+  while (selectedMap.size < budget.max) {
+    const coveredCaps = new Set<string>();
+    for (const key of selectedMap.keys()) {
+      const item = getUnifiedCatalogItem(key);
+      if (item) {
+        for (const cap of item.capabilities) {
+          if (reqCaps.has(cap.toLowerCase())) coveredCaps.add(cap.toLowerCase());
+        }
+      }
+    }
+    const missingCaps = new Set(Array.from(reqCaps).filter(c => !coveredCaps.has(c)));
+
+    const unselected = sorted.filter(c => !selectedMap.has(c.key) && c.finalScore >= 0.20);
+    if (unselected.length === 0) break;
+
+    const scored = unselected.map(cand => {
+      const itemCaps = cand.matchedCapabilities.map(c => c.toLowerCase());
+      let gain = 0;
+      for (const cap of itemCaps) {
+        if (missingCaps.has(cap)) gain++;
+      }
+      return { cand, score: cand.finalScore + gain * 0.25 };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const best = scored[0];
+
+    if (!best || (best.score < 0.25 && selectedMap.size >= budget.min)) break;
+
+    const c = best.cand;
 
     // 数据就绪检查
-    if (c.key === "takeaways" && signals?.takeawayCount === 0) continue;
+    if (c.key === "takeaways" && signals?.takeawayCount === 0) {
+      sorted.splice(sorted.findIndex(x => x.key === c.key), 1);
+      continue;
+    }
     if (c.key === "image_gallery") {
       const hasImages = (signals?.imageCount ?? 0) > 0;
       const hasImageIntent = signals?.imageIntent === true;
-      if (!hasImages && !hasImageIntent && !route.requiresImages) continue;
+      if (!hasImages && !hasImageIntent && !route.requiresImages) {
+        sorted.splice(sorted.findIndex(x => x.key === c.key), 1);
+        continue;
+      }
     }
 
     selectedMap.set(c.key, {
@@ -141,7 +219,7 @@ export function deterministicReRankWidgets(
     });
   }
 
-  const selectedWidgets = Array.from(selectedMap.values()).slice(0, 6);
+  const selectedWidgets = Array.from(selectedMap.values()).slice(0, budget.max);
   selectedWidgets.sort((a, b) => b.priority - a.priority);
 
   const initialDecision: WidgetDecision = {
@@ -154,6 +232,10 @@ export function deterministicReRankWidgets(
   const validationContext: ValidationContext = {
     query,
     intent: canonicalIntent,
+    primaryIntent: contextOpts?.primaryIntent,
+    secondaryIntents: contextOpts?.secondaryIntents,
+    requiredCapabilities: contextOpts?.requiredCapabilities,
+    taskComplexity: contextOpts?.taskComplexity,
     userGoal,
     signals,
     candidates
@@ -193,9 +275,19 @@ export async function selectAndReRankWidgets(
   options: WidgetSelectorOptions
 ): Promise<WidgetSelectorResult> {
   const { query, intent, candidates, signals, apiKey, model } = options;
-  const canonicalIntent = normalizeIntent(intent);
+  const canonicalIntent = normalizeIntent(options.primaryIntent || intent);
+  const secondaryIntents = options.secondaryIntents || [];
+  const requiredCapabilities = options.requiredCapabilities || [];
+  const taskComplexity = options.taskComplexity || "medium";
   const route = getRouteForIntent(canonicalIntent);
   const userGoal = options.userGoal || `针对 "${query}" 获取精准解答与专属交互工具`;
+
+  const budget = getWidgetBudget(
+    taskComplexity,
+    canonicalIntent,
+    secondaryIntents,
+    requiredCapabilities.length
+  );
 
   // 1. 硬性路由过滤：只将合法允许的候选组件送入 LLM 研判
   const allowedCandidates = filterAllowedCandidates(candidates, canonicalIntent);
@@ -203,14 +295,25 @@ export async function selectAndReRankWidgets(
   const validationContext: ValidationContext = {
     query,
     intent: canonicalIntent,
+    primaryIntent: options.primaryIntent || canonicalIntent,
+    secondaryIntents,
+    requiredCapabilities,
+    taskComplexity,
     userGoal,
     signals,
     candidates: allowedCandidates
   };
 
+  const contextOpts = {
+    primaryIntent: options.primaryIntent || canonicalIntent,
+    secondaryIntents,
+    requiredCapabilities,
+    taskComplexity
+  };
+
   // 若无可用候选或未配置 API Key，直接执行确定性兜底重排
   if (!allowedCandidates || allowedCandidates.length === 0 || !apiKey) {
-    const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals);
+    const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals, contextOpts);
     const rawPlannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
       type: w.key as ResultWidgetKey,
       priority: w.priority,
@@ -230,29 +333,31 @@ export async function selectAndReRankWidgets(
     };
   }
 
-
   // 2. 构造具有全量打分证据的高密度 Prompt
   const candidateListStr = formatCandidatesForLLM(allowedCandidates);
 
   const systemPrompt = `你是一个精通组件架构与用户体验的高级选型智能体 (Widget Selector Agent)。
-你的核心任务是根据用户的搜索内容、真实意图、以及算法打分系统计算出的全量指标，挑选出最契合、最能解决用户痛点的 2 到 5 个小组件。
+你的核心任务是根据用户的搜索内容、主意图 [${canonicalIntent}]、次要意图 [${secondaryIntents.join(", ") || "无"}]、以及必须覆盖的原子能力列表 [${requiredCapabilities.join(", ")}]，挑选出最契合的 ${budget.min} 到 ${budget.max} 个小组件。
 
-【架构原则】
-1. 规则约束：本次任务意图为 [${canonicalIntent}]。
+【选型核心原则】
+1. 能力最大化覆盖: 所选组件的组合必须达到 ≥ 85% 的原子能力覆盖率。
+2. 动态预算控制: 选型数量必须控制在 ${budget.min} ~ ${budget.max} 个之间（复杂度: ${taskComplexity}）。
+3. 规则约束:
    - 必须优先包含的核心组件: [${route.mandatoryWidgets.join(", ") || "无"}]
    - 硬性禁止出现的组件: [${route.forbiddenWidgets.join(", ") || "无"}]
-2. 证据导向：综合分 (FinalScore)、原子能力匹配 (Matched Capabilities) 和数据就绪度代表了算法评估事实，请依据这些证据进行理性裁决。
-3. 杜绝无关干扰：不要在天气/报错/翻译任务中强行塞入无关组件（如天气任务严禁放翻译或排错；排错任务严禁放天气或图片库）。
-4. 输出严格的 JSON 格式，所选 key 必须来自候选池。`;
+4. 杜绝无关干扰：不要在天气/报错/翻译任务中强行塞入无关组件。
+5. 输出严格的 JSON 格式，所选 key 必须来自候选池。`;
 
   const userPrompt = `用户查询: "${query}"
-规范意图: "${canonicalIntent}"
+主意图: "${canonicalIntent}"
+次要意图: [${secondaryIntents.join(", ")}]
+所需原子能力: [${requiredCapabilities.join(", ")}]
 用户目标: "${userGoal}"
 
 【候选组件全量评分与能力清单】:
 ${candidateListStr}
 
-请为当前任务裁决 2~5 个最优小组件，输出严格 JSON，格式如下：
+请为当前任务裁决 ${budget.min}~${budget.max} 个最优小组件，确保覆盖率 ≥ 85%，输出严格 JSON，格式如下：
 {
   "intent": "${canonicalIntent}",
   "userGoal": "${userGoal}",
@@ -261,7 +366,7 @@ ${candidateListStr}
       "key": "候选池中的组件key",
       "priority": 95,
       "size": 50,
-      "reason": "结合打分与任务诉求的选择理由",
+      "reason": "结合打分与能力覆盖的选择理由",
       "confidence": 0.95
     }
   ]
@@ -315,12 +420,10 @@ ${candidateListStr}
           } else {
             console.warn(`[WidgetSelector] Attempt ${attempt + 1} 校验未通过:`, report.violations);
 
-            // 若仍有重试机会，组装错误信息重新提示
             if (attempt === 0) {
               currentPrompt = `${userPrompt}\n\n【注意：上次选型存在以下违规，请立即修正】:\n${report.violations.join("\n")}\n请重新生成严格合规的 JSON 选型决策：`;
               continue;
             } else {
-              // 重试后仍有瑕疵，使用 Validator 自动修复
               const repaired = repairWidgetDecision(decision, validationContext, report);
               const rawPlannedWidgets = repaired.selectedWidgets.map(w => ({
                 type: w.key as ResultWidgetKey,
@@ -350,7 +453,7 @@ ${candidateListStr}
 
   // 所有尝试均失败，降级确定性重排兜底
   console.info("[WidgetSelector] 回退至确定性规则重排引擎");
-  const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals);
+  const fallbackDecision = deterministicReRankWidgets(query, canonicalIntent, userGoal, candidates, signals, contextOpts);
   const rawPlannedWidgets = fallbackDecision.selectedWidgets.map(w => ({
     type: w.key as ResultWidgetKey,
     priority: w.priority,
@@ -369,5 +472,4 @@ ${candidateListStr}
     widgetOrder,
     reRankedBy: "rule_engine"
   };
-
 }

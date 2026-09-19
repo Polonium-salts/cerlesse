@@ -768,7 +768,18 @@ export type RankedSearchResult = SearchResult & {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** 质量地板：低于此分数的条目一律不进入最终信源集，兜底补位也不破例 */
+/** 动态域名配额：技术/官方/开源类查询允许更高的同域名信源上限 */
+export function getMaxPerDomain(query: string): number {
+  if (/官方|官网|文档|documentation|docs/i.test(query)) {
+    return 4;
+  }
+  if (/github|仓库|源码|api|开发|教程|安装|部署|报错|下载|rom/i.test(query)) {
+    return 3;
+  }
+  return 2;
+}
+
+/** 质量地板：低于此分数的条目一律不进入默认信源集 */
 const QUALITY_FLOOR = 12;
 
 function recencyScore(publishedDate: string | undefined, windowDays: number): number {
@@ -791,11 +802,12 @@ export function rankAndFilterResults(
 ): RankedSearchResult[] {
   const {
     query,
-    limit = 12,
-    maxPerDomain = 2,
+    limit = 20,
     allowEncyclopedia = false,
     recencyWindowDays = 730
   } = options;
+
+  const maxPerDomain = options.maxPerDomain ?? getMaxPerDomain(query);
 
   const profile = buildQueryProfile(query);
   const entityPhrase = normalizeForPhrase(profile.entityPhrase);
@@ -967,47 +979,78 @@ export function rankAndFilterResults(
     return a.url.localeCompare(b.url);
   });
 
-  // 内容级去重 + 域名配额 + 分层多样性保底
+  // 内容级去重 + 域名配额 + 分层质量过滤与多样性保底
   const output: RankedSearchResult[] = [];
   const perDomain = new Map<string, number>();
-  const seenTitles: Set<string>[] = [];
+  const seenTitles: { shingles: Set<string>; host: string; snippet: string }[] = [];
   const pickedUrls = new Set<string>();
 
   /**
-   * 分层回落的关键：**域名配额与「标题近似」是两个独立旋钮**，必须分开松绑。
-   * 如果一次性把两个都放开（旧实现的做法），多样性保底就等于失效——
-   * 同一家内容农场的 10 篇近义转载会把整个信源集占满。
+   * 分层回落机制：
+   * Tier A (Score >= 30), Tier B (Score 20~29), Tier C (Score 12~19)
+   * 支持按质量分层挑选，优先满足 Tier A，结果不足时自动降级补充 Tier B 和 Tier C，
+   * 避免长尾查询因为单一固定 QUALITY_FLOOR 导致只剩 3~5 条甚至 0 条结果。
    */
-  const runPass = (similarityThreshold: number, respectDomainCap: boolean): void => {
+  const runPass = (
+    minScore: number,
+    similarityThreshold: number,
+    respectDomainCap: boolean
+  ): void => {
     for (const item of scored) {
       if (output.length >= limit) break;
-      if (item.relevanceScore < QUALITY_FLOOR) continue;
+      if (item.relevanceScore < minScore) continue;
       if (pickedUrls.has(item.url)) continue;
 
       const host = hostnameOf(item.url);
       if (respectDomainCap && (perDomain.get(host) || 0) >= maxPerDomain) continue;
 
       const shingles = titleShingles(item.title);
-      if (seenTitles.some((existing) => jaccard(existing, shingles) > similarityThreshold)) continue;
+      // 联合判断标题与摘要：只有当同域名且摘要非常相似时才判定为完全重复，
+      // 避免将同个官方文档域名下的不同技术子页面（如 Docker 安装与 Docker WSL）误判删去。
+      const isDuplicate = seenTitles.some((existing) => {
+        const titleSim = jaccard(existing.shingles, shingles);
+        if (titleSim > similarityThreshold) {
+          if (existing.host === host) {
+            // 同域名且标题高度相似 -> 重复
+            return true;
+          }
+          if (titleSim > 0.95) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (isDuplicate) continue;
 
       output.push(item);
       pickedUrls.add(item.url);
       perDomain.set(host, (perDomain.get(host) || 0) + 1);
-      seenTitles.push(shingles);
+      seenTitles.push({ shingles, host, snippet: item.snippet || "" });
     }
   };
 
-  // 第一趟（严格）：标题近似 0.82 + 域名配额
-  runPass(0.82, true);
+  // 第一轮：Tier A (Score >= 30) 严格配额 + 0.82 标题相似度
+  runPass(30, 0.82, true);
 
-  // 第二趟：只放宽标题近似（同一事件的多家转载各留一条），域名配额纹丝不动
-  if (output.length < Math.min(limit, 6)) {
-    runPass(0.92, true);
+  // 第二轮：若高质量结果不足，补充 Tier B (Score >= 20)
+  if (output.length < Math.min(limit, 15)) {
+    runPass(20, 0.88, true);
   }
 
-  // 第三趟：全网确实只剩单一域名时，才放弃配额兜底，保证下游综合提炼有料可写
-  if (output.length < Math.min(limit, 4)) {
-    runPass(0.95, false);
+  // 第三轮：若仍不足 10 条，补充 Tier C (Score >= 12) 基础质量结果
+  if (output.length < Math.min(limit, 10)) {
+    runPass(12, 0.92, true);
+  }
+
+  // 第四轮：全网结果较少时放宽域名限制，避免结果归零
+  if (output.length < Math.min(limit, 8)) {
+    runPass(12, 0.95, false);
+  }
+
+  // 第五轮：长尾极度匮乏查询保底（Score >= 6）
+  if (output.length < 3) {
+    runPass(6, 0.98, false);
   }
 
   return output;

@@ -416,6 +416,52 @@ export function getRouteForIntent(rawIntent?: string): IntentRouteConfig {
 }
 
 /**
+ * 聚合多意图的路由配置 (Multi-Intent Route Fusion)
+ * 允许主意图与次要意图合并白名单、必选组件与能力，但黑名单 (forbiddenWidgets) 始终保持绝对否决权。
+ */
+export function getMergedRouteForIntents(rawIntents: string[] = []): IntentRouteConfig {
+  const normalizedList = Array.from(new Set(rawIntents.map(normalizeIntent).filter(Boolean)));
+  if (normalizedList.length === 0) {
+    return INTENT_ROUTING_TABLE.general_knowledge;
+  }
+  if (normalizedList.length === 1) {
+    return getRouteForIntent(normalizedList[0]);
+  }
+
+  const primaryRoute = getRouteForIntent(normalizedList[0]);
+  const forbiddenSet = new Set<ResultWidgetKey>();
+  const allowedSet = new Set<ResultWidgetKey>();
+  const mandatorySet = new Set<ResultWidgetKey>();
+  const defaultCapsSet = new Set<string>();
+  let requiresImages = false;
+
+  for (const intent of normalizedList) {
+    const route = getRouteForIntent(intent);
+    for (const f of route.forbiddenWidgets) forbiddenSet.add(f);
+    for (const a of route.allowedWidgets) allowedSet.add(a);
+    for (const m of route.mandatoryWidgets) mandatorySet.add(m);
+    for (const cap of route.defaultCapabilities) defaultCapsSet.add(cap);
+    if (route.requiresImages) requiresImages = true;
+  }
+
+  // 黑名单硬性覆盖：从 allowed 和 mandatory 中移除任何被黑名单禁止的组件
+  const forbiddenWidgets = Array.from(forbiddenSet);
+  const allowedWidgets = Array.from(allowedSet).filter(k => !forbiddenSet.has(k));
+  const mandatoryWidgets = Array.from(mandatorySet).filter(k => !forbiddenSet.has(k));
+
+  return {
+    intent: primaryRoute.intent,
+    description: `多意图融合路由 [${normalizedList.join(", ")}]`,
+    allowedWidgets,
+    forbiddenWidgets,
+    mandatoryWidgets,
+    requiresImages,
+    recommendedArchetype: primaryRoute.recommendedArchetype,
+    defaultCapabilities: Array.from(defaultCapsSet)
+  };
+}
+
+/**
  * 判断某个组件在当前意图下是否被硬性禁止 (Hard Exclusion)
  */
 export function isWidgetForbidden(widgetKey: ResultWidgetKey, rawIntent?: string): boolean {

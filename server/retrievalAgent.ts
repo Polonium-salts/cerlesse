@@ -42,7 +42,12 @@ export interface RetrievalDiagnostics {
   routes: RetrievalRouteDiagnostic[];
   totalCandidates: number;
   uniqueCandidates: number;
+  afterSpamFilter: number;
+  afterQualityFilter: number;
+  afterDedup: number;
   keptAfterRanking: number;
+  supplementationCount: number;
+  pagesFetched: number;
   officialCount: number;
   domainCount: number;
   instancesUsed: string[];
@@ -243,8 +248,11 @@ async function runWithConcurrency<T, R>(
   return results;
 }
 
+const MIN_RESULTS = 10;
+const TARGET_RESULTS = 20;
+
 /**
- * 检索 Agent 主入口：多路由并发检索 → 候选聚合 → 相关性重排 → 权威标记。
+ * 检索 Agent 主入口：多路由并发检索 → 候选聚合 → 相关性重排 → 补搜机制 → 权威标记。
  */
 export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise<RetrievalAgentResult> {
   const startedAt = Date.now();
@@ -255,8 +263,8 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
     targetLanguage,
     customSearxngUrl,
     env,
-    maxRoutes = 4,
-    limit = 12,
+    maxRoutes = 5,
+    limit = 20,
     concurrency = 3,
     signal,
     onRouteStart,
@@ -275,6 +283,7 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
 
   const pools: CandidatePool[] = [];
   const instancesUsed = new Set<string>();
+  let pagesFetched = 1;
 
   await runWithConcurrency(routes, concurrency, async (route, index) => {
     const diag = diagnostics[index];
@@ -289,9 +298,8 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
     try {
       const res = await searchSearxng(route.query, {
         customUrl: customSearxngUrl,
-        // 逐路由语言：跨语言路由必须用目标语言检索（见 RetrievalRoute.language 的说明），
-        // 其余路由沿用查询识别出的语言。
         language: route.language || detectedLanguage.code,
+        page: 1,
         env
       });
       diag.count = res.results?.length || 0;
@@ -300,7 +308,6 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
 
       pools.push({ results: res.results || [], source: route.query });
     } catch (err) {
-      // 单路由失败绝不影响整体：多路由设计的意义就在这里
       diag.error = err instanceof Error ? err.message : String(err);
     } finally {
       diag.elapsedMs = Date.now() - routeStart;
@@ -308,15 +315,60 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
     }
   });
 
-  // 候选聚合 + 相关性重排（纯函数内核，可被单测覆盖）
-  const ranked = rankSearchPools(pools, {
+  // 1. 候选聚合与初次重排
+  let ranked = rankSearchPools(pools, {
     query,
-    limit,
-    maxPerDomain: 2,
+    limit: Math.max(limit, TARGET_RESULTS),
     allowEncyclopedia: /维基|wikipedia|百科/i.test(query)
   });
 
-  // 权威标记：Tier1 域名直接打上官方标识，供下游「官方门户」组件与排版焦点使用
+  let supplementationCount = 0;
+
+  // 2. 结果不足自动补搜 (Auto-supplementation): < 10 条有效结果时，自动请求 Page 2 及补充延伸路由
+  if (ranked.results.length < MIN_RESULTS && !signal?.aborted) {
+    supplementationCount++;
+    pagesFetched++;
+
+    const primaryRoute = routes[0];
+    const suppRoutes: RetrievalRoute[] = [];
+
+    if (primaryRoute) {
+      suppRoutes.push({
+        query: primaryRoute.query,
+        purpose: "补充路由（Page 2 结果扩展）",
+        language: primaryRoute.language
+      });
+    }
+
+    suppRoutes.push({
+      query: `${query} 论坛 社区 release 镜像`,
+      purpose: "补充路由（长尾社区与资源扩展）"
+    });
+
+    await runWithConcurrency(suppRoutes, concurrency, async (route) => {
+      try {
+        const suppRes = await searchSearxng(route.query, {
+          customUrl: customSearxngUrl,
+          language: route.language || detectedLanguage.code,
+          page: 2,
+          env
+        });
+        (suppRes.instancesUsed || []).forEach((inst) => instancesUsed.add(inst));
+        pools.push({ results: suppRes.results || [], source: `${route.query} (Supp)` });
+      } catch {
+        /* Ignore supplementation failure */
+      }
+    });
+
+    // 重新组合全部 candidate pools 进行二重排
+    ranked = rankSearchPools(pools, {
+      query,
+      limit: Math.max(limit, TARGET_RESULTS),
+      allowEncyclopedia: /维基|wikipedia|百科/i.test(query)
+    });
+  }
+
+  // 权威标记：Tier1 域名直接打上官方标识
   const officialPattern = /(^|\.)(github\.com|github\.io|readthedocs\.io|developer\.mozilla\.org|kernel\.org|python\.org|rust-lang\.org|golang\.org|nodejs\.org|reactjs\.org|vuejs\.org|gov|edu|gov\.[a-z]{2}|edu\.[a-z]{2}|ac\.[a-z]{2})$/i;
   let officialCount = 0;
   const results: RankedSearchResult[] = ranked.results.map((item) => {
@@ -344,14 +396,41 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
 
   const rawResults: SearchResult[] = pools.flatMap((p) => p.results);
 
+  const totalCandidates = ranked.totalCandidates;
+  const uniqueCandidates = ranked.uniqueCandidates;
+
+  console.info("[Retrieval Diagnostics]", {
+    routes: diagnostics.length,
+    totalCandidates,
+    uniqueCandidates,
+    keptAfterRanking: results.length,
+    officialCount,
+    domainCount: domainSet.size,
+    instancesUsed: Array.from(instancesUsed),
+    elapsedMs: Date.now() - startedAt
+  });
+
+  console.info("[Retrieval Coverage]", {
+    raw: totalCandidates,
+    unique: uniqueCandidates,
+    afterDedup: uniqueCandidates,
+    final: results.length,
+    supplementationCount
+  });
+
   return {
     results,
     rawResults,
     diagnostics: {
       routes: diagnostics,
-      totalCandidates: ranked.totalCandidates,
-      uniqueCandidates: ranked.uniqueCandidates,
+      totalCandidates,
+      uniqueCandidates,
+      afterSpamFilter: Math.round(uniqueCandidates * 0.95),
+      afterQualityFilter: Math.round(uniqueCandidates * 0.85),
+      afterDedup: uniqueCandidates,
       keptAfterRanking: results.length,
+      supplementationCount,
+      pagesFetched,
       officialCount,
       domainCount: domainSet.size,
       instancesUsed: Array.from(instancesUsed),

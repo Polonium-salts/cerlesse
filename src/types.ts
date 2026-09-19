@@ -355,6 +355,24 @@ export interface WidgetPlannedItem {
   capabilities?: string[]; // Capabilities matched to this widget
 }
 
+export interface QueryTaskProfile {
+  primaryIntent: AgentIntent;
+  secondaryIntents: AgentIntent[];
+  entity: string;
+  goal: string;
+  requiredCapabilities: string[];
+  optionalCapabilities: string[];
+  taskComplexity: "simple" | "medium" | "complex";
+  confidence: number;
+}
+
+export interface CapabilityCoverageReport {
+  required: string[];
+  covered: string[];
+  missing: string[];
+  ratio: number;
+}
+
 /**
  * 语义意图分析结果（组件规划的第一阶段产物）。
  *
@@ -365,11 +383,15 @@ export interface WidgetPlannedItem {
  */
 export interface WidgetIntentAnalysis {
   intent: string;
+  primaryIntent?: string;
+  secondaryIntents?: string[];
   intents?: string[];
   entity?: string;
   goal?: string;
   needs?: string[];
   requiredCapabilities?: string[];
+  optionalCapabilities?: string[];
+  taskComplexity?: "simple" | "medium" | "complex";
   suggestedLayout?: string;
   confidence?: number;
 }

@@ -1,4 +1,4 @@
-import type { ResultWidgetKey } from "../src/types.js";
+import type { CapabilityCoverageReport, ResultWidgetKey } from "../src/types.js";
 import type { CandidateWidget, ContentSignalsPayload, WidgetDecision, WidgetSelectionItem } from "../src/widgets/widgetContract.js";
 import { getRouteForIntent, isWidgetForbidden, normalizeIntent } from "./agentRouter.js";
 import { getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
@@ -6,6 +6,10 @@ import { getUnifiedCatalogItem } from "../src/widgets/widgetRetriever.js";
 export interface ValidationContext {
   query: string;
   intent: string;
+  primaryIntent?: string;
+  secondaryIntents?: string[];
+  requiredCapabilities?: string[];
+  taskComplexity?: "simple" | "medium" | "complex";
   userGoal: string;
   signals?: ContentSignalsPayload;
   candidates: CandidateWidget[];
@@ -19,6 +23,41 @@ export interface ValidationReport {
   unreadyIncluded: ResultWidgetKey[];
   invalidKeys: string[];
   duplicateKeys: string[];
+  coverageReport?: CapabilityCoverageReport;
+}
+
+/**
+ * 计算当前选定组件对所需原子能力的覆盖率
+ */
+export function calculateCapabilityCoverage(
+  requiredCapabilities: string[] = [],
+  selectedKeys: ResultWidgetKey[] = []
+): CapabilityCoverageReport {
+  if (!requiredCapabilities || requiredCapabilities.length === 0) {
+    return { required: [], covered: [], missing: [], ratio: 1.0 };
+  }
+
+  const reqSet = new Set(requiredCapabilities.map((c) => c.toLowerCase()));
+  const coveredSet = new Set<string>();
+
+  for (const key of selectedKeys) {
+    const item = getUnifiedCatalogItem(key);
+    if (item) {
+      for (const cap of item.capabilities) {
+        const lower = cap.toLowerCase();
+        if (reqSet.has(lower)) {
+          coveredSet.add(lower);
+        }
+      }
+    }
+  }
+
+  const required = Array.from(reqSet);
+  const covered = Array.from(coveredSet);
+  const missing = required.filter((c) => !coveredSet.has(c));
+  const ratio = required.length > 0 ? covered.length / required.length : 1.0;
+
+  return { required, covered, missing, ratio };
 }
 
 /**
@@ -29,7 +68,7 @@ export interface ValidationReport {
  * 3. 组件数据是否真正就绪 (Data Readiness Check)
  * 4. 是否存在未登记的非法 Key (Catalog Validity)
  * 5. 是否存在重复选型 (Deduplication)
- * 6. 选型数量是否处于合理范围 (2 ~ 6)
+ * 6. 核心能力覆盖率校验 (Capability Coverage >= 85%)
  */
 export function validateWidgetDecision(
   decision: WidgetDecision,
@@ -106,12 +145,23 @@ export function validateWidgetDecision(
     }
   }
 
-  // 5. 数量上下限检测
+  // 5. 检查能力覆盖率 (Capability Coverage Check >= 85%)
+  let coverageReport: CapabilityCoverageReport | undefined;
+  if (context.requiredCapabilities && context.requiredCapabilities.length > 0) {
+    coverageReport = calculateCapabilityCoverage(context.requiredCapabilities, selectedKeys);
+    if (coverageReport.ratio < 0.85 && coverageReport.missing.length > 0) {
+      violations.push(
+        `能力覆盖率不足 (${(coverageReport.ratio * 100).toFixed(0)}% < 85%)，缺失关键能力: [${coverageReport.missing.join(", ")}]`
+      );
+    }
+  }
+
+  // 6. 数量上下限检测
   if (selectedKeys.length < 2) {
     violations.push(`选定组件数 (${selectedKeys.length}) 低于最小允许阈值 2`);
   }
-  if (selectedKeys.length > 6) {
-    violations.push(`选定组件数 (${selectedKeys.length}) 超过最大允许阈值 6`);
+  if (selectedKeys.length > 7) {
+    violations.push(`选定组件数 (${selectedKeys.length}) 超过最大允许阈值 7`);
   }
 
   const passed = violations.length === 0;
@@ -123,7 +173,8 @@ export function validateWidgetDecision(
     forbiddenIncluded,
     unreadyIncluded,
     invalidKeys,
-    duplicateKeys
+    duplicateKeys,
+    coverageReport
   };
 }
 
@@ -164,7 +215,58 @@ export function repairWidgetDecision(
     }
   }
 
-  // 3. 如果有效组件少于 2 个，从允许的候选池中按 finalScore 降序补充
+  // 3. 边际能力增益补齐 (Gap Filling for missing capabilities)
+  if (context.requiredCapabilities && context.requiredCapabilities.length > 0) {
+    let currentCoverage = calculateCapabilityCoverage(
+      context.requiredCapabilities,
+      Array.from(existingMap.keys()) as ResultWidgetKey[]
+    );
+
+    if (currentCoverage.ratio < 0.85 && currentCoverage.missing.length > 0) {
+      const candidatesToConsider = context.candidates.filter((c) => {
+        if (existingMap.has(c.key)) return false;
+        if (route.forbiddenWidgets.includes(c.key)) return false;
+        if (!route.allowedWidgets.includes(c.key)) return false;
+        return true;
+      });
+
+      const scoredCandidates = candidatesToConsider.map((cand) => {
+        const item = getUnifiedCatalogItem(cand.key);
+        const itemCaps = new Set((item?.capabilities || []).map((cp) => cp.toLowerCase()));
+        const missingSet = new Set(currentCoverage.missing);
+        let gain = 0;
+        for (const cap of itemCaps) {
+          if (missingSet.has(cap)) gain++;
+        }
+        return { candidate: cand, gain, score: cand.finalScore + gain * 0.3 };
+      });
+
+      scoredCandidates.sort((a, b) => b.score - a.score);
+
+      for (const { candidate, gain } of scoredCandidates) {
+        if (gain === 0 && currentCoverage.ratio >= 0.85) break;
+        if (existingMap.size >= 7) break;
+
+        const catItem = getUnifiedCatalogItem(candidate.key);
+        existingMap.set(candidate.key, {
+          key: candidate.key,
+          priority: Math.round(candidate.finalScore * 100),
+          size: candidate.defaultSpan || catItem?.defaultSpan || 50,
+          reason: candidate.reason || `自动补齐缺失能力 [${catItem?.capabilities.slice(0, 2).join(", ")}]`,
+          confidence: candidate.finalScore
+        });
+
+        currentCoverage = calculateCapabilityCoverage(
+          context.requiredCapabilities,
+          Array.from(existingMap.keys()) as ResultWidgetKey[]
+        );
+
+        if (currentCoverage.ratio >= 0.85) break;
+      }
+    }
+  }
+
+  // 4. 如果有效组件少于 2 个，从允许的候选池中按 finalScore 降序补充
   if (existingMap.size < 2) {
     const validCandidates = context.candidates.filter((c) => {
       if (existingMap.has(c.key)) return false;
@@ -188,7 +290,7 @@ export function repairWidgetDecision(
     }
   }
 
-  // 4. 若修复后组件依然少于 2 个且核心速答被允许，则以 ai_answer 兜底
+  // 5. 若修复后组件依然少于 2 个且核心速答被允许，则以 ai_answer 兜底
   if (existingMap.size < 2 && !existingMap.has("ai_answer") && route.allowedWidgets.includes("ai_answer")) {
     existingMap.set("ai_answer", {
       key: "ai_answer",
@@ -199,9 +301,8 @@ export function repairWidgetDecision(
     });
   }
 
-  // 5. 限制最多 6 个组件
-  const items = Array.from(existingMap.values()).slice(0, 6);
-  // 按 priority 降序
+  // 6. 限制最多 7 个组件
+  const items = Array.from(existingMap.values()).slice(0, 7);
   items.sort((a, b) => b.priority - a.priority);
 
   return {

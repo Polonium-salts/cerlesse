@@ -205,11 +205,6 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
             id: `web-${Math.random().toString(36).substring(2, 9)}`,
             title,
             url: directUrl,
-            // 抓不到摘要时**不要编造**。
-            // 旧实现在这里拼了一句「访问 X 官方网页内容与实时在线资源。」—— 这段假文本
-            // 会被下游重排当作真实摘要参与相关性打分（还自带"官方"这种高价值词），
-            // 让一条其实没有摘要的条目凭空获得相关性。留空反而正确：
-            // 重排内核会对「无摘要」如实施加惩罚，这才是它应得的分数。
             snippet,
             engine: "Web Direct",
             category: "general",
@@ -217,7 +212,7 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
           });
         }
       }
-      if (results.length >= 12) break;
+      if (results.length >= 20) break;
     }
 
     return results;
@@ -303,8 +298,8 @@ async function fetchSearxngResults(
 /**
  * 单实例网页检索：把 SearXNG 的 general 结果映射为 SearchResult
  */
-async function searchSingleSearxng(instance: string, query: string, langCode?: string): Promise<SearchResult[]> {
-  const items = await fetchSearxngResults(instance, query, "general", langCode);
+async function searchSingleSearxng(instance: string, query: string, langCode?: string, page?: number): Promise<SearchResult[]> {
+  const items = await fetchSearxngResults(instance, query, "general", langCode, 2800, page);
   if (!items) return [];
 
   const mapped: SearchResult[] = [];
@@ -328,7 +323,7 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
       thumbnail: item.thumbnail,
       displayDomain: hostname
     });
-    if (mapped.length >= 15) break;
+    if (mapped.length >= 25) break;
   }
   return mapped;
 }
@@ -707,23 +702,18 @@ export async function searchSearxng(
 
   const allInstances = Array.from(new Set([...instances, ...pool]));
 
-  // Concurrently execute Direct Web Search and top SearXNG instances for maximum speed
-  const candidateInstances = allInstances.slice(0, 3);
+  // 并发下发 Direct Web (Bing) 与 Top 5 SearXNG 实例，最大化基础召回广度
+  const candidateInstances = allInstances.slice(0, 5);
   const directPromise = searchDirectWeb(query, options.language);
   const searxngPromises = candidateInstances.map(inst =>
-    searchSingleSearxng(inst, query, options.language)
+    searchSingleSearxng(inst, query, options.language, options.page)
       .then(res => ({ inst, res }))
       .catch(() => ({ inst, res: [] as SearchResult[] }))
   );
 
-  // Fast resolution: if Direct Web returns >= 6 results, don't wait for slow SearXNG instances
-  const directWebResults = await directPromise;
   const instancesUsed: string[] = [];
   let instanceUsed = "Direct Web Engine";
 
-  // 关键修正：多个 SearXNG 实例各自的引擎池与索引覆盖并不相同，
-  // 旧实现「取第一个非空实例就 break」会白白丢掉另外两个实例的全部结果，
-  // 候选池因此常年偏小、偏窄，重排阶段也就无从择优。现在全量聚合。
   const collectFromSettled = (settled: any[]) => {
     const merged: SearchResult[] = [];
     for (const item of settled) {
@@ -738,29 +728,19 @@ export async function searchSearxng(
     return merged;
   };
 
-  // 「候选池广度 vs 首屏延迟」的权衡点 —— 这是精准度的一个隐藏瓶颈。
-  //
-  // 旧实现在 Bing 返回 ≥6 条时只给 SearXNG 250ms。而 SearXNG 要聚合多个上游引擎，
-  // 正常响应通常需要 1~3s，250ms 几乎必然超时 —— 于是绝大多数查询的候选池实际
-  // 退化成「只有 Bing 的十来条」。后果不在检索本身，而在**下游信号全部失效**：
-  //   · 多引擎共识（同一 URL 被 Google/Bing/DDG 同时给出）无从统计；
-  //   · 多实例索引覆盖的互补性被抹平，长尾权威源进不来；
-  //   · 重排内核失去了"从大池子里择优"的前提，只能在十几条里排序。
-  // 现在只在 Bing 单独就填满一整页时才走快速通道，且把窗口放宽到能容纳一次正常响应。
-  const DIRECT_WEB_SUFFICES = 12;
-  const SEARXNG_RACE_WINDOW_MS = 900;
+  // 统一搜索时间预算 3000ms：Bing 与 SearXNG 5 个实例全部平等参与并发召回，
+  // 避免因为 Bing 率先返回 12 条就把 SearXNG 实例结果直接剔除。
+  const SEARCH_BUDGET_MS = 3000;
 
-  let searxngResults: SearchResult[] = [];
-  if (directWebResults.length >= DIRECT_WEB_SUFFICES) {
-    const settled = await Promise.race([
+  const [directWebResults, searxngSettled] = await Promise.all([
+    directPromise.catch(() => [] as SearchResult[]),
+    Promise.race([
       Promise.all(searxngPromises),
-      new Promise<any[]>(resolve => setTimeout(() => resolve([]), SEARXNG_RACE_WINDOW_MS))
-    ]);
-    searxngResults = collectFromSettled(settled);
-  } else {
-    const searxngResultsList = await Promise.all(searxngPromises);
-    searxngResults = collectFromSettled(searxngResultsList);
-  }
+      new Promise<any[]>(resolve => setTimeout(() => resolve([]), SEARCH_BUDGET_MS))
+    ])
+  ]);
+
+  const searxngResults = collectFromSettled(searxngSettled);
 
   // Combine and deduplicate
   const combined = [...searxngResults, ...directWebResults];

@@ -2,7 +2,7 @@ import { searchSearxng, searchSearxngImages } from "./searxng.js";
 import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, AVAILABLE_FREE_MODELS, normalizeModelId } from "./openrouter.js";
 import { planWidgetStrategy } from "./widgetPlanner.js";
 import { planWidgetLayout, WIDGET_LAYOUT_AGENT_NAME } from "./layoutAgent.js";
-import { searchAndRankOnce } from "./retrievalAgent.js";
+import { runRetrievalAgent } from "./retrievalAgent.js";
 import { generatePlanForQuery } from "./agentPlan.js";
 import { determineClientWidgetActivation, IMAGE_INTENT_PATTERN } from "../src/lib/adaptiveLayout.js";
 import {
@@ -61,8 +61,7 @@ export interface AgentRunOptions {
  * 「绝不出现空壳与无关磁贴」的硬门槛也就形同虚设。
  */
 function shouldFetchRelatedImages(query: string, results: SearchResult[]): boolean {
-  // 用户要求图片小组件保持启用，因此常规检索均在后台并发预取图片
-  return query.trim().length >= 1;
+  return IMAGE_INTENT_PATTERN.test(query) || results.some(r => Boolean(r.thumbnail));
 }
 
 export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSynthesisResult> {
@@ -157,15 +156,21 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
   let totalCandidates = 0;
 
   try {
-    const retrieval = await searchAndRankOnce(query, {
-      customUrl: options.customSearxngUrl,
-      language: targetLang.code,
-      limit: 12,
-      env: options.env
+    const retrieval = await runRetrievalAgent({
+      query,
+      plan,
+      detectedLanguage: detectedLang,
+      targetLanguage: targetLang,
+      customSearxngUrl: options.customSearxngUrl,
+      env: options.env,
+      maxRoutes: options.enableDeepSearch === false ? 4 : 5,
+      limit: 20,
+      concurrency: 3
     });
+
     filteredResults = retrieval.results;
-    instanceUsed = retrieval.instanceUsed;
-    totalCandidates = retrieval.totalCandidates;
+    instanceUsed = retrieval.diagnostics.instancesUsed[0] || "SearXNG / Multi-Engine";
+    totalCandidates = retrieval.diagnostics.totalCandidates;
   } catch (err: any) {
     console.warn("[Search Agent] Primary retrieval failed, retrying fallback:", err);
     try {

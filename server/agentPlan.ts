@@ -33,8 +33,27 @@ export function generatePlanForQuery(
   }
 
   const subQueries = [cleanQ];
+
+  // 按意图场景扩充针对性分支子查询，确保多路召回覆盖官方、教程、下载与报错
+  if (intent === "install") {
+    subQueries.push(`${cleanQ} 官方下载 安装教程`);
+    subQueries.push(`${cleanQ} official release download guide`);
+  } else if (intent === "troubleshooting") {
+    subQueries.push(`${cleanQ} 报错 排查 解决`);
+    subQueries.push(`${cleanQ} error troubleshooting fix`);
+  } else if (intent === "comparison") {
+    subQueries.push(`${cleanQ} 对比 区别 选型`);
+    subQueries.push(`${cleanQ} comparison benchmark versus`);
+  } else if (intent === "official_portal") {
+    subQueries.push(`${cleanQ} 官方主页 权威入口`);
+    subQueries.push(`${cleanQ} official website portal docs`);
+  } else {
+    subQueries.push(`${cleanQ} 官方文档 教程`);
+    subQueries.push(`${cleanQ} official documentation guide`);
+  }
+
   if (detectedLang.code === "zh" && isEn) {
-    subQueries.push(`${cleanQ} overview guide`);
+    subQueries.push(`${cleanQ} overview architectural guide`);
   } else if (detectedLang.code === "en" && targetLang.code === "zh") {
     subQueries.push(`${cleanQ} 官网 教程 详解`);
   }
