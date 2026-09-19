@@ -3,6 +3,7 @@ import { synthesizeWithOpenRouter, generateAlgorithmicSynthesis, AVAILABLE_FREE_
 import { planWidgetStrategy } from "./widgetPlanner.js";
 import { planWidgetLayout, WIDGET_LAYOUT_AGENT_NAME } from "./layoutAgent.js";
 import { searchAndRankOnce } from "./retrievalAgent.js";
+import { generatePlanForQuery } from "./agentPlan.js";
 import { determineClientWidgetActivation, IMAGE_INTENT_PATTERN } from "../src/lib/adaptiveLayout.js";
 import {
   AgentPlan,
@@ -159,7 +160,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     const retrieval = await searchAndRankOnce(query, {
       customUrl: options.customSearxngUrl,
       language: targetLang.code,
-      limit: 12
+      limit: 12,
+      env: options.env
     });
     filteredResults = retrieval.results;
     instanceUsed = retrieval.instanceUsed;
@@ -167,7 +169,11 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
   } catch (err: any) {
     console.warn("[Search Agent] Primary retrieval failed, retrying fallback:", err);
     try {
-      const fallback = await searchSearxng(query, { language: targetLang.code });
+      const fallback = await searchSearxng(query, {
+        customUrl: options.customSearxngUrl,
+        language: targetLang.code,
+        env: options.env
+      });
       filteredResults = fallback.results;
       instanceUsed = fallback.instanceUsed;
       totalCandidates = fallback.results.length;
@@ -236,7 +242,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       results: filteredResults,
       apiKey: options.openRouterApiKey,
       model: selectedModel,
-      targetLanguage: targetLang.code
+      targetLanguage: targetLang.code,
+      env: options.env
     });
   } catch (err) {
     console.warn("[Search Agent] Widget strategy planning fallback:", err);
@@ -280,7 +287,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       apiKey: options.openRouterApiKey,
       model: selectedModel,
       targetLanguage: targetLang,
-      detectedLanguage: detectedLang
+      detectedLanguage: detectedLang,
+      env: options.env
     });
   } catch (err: any) {
     console.info("[Search Agent] Algorithmic synthesis fallback:", err?.message || err);
@@ -347,7 +355,8 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
       targetLanguage: targetLang.code,
       apiKey: options.openRouterApiKey,
       model: selectedModel,
-      signals
+      signals,
+      env: options.env
     });
     layoutStrategy = layoutRes.strategy;
   } catch (err) {
@@ -437,51 +446,9 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
 }
 
 /**
- * 意图分析与多语言跨语种规划
+ * 意图分析与多语言跨语种规划 (从 agentPlan.js 导出以破除循环依赖)
  */
-export function generatePlanForQuery(
-  query: string,
-  detectedLang: DetectedLanguage,
-  targetLang: DetectedLanguage
-): AgentPlan {
-  const isEn = targetLang.code === "en";
-  const cleanQ = query.trim();
-
-  let intent: LayoutIntentType = "balanced";
-  if (/(下载|安装|客户端|installer|download|setup|client)/i.test(cleanQ)) {
-    intent = "install";
-  } else if (/(对比|区别|哪个好|vs|versus|compare|difference)/i.test(cleanQ)) {
-    intent = "comparison";
-  } else if (/(官网|官方|主页|official|website|portal)/i.test(cleanQ)) {
-    intent = "official_portal";
-  } else if (/(工具|在线|免安装|tool|converter|generator)/i.test(cleanQ)) {
-    intent = "tool_discovery";
-  } else if (/(旅游|攻略|行程|路线|travel|itinerary|trip)/i.test(cleanQ)) {
-    intent = "travel";
-  } else if (/(架构|原理|系统|导图|architecture|topology|mindmap)/i.test(cleanQ)) {
-    intent = "architecture";
-  } else if (/(排查|报错|解决|troubleshooting|error|fix|debug)/i.test(cleanQ)) {
-    intent = "troubleshooting";
-  } else if (/(什么是|定义|含义|what is|definition|define)/i.test(cleanQ)) {
-    intent = "quick_definition";
-  } else if (/(研报|报告|趋势|分析|research|analysis|industry)/i.test(cleanQ)) {
-    intent = "deep_research";
-  }
-
-  const subQueries = [cleanQ];
-  if (detectedLang.code === "zh" && isEn) {
-    subQueries.push(`${cleanQ} overview guide`);
-  } else if (detectedLang.code === "en" && targetLang.code === "zh") {
-    subQueries.push(`${cleanQ} 官网 教程 详解`);
-  }
-
-  return {
-    originalQuery: cleanQ,
-    intent,
-    subQueries,
-    comparisonDimensions: ["核心功能", "性能与稳定性", "适用场景", "官方支持"]
-  };
-}
+export { generatePlanForQuery } from "./agentPlan.js";
 
 /**
  * 确定性排版策略计算（向后兼容布局 Agent 调用）

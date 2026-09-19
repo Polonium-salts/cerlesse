@@ -41,3 +41,5 @@ export const onRequest: PagesFunction = async (context) => {
     return errorResponse(error.message || "意图分析服务异常", 500);
   }
 };
+
+export default onRequest;

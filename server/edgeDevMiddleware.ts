@@ -1,14 +1,14 @@
 import type { Plugin, Connect } from "vite";
-import { onRequest as handleConfig } from "../functions/api/config.js";
-import { onRequest as handleHealth } from "../functions/api/health.js";
-import { onRequest as handleSearch } from "../functions/api/search.js";
-import { onRequest as handleIntent } from "../functions/api/intent.js";
-import { onRequest as handlePlanner } from "../functions/api/planner.js";
-import { onRequest as handleAgent } from "../functions/api/agent.js";
-import { onRequest as handleAgentRun } from "../functions/api/agent/run.js";
-import { onRequest as handleAgentStream } from "../functions/api/agent/stream.js";
-import { onRequest as handleLayout } from "../functions/api/layout/plan.js";
-import type { PagesFunction } from "../functions/api/types.js";
+import { onRequest as handleConfig } from "../cloud-functions/api/config.js";
+import { onRequest as handleHealth } from "../cloud-functions/api/health.js";
+import { onRequest as handleSearch } from "../cloud-functions/api/search.js";
+import { onRequest as handleIntent } from "../cloud-functions/api/intent.js";
+import { onRequest as handlePlanner } from "../cloud-functions/api/planner.js";
+import { onRequest as handleAgent } from "../cloud-functions/api/agent.js";
+import { onRequest as handleAgentRun } from "../cloud-functions/api/agent/run.js";
+import { onRequest as handleAgentStream } from "../cloud-functions/api/agent/stream.js";
+import { onRequest as handleLayout } from "../cloud-functions/api/layout/plan.js";
+import type { PagesFunction } from "../cloud-functions/api/types.js";
 
 const routes: Record<string, PagesFunction> = {
   "/api/config": handleConfig,

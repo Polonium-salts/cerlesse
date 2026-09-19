@@ -9,18 +9,52 @@ function cleanParam(val?: any): string | undefined {
 }
 
 export const onRequest: PagesFunction = async (context) => {
-  const url = new URL(context.request.url);
-  const query = url.searchParams.get("q");
-
-  if (!query || query.trim() === "") {
-    return errorResponse("缺少搜索关键词", 400);
+  if (context.request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
+      }
+    });
   }
 
-  const model = cleanParam(url.searchParams.get("model"));
-  const apiKey = cleanParam(url.searchParams.get("apiKey"));
-  const customSearxngUrl = cleanParam(url.searchParams.get("searxngUrl"));
-  const enableDeepSearch = url.searchParams.get("deep") === "true";
-  const targetLanguage = cleanParam(url.searchParams.get("lang"));
+  let query: string | undefined;
+  let model: string | undefined;
+  let apiKey: string | undefined;
+  let customSearxngUrl: string | undefined;
+  let enableDeepSearch = true;
+  let targetLanguage: string | undefined;
+
+  if (context.request.method === "POST") {
+    try {
+      const body = await context.request.json();
+      query = cleanParam(body?.query);
+      model = cleanParam(body?.model);
+      apiKey = cleanParam(body?.apiKey);
+      customSearxngUrl = cleanParam(body?.customSearxngUrl || body?.searxngUrl);
+      enableDeepSearch = body?.enableDeepSearch !== false && body?.deep !== false;
+      targetLanguage = cleanParam(body?.targetLanguage || body?.lang);
+    } catch {
+      // fallback to URL search params
+    }
+  }
+
+  if (!query) {
+    const url = new URL(context.request.url);
+    query = cleanParam(url.searchParams.get("q") || url.searchParams.get("query"));
+    model = model || cleanParam(url.searchParams.get("model"));
+    apiKey = apiKey || cleanParam(url.searchParams.get("apiKey"));
+    customSearxngUrl = customSearxngUrl || cleanParam(url.searchParams.get("searxngUrl") || url.searchParams.get("customSearxngUrl"));
+    if (url.searchParams.has("deep")) {
+      enableDeepSearch = url.searchParams.get("deep") === "true";
+    }
+    targetLanguage = targetLanguage || cleanParam(url.searchParams.get("lang") || url.searchParams.get("targetLanguage"));
+  }
+
+  if (!query) {
+    return errorResponse("缺少搜索关键词", 400);
+  }
 
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -83,8 +117,11 @@ export const onRequest: PagesFunction = async (context) => {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "Content-Type"
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
     }
   });
 };
+
+export default onRequest;

@@ -2,7 +2,7 @@ import { PagesFunction, jsonResponse, errorResponse } from "../types.js";
 import { planWidgetLayout } from "../../../server/layoutAgent.js";
 
 /**
- * EdgeOne Pages Function: 小组件排版 Agent (Widget Layout Agent)
+ * EdgeOne Cloud Functions: 小组件排版 Agent (Widget Layout Agent)
  * 路由：/api/layout/plan
  * - GET  /api/layout/plan?q=关键词          快速探查
  * - POST /api/layout/plan  { query, results?, widgetPlan?, targetLanguage?, apiKey?, model?, signals? }
@@ -60,3 +60,5 @@ export const onRequest: PagesFunction = async (context) => {
     return errorResponse(error.message || "小组件排版服务异常", 500);
   }
 };
+
+export default onRequest;

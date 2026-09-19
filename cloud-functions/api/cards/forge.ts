@@ -37,3 +37,5 @@ export const onRequest: PagesFunction = async (context) => {
     return errorResponse(error.message || "创建独有卡片失败", 500);
   }
 };
+
+export default onRequest;

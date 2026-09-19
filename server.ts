@@ -9,6 +9,12 @@ import { SUPPORTED_LANGUAGES } from "./server/language.js";
 import { planWidgetLayout } from "./server/layoutAgent.js";
 import { searchSearxngImages } from "./server/searxng.js";
 import { translateText } from "./server/translationAgent.js";
+import {
+  initializeWidgetExtensions,
+  getWidgetRegistryHealth,
+  extensionRegistry,
+  getExtensionCatalog
+} from "./src/widgets/registry/index.js";
 
 dotenv.config();
 
@@ -22,6 +28,43 @@ app.use(express.json());
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: Date.now() });
+});
+
+// Widget Registry & Catalog Health Check
+app.get("/api/widgets/health", (req, res) => {
+  try {
+    initializeWidgetExtensions();
+    const health = getWidgetRegistryHealth();
+    const catalog = getExtensionCatalog();
+    const registeredIds = extensionRegistry.getAll().map((ext) => ext.manifest.id);
+    const catalogIds = catalog.map((c) => c.id);
+
+    const missingInRegistry = catalogIds.filter((id) => !registeredIds.includes(id));
+    const isHealthy =
+      health.initialized &&
+      registeredIds.length > 0 &&
+      missingInRegistry.length === 0 &&
+      extensionRegistry.has("related_links");
+
+    res.json({
+      status: isHealthy ? "healthy" : "unhealthy",
+      timestamp: Date.now(),
+      health,
+      registeredCount: registeredIds.length,
+      catalogCount: catalogIds.length,
+      missingInRegistry,
+      registeredWidgets: registeredIds,
+      relatedLinksCheck: {
+        registeredInRegistry: extensionRegistry.has("related_links"),
+        inCatalog: catalogIds.includes("related_links")
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      status: "unhealthy",
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
 });
 
 // System & Model Status

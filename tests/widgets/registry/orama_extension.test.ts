@@ -27,9 +27,7 @@ describe("Extension Search Index & Orama Integration", () => {
   beforeEach(() => {
     resetExtensionSearchIndex();
     resetOramaWidgetDb();
-    if (!extensionRegistry.has("weather")) {
-      extensionRegistry.register(weatherExtension);
-    }
+    extensionRegistry.register(weatherExtension, { replace: true });
   });
 
   it("should index catalog entries and search by term", async () => {

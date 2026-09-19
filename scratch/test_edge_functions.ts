@@ -1,11 +1,11 @@
-import { onRequest as handleHealth } from '../functions/api/health.js';
-import { onRequest as handleConfig } from '../functions/api/config.js';
-import { onRequest as handleIntent } from '../functions/api/intent.js';
-import { onRequest as handlePlanner } from '../functions/api/planner.js';
-import { onRequest as handleComposer } from '../functions/api/composer.js';
-import { onRequest as handleForge } from '../functions/api/cards/forge.js';
-import { onRequest as handleAgent } from '../functions/api/agent.js';
-import { onRequest as handleStream } from '../functions/api/agent/stream.js';
+import { onRequest as handleHealth } from '../cloud-functions/api/health.js';
+import { onRequest as handleConfig } from '../cloud-functions/api/config.js';
+import { onRequest as handleIntent } from '../cloud-functions/api/intent.js';
+import { onRequest as handlePlanner } from '../cloud-functions/api/planner.js';
+import { onRequest as handleComposer } from '../cloud-functions/api/composer.js';
+import { onRequest as handleForge } from '../cloud-functions/api/cards/forge.js';
+import { onRequest as handleAgent } from '../cloud-functions/api/agent.js';
+import { onRequest as handleStream } from '../cloud-functions/api/agent/stream.js';
 import dotenv from 'dotenv';
 
 dotenv.config();

@@ -3,17 +3,16 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": {
-    "directory": "functions"
-  },
+  "nodeVersion": "20.x",
   "rewrites": [
     {
       "source": "/*",
       "destination": "/index.html"
     }
   ],
-  "env": {
-    "OPENROUTER_KEY": "your_openrouter_api_key_here",
-    "SEARXNG_URL": "optional_searxng_instance_url"
+  "cloudFunctions": {
+    "nodejs": {
+      "maxDuration": 60
+    }
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Tencent Cloud EdgeOne Pages Functions TypeScript Definitions
+ * Tencent Cloud EdgeOne Pages / Cloud Functions TypeScript Definitions
  * Compatible with EdgeOne Functions & Cloudflare Pages Functions
  */
 

@@ -6,6 +6,37 @@ import type { ExtensionCatalogEntry } from "./extensionCatalog.js";
 
 export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
   {
+    "id": "test_extension",
+    "name": "Test Extension",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "Widget Extension SDK 测试组件",
+    "category": "analysis",
+    "tags": [
+      "test"
+    ],
+    "capabilities": [
+      "direct_answer"
+    ],
+    "intents": [
+      "general_knowledge"
+    ],
+    "keywords": [
+      "test"
+    ],
+    "examples": [
+      "测试组件"
+    ],
+    "layout": {
+      "defaultWidth": 50,
+      "minWidth": 25,
+      "maxWidth": 75
+    },
+    "agent": {
+      "selectable": false
+    }
+  },
+  {
     "id": "actions_toolbox",
     "name": "行动工具箱",
     "version": "1.0.0",
@@ -1307,37 +1338,6 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "agent": {
       "selectable": true,
       "minConfidence": 0.75
-    }
-  },
-  {
-    "id": "test_extension",
-    "name": "Test Extension",
-    "version": "1.0.0",
-    "apiVersion": 1,
-    "description": "Widget Extension SDK 测试组件",
-    "category": "analysis",
-    "tags": [
-      "test"
-    ],
-    "capabilities": [
-      "direct_answer"
-    ],
-    "intents": [
-      "general_knowledge"
-    ],
-    "keywords": [
-      "test"
-    ],
-    "examples": [
-      "测试组件"
-    ],
-    "layout": {
-      "defaultWidth": 50,
-      "minWidth": 25,
-      "maxWidth": 75
-    },
-    "agent": {
-      "selectable": false
     }
   }
 ];

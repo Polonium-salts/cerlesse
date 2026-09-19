@@ -27,10 +27,11 @@ import {
   AgentPlan,
   ALL_RESULT_WIDGET_KEYS
 } from "../src/types.js";
-import { determineAdaptiveLayout, generatePlanForQuery } from "./agent.js";
+import { generatePlanForQuery } from "./agentPlan.js";
 import { detectQueryLanguage, resolveTargetLanguage } from "./language.js";
 import { callOpenRouterChat } from "./openrouter.js";
 import {
+  determineClientWidgetActivation as determineAdaptiveLayout,
   calculateAdaptiveBinPacking,
   normalizeWidgetSpan,
   getWidgetLabel
@@ -279,7 +280,6 @@ export async function planWidgetLayout(
   // ---------------------------------------------------------------
   const baseStrategy = determineAdaptiveLayout({
     query,
-    plan,
     filteredResults: results,
     comparisonCount,
     mindMapBranches,

@@ -71,28 +71,36 @@ import { getWidgetRegistryHealth, type WidgetRegistryHealth } from "./registryHe
 
 export { getWidgetRegistryHealth, type WidgetRegistryHealth };
 
+import { initializeWidgetExtensions } from "./index.js";
+
 /**
- * 从注册中心获取全部 Extension 的纯 JSON Catalog 列表（优先 Extension Registry，Node 环境兜底静态生成清单）
+ * 从注册中心获取全部 Extension 的纯 JSON Catalog 列表（唯一真理来源：Extension Registry）
  */
 export function getExtensionCatalog(
   targetRegistry: ExtensionRegistry = extensionRegistry
 ): ExtensionCatalogEntry[] {
-  const registered = targetRegistry.getAll().map(ext => manifestToCatalogEntry(ext.manifest));
+  let registered = targetRegistry.getAll().map(ext => manifestToCatalogEntry(ext.manifest));
   if (registered.length > 0) {
     return registered;
   }
 
-  // 浏览器开发环境（Vite DEV）或显式声明严格模式下，若扩展注册中心为空，直接抛错以便快速暴露初始化故障，禁止静默掩盖
-  const isDevBrowser = typeof window !== "undefined" && Boolean((import.meta as any)?.env?.DEV);
-  const isStrict = process.env.CERLESSE_STRICT_CATALOG === "true";
-
-  if (isDevBrowser || isStrict) {
-    throw new Error(
-      "[WidgetCatalog] Extension Registry is empty. Widget extension initialization failed."
-    );
+  // 若注册中心为空，尝试显式触发一次扩展初始化
+  try {
+    initializeWidgetExtensions({ force: true });
+    registered = targetRegistry.getAll().map(ext => manifestToCatalogEntry(ext.manifest));
+  } catch (err) {
+    console.error("[WidgetCatalog] 自动触发 initializeWidgetExtensions 异常:", err);
   }
 
-  return GENERATED_EXTENSION_CATALOG;
+  if (registered.length > 0) {
+    return registered;
+  }
+
+  // 如果初始化后依然为空，必须抛错以暴露 Registry 故障，禁止静默掩盖致使 Catalog 与 Registry 状态漂移
+  console.error("[WidgetCatalog] CRITICAL: Extension Registry is empty even after initialization!");
+  throw new Error(
+    "[WidgetCatalog] Extension Registry is empty. Widget extension initialization failed."
+  );
 }
 
 
