@@ -22,7 +22,7 @@ export const onRequest: PagesFunction = async (context) => {
     const ranked = await searchAndRankOnce(q, {
       customUrl,
       language: lang,
-      limit: 12,
+      limit: 20,
       env: context.env
     });
 

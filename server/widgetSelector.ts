@@ -44,20 +44,20 @@ export function getWidgetBudget(
   secondaryIntents: string[] = [],
   capabilityCount: number = 0
 ): { min: number; max: number } {
-  let min = 2;
-  let max = 4;
+  let min = 4;
+  let max = 7;
   if (complexity === "medium") {
-    min = 3;
-    max = 5;
+    min = 5;
+    max = 8;
   } else if (complexity === "complex") {
-    min = 4;
-    max = 7;
+    min = 6;
+    max = 10;
   }
   if (secondaryIntents.length >= 2) {
-    max = Math.min(7, max + 1);
+    max = Math.min(10, max + 1);
   }
   if (capabilityCount >= 6) {
-    max = Math.min(7, max + 1);
+    max = Math.min(10, max + 1);
   }
   return { min, max };
 }

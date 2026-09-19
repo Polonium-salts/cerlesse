@@ -39,7 +39,7 @@ function scaleTileWidth(base: TileWidth, steps: number): TileWidth {
  * 11~13 个磁贴，其中大半只是弱相关或彼此重复（sources 与 analytics_trend 都在列信源，
  * takeaways 与 topic_digest 都在复述同一段摘要）。这里按相关度截断。
  */
-const MAX_PLANNED_WIDGETS = 9;
+const MAX_PLANNED_WIDGETS = 10;
 
 /**
  * 纯能力匹配求解组件集与排版规格 (Dynamic Capability Widget Resolver)
@@ -122,14 +122,22 @@ function resolveWidgetsFromCapabilities(
       (key === "search_engine" && (capSet.has("search_engine_redirect") || capSet.has("external_search_query") || /(google|bing|baidu|百度|必应|谷歌|搜索引擎|搜狗|sogou|duckduckgo|360|search|engine|搜一下|全网搜)/i.test(query))) ||
       (key === "token_usage" && (capSet.has("token_metrics") || capSet.has("cost_analysis") || /(token|代币|耗费|模型耗时|成本|吞吐|cost|throughput)/i.test(query)));
 
-    const isSpecializedWidget = ["weather", "translation", "search_engine", "token_usage"].includes(key);
+    const isSpecializedWidget = ["weather", "translation", "token_usage"].includes(key);
 
     if (isSpecializedWidget) {
       if (matchCount === 0 && !isDomainQueryMatch) {
         continue;
       }
     } else {
-      const isBaseSupport = ["ai_answer", "related_links", "sources"].includes(key);
+      const isBaseSupport = [
+        "ai_answer",
+        "related_links",
+        "sources",
+        "takeaways",
+        "actions_toolbox",
+        "image_gallery",
+        "search_engine"
+      ].includes(key);
       if (matchCount === 0 && !isBaseSupport) {
         continue;
       }
@@ -188,9 +196,8 @@ function resolveWidgetsFromCapabilities(
     });
   }
 
-  // 仅在明确命中图片图集能力或视觉素材搜索时才纳入 image_gallery
-  const hasImageNeed = capSet.has("image_gallery") || capSet.has("resource_preview") || /(素材|图片|照片|图集|图库|壁纸|外观图)/i.test(query);
-  if (hasImageNeed && !resultList.some(w => w.type === "image_gallery")) {
+  // 确保画廊小组件在计划中，以便在获得检索图片时第一时间进行呈现
+  if (!resultList.some(w => w.type === "image_gallery")) {
     const imageGalleryItem: WidgetPlannedItem = {
       type: "image_gallery",
       priority: 74,

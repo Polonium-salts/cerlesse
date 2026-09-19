@@ -770,13 +770,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 动态域名配额：技术/官方/开源类查询允许更高的同域名信源上限 */
 export function getMaxPerDomain(query: string): number {
-  if (/官方|官网|文档|documentation|docs/i.test(query)) {
-    return 4;
+  if (/官方|官网|文档|documentation|docs|guide|reference/i.test(query)) {
+    return 5;
   }
   if (/github|仓库|源码|api|开发|教程|安装|部署|报错|下载|rom/i.test(query)) {
-    return 3;
+    return 4;
   }
-  return 2;
+  return 3;
 }
 
 /** 质量地板：低于此分数的条目一律不进入默认信源集 */
@@ -1005,14 +1005,16 @@ export function rankAndFilterResults(
       if (respectDomainCap && (perDomain.get(host) || 0) >= maxPerDomain) continue;
 
       const shingles = titleShingles(item.title);
-      // 联合判断标题与摘要：只有当同域名且摘要非常相似时才判定为完全重复，
-      // 避免将同个官方文档域名下的不同技术子页面（如 Docker 安装与 Docker WSL）误判删去。
+      const snippetShingles = titleShingles(item.snippet || "");
+
+      // 联合判断标题与摘要：同域名下只有当标题极度近义 (0.92+) 且摘要也重叠时才判定为重复，
+      // 避免把同官方域名下的不同文档页面（如 Docker WSL、Docker Windows、Docker Linux）误剔除
       const isDuplicate = seenTitles.some((existing) => {
         const titleSim = jaccard(existing.shingles, shingles);
         if (titleSim > similarityThreshold) {
           if (existing.host === host) {
-            // 同域名且标题高度相似 -> 重复
-            return true;
+            const snippetSim = jaccard(titleShingles(existing.snippet), snippetShingles);
+            return titleSim > 0.92 || snippetSim > 0.55;
           }
           if (titleSim > 0.95) {
             return true;

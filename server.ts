@@ -90,7 +90,7 @@ app.get("/api/search", async (req, res) => {
     }
     const customUrl = cleanParam(req.query.customUrl);
     const lang = cleanParam(req.query.lang);
-    const ranked = await searchAndRankOnce(q, { customUrl, language: lang, limit: 12 });
+    const ranked = await searchAndRankOnce(q, { customUrl, language: lang, limit: 20 });
     res.json({
       results: ranked.results,
       instanceUsed: ranked.instanceUsed,

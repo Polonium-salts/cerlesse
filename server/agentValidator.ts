@@ -266,8 +266,8 @@ export function repairWidgetDecision(
     }
   }
 
-  // 4. 如果有效组件少于 2 个，从允许的候选池中按 finalScore 降序补充
-  if (existingMap.size < 2) {
+  // 4. 如果有效组件少于 4 个，从允许的候选池中按 finalScore 降序补充
+  if (existingMap.size < 4) {
     const validCandidates = context.candidates.filter((c) => {
       if (existingMap.has(c.key)) return false;
       if (route.forbiddenWidgets.includes(c.key)) return false;
@@ -279,7 +279,7 @@ export function repairWidgetDecision(
     });
 
     for (const cand of validCandidates) {
-      if (existingMap.size >= 3) break;
+      if (existingMap.size >= 6) break;
       existingMap.set(cand.key, {
         key: cand.key,
         priority: Math.round(cand.finalScore * 100),
@@ -301,8 +301,8 @@ export function repairWidgetDecision(
     });
   }
 
-  // 6. 限制最多 7 个组件
-  const items = Array.from(existingMap.values()).slice(0, 7);
+  // 6. 限制最多 10 个组件
+  const items = Array.from(existingMap.values()).slice(0, 10);
   items.sort((a, b) => b.priority - a.priority);
 
   return {

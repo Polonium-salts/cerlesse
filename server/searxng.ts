@@ -365,60 +365,155 @@ function extractSearxngImageUrl(raw: unknown, instance?: string): string | undef
 }
 
 /**
+ * Direct image search fallback (Baidu Images JSON API)
+ * 高可用极速 API，返回结构化 JSON 图片列表，无需繁重 HTML 正则解析
+ */
+export async function searchBaiduImagesFallback(query: string, limit = 36, page = 1): Promise<SearchImage[]> {
+  try {
+    const pn = Math.max(0, (page - 1) * limit);
+    const url = `https://image.baidu.com/search/acjson?tn=resultjson_com&ipn=rj&word=${encodeURIComponent(query)}&pn=${pn}&rn=${limit}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://image.baidu.com/"
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const text = await res.text();
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return [];
+    }
+    const items = data?.data || [];
+    const results: SearchImage[] = [];
+    const seen = new Set<string>();
+
+    for (const item of items) {
+      if (!item || results.length >= limit) continue;
+      const imageUrl = pickHttpUrl(item.hoverURL || item.middleURL || item.thumbURL || item.objURL);
+      const thumbnailUrl = pickHttpUrl(item.thumbURL || item.middleURL) || imageUrl;
+      if (!imageUrl || seen.has(imageUrl)) continue;
+      seen.add(imageUrl);
+
+      const pageUrl = pickHttpUrl(item.fromURL || (item.fromURLHost ? `https://${item.fromURLHost}` : undefined));
+      const domain = item.fromURLHost || hostOf(pageUrl) || hostOf(imageUrl);
+      const rawTitle = item.fromPageTitleEnc || item.title || "";
+      const title = sanitizeSnippet(rawTitle.replace(/<[^>]+>/g, "")) || (domain ? `${domain} 图片` : `${query} 相关图片`);
+
+      results.push({
+        id: `img-baidu-${Math.random().toString(36).substring(2, 9)}`,
+        imageUrl,
+        thumbnailUrl: thumbnailUrl || imageUrl,
+        title,
+        pageUrl,
+        source: "Baidu Images",
+        domain
+      });
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Direct image search fallback (Bing Images)
  * 高可用且带 CDN 缓存的图片检索兜底通道，返回真实高清图与缩略图
  */
 export async function searchBingImagesFallback(query: string, limit = 36, page = 1): Promise<SearchImage[]> {
   try {
     const first = Math.max(1, (page - 1) * limit + 1);
-    const url = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=${first}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    if (!res.ok) return [];
-    const html = await res.text();
+    const urls = [
+      `https://cn.bing.com/images/async?q=${encodeURIComponent(query)}&first=${first}&count=${limit}&scenario=ImageBasicHover`,
+      `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=${first}`
+    ];
+
     const results: SearchImage[] = [];
-    const regex = /class="iusc"[^>]*m="({[^"]+})"/g;
-    let match: RegExpExecArray | null;
     const seen = new Set<string>();
 
-    while ((match = regex.exec(html)) !== null && results.length < limit) {
+    for (const url of urls) {
+      if (results.length >= limit) break;
       try {
-        const decoded = match[1]
-          .replace(/&quot;/g, '"')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>');
-        const data = JSON.parse(decoded);
-        const imageUrl = pickHttpUrl(data.murl) || pickHttpUrl(data.turl);
-        const thumbnailUrl = pickHttpUrl(data.turl) || imageUrl;
-        if (!imageUrl || !thumbnailUrl || seen.has(imageUrl)) continue;
-        seen.add(imageUrl);
-
-        const pageUrl = pickHttpUrl(data.purl);
-        const domain = hostOf(pageUrl) || hostOf(imageUrl);
-        const title = sanitizeSnippet(data.t || data.desc || "") || (domain ? `${domain} 图片` : "相关图片");
-
-        results.push({
-          id: `img-bing-${Math.random().toString(36).substring(2, 9)}`,
-          imageUrl,
-          thumbnailUrl,
-          title,
-          pageUrl,
-          source: "Bing Images",
-          domain
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          },
+          signal: controller.signal
         });
+        clearTimeout(timer);
+        if (!res.ok) continue;
+        const html = await res.text();
+
+        // 提取模式 1: iusc 节点的 m 属性 JSON
+        const mAttrMatches = html.matchAll(/class="iusc"[^>]*m=(?:["']({[\s\S]*?})["']|&quot;({[\s\S]*?})&quot;)/gi);
+        for (const match of mAttrMatches) {
+          if (results.length >= limit) break;
+          const rawJson = match[1] || match[2];
+          if (!rawJson) continue;
+          try {
+            const decoded = rawJson
+              .replace(/&quot;/g, '"')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>');
+            const data = JSON.parse(decoded);
+            const imageUrl = pickHttpUrl(data.murl) || pickHttpUrl(data.turl);
+            const thumbnailUrl = pickHttpUrl(data.turl) || imageUrl;
+            if (!imageUrl || seen.has(imageUrl)) continue;
+            seen.add(imageUrl);
+
+            const pageUrl = pickHttpUrl(data.purl);
+            const domain = hostOf(pageUrl) || hostOf(imageUrl);
+            const title = sanitizeSnippet(data.t || data.desc || "") || (domain ? `${domain} 图片` : "相关图片");
+
+            results.push({
+              id: `img-bing-${Math.random().toString(36).substring(2, 9)}`,
+              imageUrl,
+              thumbnailUrl: thumbnailUrl || imageUrl,
+              title,
+              pageUrl,
+              source: "Bing Images",
+              domain
+            });
+          } catch {
+            // Skip malformed item
+          }
+        }
+
+        // 提取模式 2: 直接抽取 murl / turl
+        if (results.length < limit) {
+          const directMatches = html.matchAll(/(?:murl|mediaurl)&quot;:&quot;(https?:\/\/[^&"]+)&quot;(?:[\s\S]*?turl&quot;:&quot;(https?:\/\/[^&"]+)&quot;)?/gi);
+          for (const match of directMatches) {
+            if (results.length >= limit) break;
+            const imageUrl = pickHttpUrl(match[1]);
+            const thumbnailUrl = pickHttpUrl(match[2]) || imageUrl;
+            if (!imageUrl || seen.has(imageUrl)) continue;
+            seen.add(imageUrl);
+
+            results.push({
+              id: `img-bing-direct-${Math.random().toString(36).substring(2, 9)}`,
+              imageUrl,
+              thumbnailUrl: thumbnailUrl || imageUrl,
+              title: `${query} 相关图片`,
+              source: "Bing Images"
+            });
+          }
+        }
       } catch {
-        // Skip malformed item
+        // Continue to next URL
       }
     }
+
     return results;
   } catch {
     return [];
@@ -581,11 +676,17 @@ export async function searchSearxngImages(
     }
   }
 
-  // 若实例池未返回或图片数量不足 limit，使用高可靠 Bing 图片通道补齐，确保相关图片组件能稳定加载足额图片
+  // 若实例池未返回或图片数量不足 limit，并发使用百度图片与 Bing 图片通道双重补齐，确保相关图片组件能稳定加载足额图片
   if (images.length < limit) {
+    const needed = limit - images.length;
     try {
-      const fallbackImages = await searchBingImagesFallback(query, limit - images.length, page);
-      for (const fImg of fallbackImages) {
+      const [baiduImgs, bingImgs] = await Promise.all([
+        searchBaiduImagesFallback(query, needed, page).catch(() => [] as SearchImage[]),
+        searchBingImagesFallback(query, needed, page).catch(() => [] as SearchImage[])
+      ]);
+
+      const fallbacks = [...baiduImgs, ...bingImgs];
+      for (const fImg of fallbacks) {
         if (images.length >= limit) break;
         if (!seen.has(fImg.imageUrl)) {
           seen.add(fImg.imageUrl);
@@ -702,13 +803,40 @@ export async function searchSearxng(
 
   const allInstances = Array.from(new Set([...instances, ...pool]));
 
-  // 并发下发 Direct Web (Bing) 与 Top 5 SearXNG 实例，最大化基础召回广度
+  // 单实例故障隔离函数：确保每个 SearXNG 实例与 Bing 在超时范围内独立运行，
+  // 慢实例超时后自动降级为空，绝不导致已完成的其余实例结果被整批丢弃。
+  function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+    let timer: any;
+    const timeoutPromise = new Promise<T>((resolve) => {
+      timer = setTimeout(() => resolve(fallback), ms);
+    });
+    return Promise.race([
+      promise.then((res) => {
+        clearTimeout(timer);
+        return res;
+      }),
+      timeoutPromise
+    ]);
+  }
+
+  const INSTANCE_TIMEOUT_MS = 2800;
+
+  // 并发下发 Direct Web (Bing) 与 Top 5 SearXNG 实例，每个实例独立 2.8s 超时隔离
   const candidateInstances = allInstances.slice(0, 5);
-  const directPromise = searchDirectWeb(query, options.language);
+  const directPromise = withTimeout(
+    searchDirectWeb(query, options.language).catch(() => [] as SearchResult[]),
+    INSTANCE_TIMEOUT_MS,
+    [] as SearchResult[]
+  );
+
   const searxngPromises = candidateInstances.map(inst =>
-    searchSingleSearxng(inst, query, options.language, options.page)
-      .then(res => ({ inst, res }))
-      .catch(() => ({ inst, res: [] as SearchResult[] }))
+    withTimeout(
+      searchSingleSearxng(inst, query, options.language, options.page)
+        .then(res => ({ inst, res }))
+        .catch(() => ({ inst, res: [] as SearchResult[] })),
+      INSTANCE_TIMEOUT_MS,
+      { inst, res: [] as SearchResult[] }
+    )
   );
 
   const instancesUsed: string[] = [];
@@ -719,7 +847,9 @@ export async function searchSearxng(
     for (const item of settled) {
       if (item && item.res && item.res.length > 0) {
         merged.push(...item.res);
-        instancesUsed.push(item.inst);
+        if (item.inst && !instancesUsed.includes(item.inst)) {
+          instancesUsed.push(item.inst);
+        }
       }
     }
     if (instancesUsed.length > 0) {
@@ -728,16 +858,9 @@ export async function searchSearxng(
     return merged;
   };
 
-  // 统一搜索时间预算 3000ms：Bing 与 SearXNG 5 个实例全部平等参与并发召回，
-  // 避免因为 Bing 率先返回 12 条就把 SearXNG 实例结果直接剔除。
-  const SEARCH_BUDGET_MS = 3000;
-
   const [directWebResults, searxngSettled] = await Promise.all([
-    directPromise.catch(() => [] as SearchResult[]),
-    Promise.race([
-      Promise.all(searxngPromises),
-      new Promise<any[]>(resolve => setTimeout(() => resolve([]), SEARCH_BUDGET_MS))
-    ])
+    directPromise,
+    Promise.all(searxngPromises)
   ]);
 
   const searxngResults = collectFromSettled(searxngSettled);

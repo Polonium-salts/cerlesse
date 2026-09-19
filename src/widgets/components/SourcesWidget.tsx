@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, ExternalLink, ShieldCheck, Copy, Check } from "lucide-react";
+import { BookOpen, ExternalLink, ShieldCheck, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { SearchSynthesisResult } from "../../types.js";
 import { Badge } from "../../components/ui/badge.js";
 import { Button } from "../../components/ui/button.js";
@@ -17,6 +17,7 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
 }) => {
   const sources = activeResult?.filteredResults || [];
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -32,6 +33,8 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
       </div>
     );
   }
+
+  const displayedSources = expanded ? sources : sources.slice(0, 8);
 
   return (
     <div className="p-4 sm:p-5 flex flex-col h-full overflow-hidden bg-card">
@@ -50,8 +53,8 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
         </Badge>
       </div>
 
-      <div className="flex-1 overflow-auto space-y-2 pr-1">
-        {sources.slice(0, 8).map((src, idx) => {
+      <div className="flex-1 overflow-auto space-y-2 pr-1 max-h-[520px]">
+        {displayedSources.map((src, idx) => {
           let domain = "";
           try {
             domain = new URL(src.url).hostname;
@@ -115,6 +118,29 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
           );
         })}
       </div>
+
+      {sources.length > 8 && (
+        <div className="pt-3 mt-2 border-t border-border/30 text-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-muted-foreground hover:text-foreground gap-1.5 py-1 h-8"
+          >
+            {expanded ? (
+              <>
+                <span>收起部分信源</span>
+                <ChevronUp className="w-3.5 h-3.5" />
+              </>
+            ) : (
+              <>
+                <span>查看全部 {sources.length} 条已审计信源</span>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

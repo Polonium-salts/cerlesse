@@ -324,8 +324,9 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
 
   let supplementationCount = 0;
 
-  // 2. 结果不足自动补搜 (Auto-supplementation): < 10 条有效结果时，自动请求 Page 2 及补充延伸路由
-  if (ranked.results.length < MIN_RESULTS && !signal?.aborted) {
+  // 2. 结果或候选池不足时进行多页深入扩搜 (Multi-page recall expansion)
+  // 当有效排重结果 < 15 条或独创候选 < 25 条时，自动进行 Page 2 与 Page 3 分页召回，确保召回池深度充沛
+  if ((ranked.results.length < 15 || ranked.uniqueCandidates < 25) && !signal?.aborted) {
     supplementationCount++;
     pagesFetched++;
 
@@ -335,14 +336,14 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
     if (primaryRoute) {
       suppRoutes.push({
         query: primaryRoute.query,
-        purpose: "补充路由（Page 2 结果扩展）",
+        purpose: "补充路由（Page 2 深入召回）",
         language: primaryRoute.language
       });
     }
 
     suppRoutes.push({
-      query: `${query} 论坛 社区 release 镜像`,
-      purpose: "补充路由（长尾社区与资源扩展）"
+      query: `${query} 官方 论坛 社区 release`,
+      purpose: "补充路由（长尾源与镜像资源扩展）"
     });
 
     await runWithConcurrency(suppRoutes, concurrency, async (route) => {
@@ -354,7 +355,7 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
           env
         });
         (suppRes.instancesUsed || []).forEach((inst) => instancesUsed.add(inst));
-        pools.push({ results: suppRes.results || [], source: `${route.query} (Supp)` });
+        pools.push({ results: suppRes.results || [], source: `${route.query} (Page 2)` });
       } catch {
         /* Ignore supplementation failure */
       }
@@ -366,6 +367,29 @@ export async function runRetrievalAgent(options: RetrievalAgentOptions): Promise
       limit: Math.max(limit, TARGET_RESULTS),
       allowEncyclopedia: /维基|wikipedia|百科/i.test(query)
     });
+
+    // 仍不足 12 条时，继续探寻 Page 3 深度源
+    if (ranked.results.length < 12 && primaryRoute && !signal?.aborted) {
+      pagesFetched++;
+      try {
+        const page3Res = await searchSearxng(primaryRoute.query, {
+          customUrl: customSearxngUrl,
+          language: primaryRoute.language || detectedLanguage.code,
+          page: 3,
+          env
+        });
+        (page3Res.instancesUsed || []).forEach((inst) => instancesUsed.add(inst));
+        pools.push({ results: page3Res.results || [], source: `${primaryRoute.query} (Page 3)` });
+
+        ranked = rankSearchPools(pools, {
+          query,
+          limit: Math.max(limit, TARGET_RESULTS),
+          allowEncyclopedia: /维基|wikipedia|百科/i.test(query)
+        });
+      } catch {
+        /* Ignore Page 3 failure */
+      }
+    }
   }
 
   // 权威标记：Tier1 域名直接打上官方标识

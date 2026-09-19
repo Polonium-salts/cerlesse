@@ -1,4 +1,4 @@
-import { AgentPlan, DetectedLanguage, LayoutIntentType } from "../src/types.js";
+import { AgentPlan, DetectedLanguage, LayoutIntentType, WidgetIntentAnalysis } from "../src/types.js";
 
 /**
  * 意图分析与多语言跨语种规划
@@ -6,17 +6,22 @@ import { AgentPlan, DetectedLanguage, LayoutIntentType } from "../src/types.js";
 export function generatePlanForQuery(
   query: string,
   detectedLang: DetectedLanguage,
-  targetLang: DetectedLanguage
+  targetLang: DetectedLanguage,
+  preIntent?: WidgetIntentAnalysis
 ): AgentPlan {
   const isEn = targetLang.code === "en";
   const cleanQ = query.trim();
 
   let intent: LayoutIntentType = "balanced";
-  if (/(下载|安装|客户端|installer|download|setup|client)/i.test(cleanQ)) {
+  const semanticIntent = preIntent?.primaryIntent || preIntent?.intent;
+
+  if (semanticIntent === "search_engine_portal" || /^(google|bing|baidu|duckduckgo|yandex|sogou|yahoo|谷歌|百度|必应|搜索引擎)(\s*(搜索|入口|主页|portal|search|engine))?$/i.test(cleanQ)) {
+    intent = "official_portal";
+  } else if (semanticIntent === "software_download" || /(下载|安装|客户端|installer|download|setup|client)/i.test(cleanQ)) {
     intent = "install";
-  } else if (/(对比|区别|哪个好|vs|versus|compare|difference)/i.test(cleanQ)) {
+  } else if (semanticIntent === "tech_comparison" || /(对比|区别|哪个好|vs|versus|compare|difference)/i.test(cleanQ)) {
     intent = "comparison";
-  } else if (/(官网|官方|主页|official|website|portal)/i.test(cleanQ)) {
+  } else if (semanticIntent === "portal_navigation" || /(官网|官方|主页|official|website|portal)/i.test(cleanQ)) {
     intent = "official_portal";
   } else if (/(工具|在线|免安装|tool|converter|generator)/i.test(cleanQ)) {
     intent = "tool_discovery";
@@ -24,9 +29,9 @@ export function generatePlanForQuery(
     intent = "travel";
   } else if (/(架构|原理|系统|导图|architecture|topology|mindmap)/i.test(cleanQ)) {
     intent = "architecture";
-  } else if (/(排查|报错|解决|troubleshooting|error|fix|debug)/i.test(cleanQ)) {
+  } else if (semanticIntent === "troubleshooting" || /(排查|报错|解决|troubleshooting|error|fix|debug)/i.test(cleanQ)) {
     intent = "troubleshooting";
-  } else if (/(什么是|定义|含义|what is|definition|define)/i.test(cleanQ)) {
+  } else if (semanticIntent === "concept_explanation" || /(什么是|定义|含义|what is|definition|define)/i.test(cleanQ)) {
     intent = "quick_definition";
   } else if (/(研报|报告|趋势|分析|research|analysis|industry)/i.test(cleanQ)) {
     intent = "deep_research";
@@ -34,8 +39,11 @@ export function generatePlanForQuery(
 
   const subQueries = [cleanQ];
 
-  // 按意图场景扩充针对性分支子查询，确保多路召回覆盖官方、教程、下载与报错
-  if (intent === "install") {
+  // 按真实意图精准扩充分支子查询，避免对纯搜索引擎/品牌词盲目生成"官方文档 教程"噪声
+  if (semanticIntent === "search_engine_portal" || /^(google|bing|baidu|duckduckgo|yandex|sogou|yahoo|谷歌|百度|必应)(\s*(搜索|入口|主页|portal|search))?$/i.test(cleanQ)) {
+    subQueries.push(`${cleanQ} 官方网站 搜索入口`);
+    subQueries.push(`${cleanQ} official search engine portal`);
+  } else if (intent === "install") {
     subQueries.push(`${cleanQ} 官方下载 安装教程`);
     subQueries.push(`${cleanQ} official release download guide`);
   } else if (intent === "troubleshooting") {
@@ -47,15 +55,18 @@ export function generatePlanForQuery(
   } else if (intent === "official_portal") {
     subQueries.push(`${cleanQ} 官方主页 权威入口`);
     subQueries.push(`${cleanQ} official website portal docs`);
+  } else if (intent === "quick_definition") {
+    subQueries.push(`${cleanQ} 概念 详解 架构`);
+    subQueries.push(`${cleanQ} overview architectural concept`);
   } else {
-    subQueries.push(`${cleanQ} 官方文档 教程`);
-    subQueries.push(`${cleanQ} official documentation guide`);
+    subQueries.push(`${cleanQ} 官方`);
+    subQueries.push(`${cleanQ} official`);
   }
 
   if (detectedLang.code === "zh" && isEn) {
-    subQueries.push(`${cleanQ} overview architectural guide`);
-  } else if (detectedLang.code === "en" && targetLang.code === "zh") {
-    subQueries.push(`${cleanQ} 官网 教程 详解`);
+    subQueries.push(`${cleanQ} overview guide`);
+  } else if (detectedLang.code === "en" && targetLang.code === "zh" && !semanticIntent) {
+    subQueries.push(`${cleanQ} 官网 详解`);
   }
 
   return {

@@ -61,7 +61,7 @@ export const RelatedLinksWidget: React.FC<RelatedLinksWidgetProps> = ({
       return "权威入口";
     };
 
-    // 1. 严格优先提取标记为官方认证的网站
+    // 1. 优先提取标记为官方认证的网站（最多 4 个）
     rawResults
       .filter((r) => r.isOfficial && r.url)
       .forEach((r, idx) => {
@@ -78,42 +78,21 @@ export const RelatedLinksWidget: React.FC<RelatedLinksWidgetProps> = ({
         }
       });
 
-    // 2. 如果官方结果不足，仅筛选具备权威主站/文档/开源特征的高置信直达入口（最多补足至 3 个）
-    if (list.length < 3) {
-      const authorityCandidates = rawResults.filter((r) => {
-        if (!r.url || seenUrls.has(r.url)) return false;
-        try {
-          const parsed = new URL(r.url);
-          const path = parsed.pathname.toLowerCase();
-          const host = parsed.hostname.toLowerCase();
-          // 仅纳入主域名、docs子域、开发者域或知名根平台
-          const isDocOrRoot =
-            path === "" ||
-            path === "/" ||
-            host.startsWith("docs.") ||
-            host.startsWith("dev.") ||
-            host.includes("github.com") ||
-            host.includes("wikipedia.org") ||
-            host.includes("developer.mozilla.org");
-          return isDocOrRoot;
-        } catch {
-          return false;
-        }
-      });
+    // 2. 筛选具备权威主站/文档/开源特征或高相关度的直达入口（补足至最多 8 个）
+    if (list.length < 8) {
+      for (const r of rawResults) {
+        if (list.length >= 8) break;
+        if (!r.url || seenUrls.has(r.url)) continue;
 
-      for (const r of authorityCandidates) {
-        if (list.length >= 3) break;
-        if (!seenUrls.has(r.url)) {
-          seenUrls.add(r.url);
-          list.push({
-            id: `site_${list.length}`,
-            name: r.title || effectiveQuery,
-            url: r.url,
-            description: r.snippet || "点击跳转直达该目标核心入口与权威页面。",
-            tag: categorizeLink(r.title || "", r.url, false),
-            isOfficial: false
-          });
-        }
+        seenUrls.add(r.url);
+        list.push({
+          id: `site_${list.length}`,
+          name: r.title || effectiveQuery,
+          url: r.url,
+          description: r.snippet || "点击跳转直达该目标核心入口与权威页面。",
+          tag: categorizeLink(r.title || "", r.url, r.isOfficial),
+          isOfficial: Boolean(r.isOfficial)
+        });
       }
     }
 

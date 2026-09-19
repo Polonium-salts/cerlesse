@@ -4,6 +4,7 @@ import { planWidgetStrategy } from "./widgetPlanner.js";
 import { planWidgetLayout, WIDGET_LAYOUT_AGENT_NAME } from "./layoutAgent.js";
 import { runRetrievalAgent } from "./retrievalAgent.js";
 import { generatePlanForQuery } from "./agentPlan.js";
+import { analyzeWidgetIntent } from "./widgetIntentAnalyzer.js";
 import { determineClientWidgetActivation, IMAGE_INTENT_PATTERN } from "../src/lib/adaptiveLayout.js";
 import {
   AgentPlan,
@@ -61,7 +62,8 @@ export interface AgentRunOptions {
  * 「绝不出现空壳与无关磁贴」的硬门槛也就形同虚设。
  */
 function shouldFetchRelatedImages(query: string, results: SearchResult[]): boolean {
-  return IMAGE_INTENT_PATTERN.test(query) || results.some(r => Boolean(r.thumbnail));
+  // 保持全量并发搜图：图片检索在后台异步并发执行，为任何搜索任务提供丰富的视觉图集
+  return Boolean(query && query.trim().length > 0);
 }
 
 export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSynthesisResult> {
@@ -113,7 +115,15 @@ export async function runSearchAgent(options: AgentRunOptions): Promise<SearchSy
     "running"
   );
 
-  const plan: AgentPlan = generatePlanForQuery(query, detectedLang, targetLang);
+  // 前置意图深度识别 (Intent Analyzer -> Retrieval Planner -> Search)
+  const preIntent = await analyzeWidgetIntent({
+    query,
+    results: [],
+    targetLanguage: targetLang.code,
+    env: options.env
+  }).catch(() => undefined);
+
+  const plan: AgentPlan = generatePlanForQuery(query, detectedLang, targetLang, preIntent);
 
   const planDetails: string[] = [
     targetLang.code === "en" ? `Input query: ${query}` : `检索关键词: ${query}`,
