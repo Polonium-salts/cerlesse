@@ -41,6 +41,13 @@
     "width": 50,
     "supportedWidths": [25, 50, 75, 100],
     "ratio": "4:3",
+    "ratioMode": "flexible",
+    "itemHeightPx": 116,
+    "baseHeightPx": 60,
+    "ratioByBreakpoint": {
+      "tablet": "4:3",
+      "mobile": "1:1"
+    },
     "minWidth": 25
   },
   "layout": {

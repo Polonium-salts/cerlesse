@@ -36,6 +36,10 @@ export interface WidgetGridSpec {
   ratioByBreakpoint?: Partial<Record<Breakpoint, TileRatio>>;
   /** 可选。允许求解器收窄到的最小占宽百分比；缺省沿用通用规则「最多收窄一档」 */
   minWidth?: TileWidth;
+  /** 可选：单个内容条目的估算高度（px） */
+  itemHeightPx?: number;
+  /** 可选：除条目列表外的固定开销高度（px） */
+  baseHeightPx?: number;
 }
 
 /** 插件清单 (Widget Manifest) */
@@ -140,6 +144,21 @@ export const MANIFEST_MIN_WIDTHS: Record<string, TileWidth> = WIDGET_MANIFESTS.r
 >((acc, manifest) => {
   if (typeof manifest.grid.minWidth === "number") {
     acc[manifest.id] = manifest.grid.minWidth;
+  }
+  return acc;
+}, {});
+
+/**
+ * id → 条目预估参数（声明了 itemHeightPx / baseHeightPx 的清单）。
+ */
+export const MANIFEST_ITEM_HEIGHTS: Record<string, { itemHeightPx?: number; baseHeightPx?: number }> = WIDGET_MANIFESTS.reduce<
+  Record<string, { itemHeightPx?: number; baseHeightPx?: number }>
+>((acc, manifest) => {
+  if (typeof manifest.grid.itemHeightPx === "number" || typeof manifest.grid.baseHeightPx === "number") {
+    acc[manifest.id] = {
+      itemHeightPx: manifest.grid.itemHeightPx,
+      baseHeightPx: manifest.grid.baseHeightPx
+    };
   }
   return acc;
 }, {});

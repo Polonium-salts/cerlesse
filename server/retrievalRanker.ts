@@ -21,6 +21,7 @@
  */
 
 import { SearchFilters, SearchResult, SearchSourceType } from "../src/types.js";
+import { OFFICIAL_DOMAIN_PATTERNS } from "./officialDomains.js";
 
 // ============================================================
 // 1. 查询画像：把自然语言查询拆成「核心实体 + 意图修饰词」
@@ -394,39 +395,8 @@ export function buildQueryProfile(query: string): QueryProfile {
 // 2. 域名权威先验
 // ============================================================
 
-/** 官方文档 / 规范仓库 / 学术 —— 最高信任 */
-const TIER1_DOMAINS: RegExp[] = [
-  /(^|\.)github\.io$/,
-  /(^|\.)github\.com$/,
-  /(^|\.)gitlab\.com$/,
-  /(^|\.)readthedocs\.io$/,
-  /(^|\.)developer\.mozilla\.org$/,
-  /(^|\.)kernel\.org$/,
-  /(^|\.)python\.org$/,
-  /(^|\.)rust-lang\.org$/,
-  /(^|\.)golang\.org$/,
-  /(^|\.)nodejs\.org$/,
-  /(^|\.)reactjs\.org$/,
-  /(^|\.)vuejs\.org$/,
-  /(^|\.)microsoft\.com$/,
-  /(^|\.)apple\.com$/,
-  /(^|\.)google\.com$/,
-  /(^|\.)cloud\.google\.com$/,
-  /(^|\.)amazon\.com$/,
-  /(^|\.)arxiv\.org$/,
-  /(^|\.)acm\.org$/,
-  /(^|\.)ieee\.org$/,
-  /(^|\.)nature\.com$/,
-  /(^|\.)science\.org$/,
-  /(^|\.)nih\.gov$/,
-  /(^|\.)who\.int$/,
-  /(^|\.)un\.org$/,
-  /(^|\.)gov$/,
-  /(^|\.)gov\.[a-z]{2}$/,
-  /(^|\.)edu$/,
-  /(^|\.)edu\.[a-z]{2}$/,
-  /(^|\.)ac\.[a-z]{2}$/
-];
+/** 官方文档 / 规范仓库 / 学术 —— 最高信任（统一自 officialDomains.ts） */
+const TIER1_DOMAINS: RegExp[] = OFFICIAL_DOMAIN_PATTERNS;
 
 /** 高质量技术社区 / 权威媒体 */
 const TIER2_DOMAINS: RegExp[] = [
@@ -558,36 +528,143 @@ const DOC_SUBDOMAIN = /^(docs|documentation|developer|developers|api|learn|guide
 /** 官方文档站常见的路径段 */
 const DOC_PATH = /\/docs?\/|\/documentation\/|\/guide\/|\/manual\/|\/reference\/|\/handbook\//i;
 
+/** 常见的非主体域名后缀（顶级域与二级国别后缀） */
+const COMMON_TLD_PARTS = new Set([
+  "com", "org", "net", "edu", "gov", "mil", "int", "io", "dev", "app", "ai", "co",
+  "cn", "com.cn", "org.cn", "net.cn", "gov.cn", "edu.cn", "ac.cn",
+  "uk", "co.uk", "org.uk", "ac.uk",
+  "jp", "co.jp", "ne.jp", "ac.jp",
+  "de", "fr", "ru", "ca", "au", "com.au", "in", "me", "cc", "tv", "xyz", "top", "site", "online", "tech", "info"
+]);
+
+/** 从域名提取主要品牌标（eTLD+1 的核心主干，例如 docs.docker.com -> docker，acme.com -> acme） */
+export function extractMainDomainLabel(host: string): string {
+  if (!host) return "";
+  const clean = host.toLowerCase().replace(/^www\./, "");
+  const parts = clean.split(".");
+  if (parts.length <= 1) return parts[0] || "";
+
+  if (parts.length >= 3) {
+    const twoPartSuffix = `${parts[parts.length - 2]}.${parts[parts.length - 1]}`;
+    if (COMMON_TLD_PARTS.has(twoPartSuffix)) {
+      return parts[parts.length - 3] || "";
+    }
+  }
+  return parts[parts.length - 2] || "";
+}
+
+/** URL 路径深度：根路径 "/" 为 0，单层 "/download" 为 1 */
+export function getUrlPathDepth(urlStr: string): number {
+  try {
+    const u = new URL(urlStr);
+    const segments = u.pathname.split("/").filter(Boolean);
+    return segments.length;
+  } catch {
+    return 99;
+  }
+}
+
+/** 标题或摘要包含官方网站/主页特征词 */
+const OFFICIAL_HOMEPAGE_PATTERN = /(官网|官方网站|官方平台|官方首页|主页|官方主页|\bofficial(\s*(website|site|portal|page|home))?\b|\bhome\s*page\b)/i;
+
+/** 结构化官方权威置信度判定结果 */
+export interface StructuralOfficialStatus {
+  isOfficial: boolean;
+  score: number;
+  reason: string;
+}
+
 /**
- * 查询相关的权威加成 —— 对硬编码域名表的补强。
- *
- * 硬编码表有两个绕不过去的缺陷：
- *   1. **永远录不全**：官方文档站数以万计，`docs.docker.com`、`docs.nginx.com`
- *      这类站点不在表里就拿不到任何权威分，于是被社区博客（在表里的 Tier2）反超；
- *   2. **与查询无关**：`github.com` 对任何查询都 +18，连一个毫不相关的仓库都能靠域名拿分。
- *
- * 这里换一条结构化、且**以查询为主体**的判定：
- *   域名带着官方文档特征（docs. / developer. 子域，或 URL 里带 /docs 路径），
- *   并且域名本身包含了本次查询的主体词 —— 那么它就是「这个主题的官方文档」。
- *
- * 注意「含查询主体词」这个约束是关键：它保证只有**与本次查询相关**的官方站才得分，
- * 不会退化成"只要叫 docs.* 就加分"的新硬编码。
- *
+ * 结构化通用官方网站判定（从纯硬编码白名单升级为通用信号识别）
+ * 结合：域名 eTLD+1 主干比对 + URL 根路径/浅层路径深度 + 官方主页特征词
+ */
+export function detectStructuralOfficial(
+  url: string,
+  host: string,
+  queryCanonicals: string[],
+  title?: string,
+  snippet?: string
+): StructuralOfficialStatus {
+  if (!host || queryCanonicals.length === 0) {
+    return { isOfficial: false, score: 0, reason: "no_host_or_query" };
+  }
+
+  const cleanHost = host.toLowerCase().replace(/^www\./, "");
+  const mainLabel = canonicalizeTerm(extractMainDomainLabel(cleanHost));
+  const hostLabels = cleanHost.split(/[.\-]/).filter(Boolean).map(canonicalizeTerm);
+
+  const isMainBrandMatch = mainLabel.length >= 2 && queryCanonicals.includes(mainLabel);
+  const isAnyLabelMatch = hostLabels.some((label) => label.length >= 3 && queryCanonicals.includes(label));
+
+  if (!isMainBrandMatch && !isAnyLabelMatch) {
+    return { isOfficial: false, score: 0, reason: "brand_mismatch" };
+  }
+
+  const depth = getUrlPathDepth(url);
+  const textCombo = `${title || ""} ${snippet || ""}`;
+  const hasOfficialKeywords = OFFICIAL_HOMEPAGE_PATTERN.test(textCombo);
+  const isDocSubdomain = DOC_SUBDOMAIN.test(cleanHost);
+  const isDocPath = DOC_PATH.test(url);
+
+  // 1. 官方文档站点（如 docs.docker.com, vite.dev/guide/）
+  if (isDocSubdomain || isDocPath) {
+    return {
+      isOfficial: true,
+      score: isDocSubdomain ? 20 : 16,
+      reason: "official_documentation"
+    };
+  }
+
+  // 2. 官方主站/根页面（如 acme.com/ 或 acme.com/zh）
+  if (isMainBrandMatch && depth === 0) {
+    return {
+      isOfficial: true,
+      score: hasOfficialKeywords ? 24 : 18,
+      reason: "official_homepage_root"
+    };
+  }
+
+  // 3. 官方浅层页面（如 acme.com/download）
+  if (isMainBrandMatch && depth === 1) {
+    return {
+      isOfficial: true,
+      score: hasOfficialKeywords ? 18 : 14,
+      reason: "official_shallow_page"
+    };
+  }
+
+  // 4. 标题含官网特征词的域名关联页
+  if (hasOfficialKeywords && depth <= 2) {
+    return {
+      isOfficial: true,
+      score: 12,
+      reason: "official_keyword_match"
+    };
+  }
+
+  return {
+    isOfficial: false,
+    score: isMainBrandMatch ? 8 : 4,
+    reason: "brand_domain_associated"
+  };
+}
+
+/**
+ * 查询相关的权威加成 —— 对硬编码域名表的补强，支持文档站与普通官网首页。
  * @param url 完整 URL（路径信息参与判定）
  * @param host 已小写化的域名
  * @param queryCanonicals 查询的规范词项集合
+ * @param title 页面标题（可选）
+ * @param snippet 页面摘要（可选）
  */
-export function queryScopedAuthority(url: string, host: string, queryCanonicals: string[]): number {
-  if (!host || queryCanonicals.length === 0) return 0;
-
-  // 域名分词后与查询主体求交（docs.docker.com -> [docs, docker, com]）
-  const hostLabels = host.split(/[.\-]/).filter(Boolean);
-  const brandMatches = hostLabels.some((label) => queryCanonicals.includes(canonicalizeTerm(label)));
-  if (!brandMatches) return 0;
-
-  if (DOC_SUBDOMAIN.test(host)) return 18;
-  if (DOC_PATH.test(url)) return 14;
-  return 0;
+export function queryScopedAuthority(
+  url: string,
+  host: string,
+  queryCanonicals: string[],
+  title?: string,
+  snippet?: string
+): number {
+  return detectStructuralOfficial(url, host, queryCanonicals, title, snippet).score;
 }
 
 /**
@@ -1243,27 +1320,31 @@ export function rankAndFilterResultsWithReport(
     // 引擎共识：SearXNG 多引擎同时给出同一 URL
     const engineConsensus = Math.min(1, Math.max(0, (engines.size - 1) / 2));
 
-    // 权威 = 静态域名先验 + 查询相关的结构化加成（见 queryScopedAuthority）
-    const authority = authorityPrior(host) + queryScopedAuthority(result.url, host, queryCanonicals);
+    // 权威 = 静态域名先验 + 查询相关的结构化通用加成（支持官方文档站与普通品牌首页）
+    const structuralOfficial = detectStructuralOfficial(result.url, host, queryCanonicals, result.title, result.snippet);
+    const authority = authorityPrior(host) + structuralOfficial.score;
     const recency = recencyScore(result.publishedDate, recencyWindowDays);
 
-    // 权威门控：域名权威只在条目**确实沾边**时才兑现。
-    // 如果查询明确包含拉丁主体（如 Nginx），候选页完全没有出现该主体（如 Apache），
-    // 绝不能借助 apache.org 的 Tier1 权威白拿权威分。
-    const relevanceGate = latinMissing
+    const isStructuralOfficialMatch = structuralOfficial.isOfficial;
+
+    // 权威门控：若候选被判定为结构化官方网站或命中主品牌域名，即使标题未包含全部词项也予开放门控
+    const relevanceGate = (latinMissing && !isStructuralOfficialMatch)
       ? 0
-      : titleCov.matched.length > 0
+      : (titleCov.matched.length > 0 || isStructuralOfficialMatch)
       ? 1
       : snippetCov.matched.length > 0
       ? 0.4
       : 0;
 
     const hostMatchesQuery =
-      queryScopedAuthority(result.url, host, queryCanonicals) > 0 ||
+      structuralOfficial.score > 0 ||
       profile.terms.some((t) => isLatinTokenLike(t) && host.includes(canonicalizeTerm(t)));
 
-    const officialBonus =
-      !latinMissing && (result.isOfficial || (hostMatchesQuery && anyMatch(host, TIER1_DOMAINS))) && relevanceGate > 0 ? 6 : 0;
+    const isRecognizedOfficial = Boolean(
+      result.isOfficial || isStructuralOfficialMatch || (hostMatchesQuery && anyMatch(host, TIER1_DOMAINS))
+    );
+
+    const officialBonus = (!latinMissing || isStructuralOfficialMatch) && isRecognizedOfficial && relevanceGate > 0 ? 8 : 0;
 
     let score = 0;
     score += titleCov.score * 34;              // 标题是用户第一眼看到的东西（已 IDF 加权）
@@ -1290,21 +1371,27 @@ export function rankAndFilterResultsWithReport(
     // 那条路由就等于白做。此处只**削弱惩罚**，绝不凭空增加相关性。
     const scriptMismatch = profile.isLatin !== isLatinDominated(`${result.title} ${result.snippet || ""}`);
 
+    const isOfficialCandidate = result.isOfficial || isStructuralOfficialMatch;
+
     if (titleRatio === 0 && snippetRatio === 0) {
-      // 标题与摘要都找不到任何查询词迹 —— 基本可判定无关；跨脚本时从宽
-      penalties -= scriptMismatch ? 16 : 45;
+      // 标题与摘要都找不到任何查询词迹：官方主页可能为精炼宣传标语，显著从宽
+      penalties -= isOfficialCandidate ? 6 : (scriptMismatch ? 16 : 45);
     } else if (titleRatio === 0) {
       // 只有摘要沾边：弱相关，按沾边程度分档扣分
-      penalties -= 12 + (1 - snippetRatio) * 10;
+      penalties -= isOfficialCandidate ? 4 : (12 + (1 - snippetRatio) * 10);
     } else {
       // 标题命中不全：跨脚本时若已命中核心词，扣分从宽
       penalties -= scriptMismatch ? (1 - titleRatio) * 6 : (1 - titleRatio) * 14;
     }
 
-    // 主体词门控：当查询含有拉丁主体词时，未命中主体的候选从严惩罚
+    // 主体词门控：当查询含有拉丁主体词时，未命中主体的候选从严惩罚；
+    // 但若域名主干已精确命中主体（如 docker.com 对应 docker），不应扣除 54 分
     if (latinCoverage.total > 0) {
-      if (latinCoverage.ratio === 0) penalties -= 54;
-      else if (latinCoverage.ratio < 0.5) penalties -= 12;
+      if (latinCoverage.ratio === 0) {
+        penalties -= (hostMatchesQuery || isOfficialCandidate) ? 8 : 54;
+      } else if (latinCoverage.ratio < 0.5) {
+        penalties -= 12;
+      }
     }
 
     // 概念定义意图与内容侧对齐：
@@ -1340,8 +1427,13 @@ export function rankAndFilterResultsWithReport(
     if (authority < 0) reasons.push("低质聚合站已降权");
     if (authority >= 18 && relevanceGate < 1) reasons.push("权威域名但与查询关联不足，已削弱其权重");
 
+    const shouldMarkOfficial = Boolean(
+      result.isOfficial || (isStructuralOfficialMatch && relevanceGate > 0)
+    );
+
     scored.push({
       ...result,
+      isOfficial: shouldMarkOfficial,
       score: relevanceScore,
       relevanceScore,
       matchedTerms: matchedRaw,

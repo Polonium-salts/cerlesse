@@ -44,6 +44,7 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
 
   return (
     <IOSWidget
+      id="sources"
       title="信源溯源存证"
       icon={<ShieldCheck className="size-4 text-emerald-500" />}
       badge={
@@ -51,6 +52,7 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
           {isEmpty ? "待交叉核验" : `${verifiedSources.length} 条已核验信源`}
         </span>
       }
+      ratioMode="flexible"
       className="w-full h-full border-border/80 bg-card"
       contentClassName="p-1 flex flex-col gap-3"
     >
@@ -64,7 +66,7 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-2.5 overflow-y-auto max-h-[460px] pr-1">
+        <div className="grid grid-cols-1 gap-2.5">
           {verifiedSources.map((source, index) => {
             const cleanTitle = (source.title || "未知标题").replace(/<[^>]*>/g, "").trim();
             const cleanSnippet = (source.snippet || "").replace(/<[^>]*>/g, "").trim();

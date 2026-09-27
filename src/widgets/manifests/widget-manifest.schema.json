@@ -123,6 +123,14 @@
           "type": "integer",
           "enum": [25, 50, 75, 100],
           "description": "可选。允许求解器收窄到的最小占宽百分比。缺省时沿用通用规则「最多收窄一档」；内容密集的插件可声明此值，表示宁可有空洞也不许压到这个宽度以下。"
+        },
+        "itemHeightPx": {
+          "type": "number",
+          "description": "可选：单个内容条目的估算高度（px），与 baseHeightPx 一起用于「按条目数」预估磁贴高度，在 ResizeObserver 实测值到达前作为首帧占位高度，避免布局跳变。"
+        },
+        "baseHeightPx": {
+          "type": "number",
+          "description": "可选：与 itemHeightPx 搭配使用，表示除条目列表外的固定开销高度（标题栏、内边距等）。"
         }
       }
     },

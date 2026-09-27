@@ -128,7 +128,9 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
       )}
 
       <div
-        className={`flex-1 min-h-0 overflow-y-auto ${
+        className={`${
+          ratioMode === "strict" ? "flex-1 min-h-0 overflow-y-auto" : "flex-1"
+        } ${
           PADDING_CLASSES[effectivePadding]
         } ${contentClassName}`}
       >

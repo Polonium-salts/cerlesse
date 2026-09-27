@@ -208,4 +208,36 @@ describe("Ratio Drift Root Causes & Solutions Tests", () => {
     assert.ok(linksTile);
     assert.equal(linksTile.widthPercent, 75, "User override width (75%) should be preserved by layout tool");
   });
+
+  it("enforces related_links flexible height scaling with content count while width remains fixed", () => {
+    // 基础调用：无内容高度回填
+    const baseSolution = solveTileLayout([{
+      id: "related_links",
+      size: 50
+    }], { totalColumns: 12, containerWidth: 1200 });
+
+    // 预估高度生效测试 (通过 estimatedHeightPx)
+    const estimatedSolution = solveTileLayout([{
+      id: "related_links",
+      size: 50,
+      estimatedHeightPx: 608 // 56 + 6 * 92
+    }], { totalColumns: 12, containerWidth: 1200 });
+
+    // 实测高度生效测试 (通过 contentHeightPx)
+    const measuredSolution = solveTileLayout([{
+      id: "related_links",
+      size: 50,
+      contentHeightPx: 750
+    }], { totalColumns: 12, containerWidth: 1200 });
+
+    // 验证宽度均恒定保持在 50%（6列宽）
+    assert.equal(baseSolution.items[0].w, 6);
+    assert.equal(estimatedSolution.items[0].w, 6);
+    assert.equal(measuredSolution.items[0].w, 6);
+
+    // 验证高度随内容递增长高，且实测优先于比例基准
+    assert.ok(estimatedSolution.items[0].pixelHeight >= 608);
+    assert.ok(measuredSolution.items[0].pixelHeight >= 750);
+    assert.ok(measuredSolution.items[0].pixelHeight > baseSolution.items[0].pixelHeight);
+  });
 });

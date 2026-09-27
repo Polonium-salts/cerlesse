@@ -6,7 +6,11 @@ import { collectWebSearchResults, WEB_SEARCH_MAX_SEARXNG_INSTANCES, WEB_SEARCH_R
 // Active, responsive SearXNG instances verified for JSON output
 const VERIFIED_SEARXNG_INSTANCES = [
   "https://search.mectov.my.id",
-  "https://baresearch.org"
+  "https://baresearch.org",
+  "https://searx.be",
+  "https://search.ononoki.org",
+  "https://searx.perennialte.ch",
+  "https://priv.au"
 ];
 
 /**
@@ -44,8 +48,11 @@ function configuredInstanceUrls(customUrl?: string, env?: Record<string, string 
 }
 
 // In-memory blacklist of instances that recently failed with 403/429/timeout/crash
-const deadInstances = new Map<string, number>();
-const DEAD_INSTANCE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+interface DeadInstanceRecord {
+  deadUntil: number;
+  failureCount: number;
+}
+const deadInstances = new Map<string, DeadInstanceRecord>();
 
 interface InstanceStat {
   latencyMs: number;
@@ -57,22 +64,32 @@ const instanceStats = new Map<string, InstanceStat>();
 function markInstanceDead(url: string) {
   try {
     const origin = new URL(url).origin;
-    deadInstances.set(origin, Date.now());
+    const existing = deadInstances.get(origin);
+    const count = (existing?.failureCount || 0) + 1;
+    // 指数退避：首次失败 2 分钟，二次失败 5 分钟，三次及以上 15 分钟
+    const ttlMs = count === 1 ? 2 * 60 * 1000 : count === 2 ? 5 * 60 * 1000 : 15 * 60 * 1000;
+    deadInstances.set(origin, {
+      deadUntil: Date.now() + ttlMs,
+      failureCount: count
+    });
     const stat = instanceStats.get(origin) || { latencyMs: 2000, successes: 0, failures: 0 };
     stat.failures++;
-    stat.latencyMs = Math.min(3000, stat.latencyMs + 500);
+    stat.latencyMs = Math.min(3000, stat.latencyMs + 400);
     instanceStats.set(origin, stat);
   } catch {
-    deadInstances.set(url, Date.now());
+    deadInstances.set(url, {
+      deadUntil: Date.now() + 5 * 60 * 1000,
+      failureCount: 1
+    });
   }
 }
 
 function isInstanceDead(url: string): boolean {
   try {
     const origin = new URL(url).origin;
-    const failedAt = deadInstances.get(origin);
-    if (!failedAt) return false;
-    if (Date.now() - failedAt > DEAD_INSTANCE_TTL_MS) {
+    const record = deadInstances.get(origin);
+    if (!record) return false;
+    if (Date.now() > record.deadUntil) {
       deadInstances.delete(origin);
       return false;
     }
@@ -195,6 +212,9 @@ export function decodeBingUrl(url: string): string {
   return url;
 }
 
+/** 默认 SearXNG 单节点请求超时（由 1400ms 提高到 2400ms，提升长尾公网节点召回率） */
+export const DEFAULT_SEARXNG_TIMEOUT_MS = 2400;
+
 /**
  * Direct web search engine (Bing Web with canonical URL extraction)
  * High reliability, returns authentic websites without requiring third-party bot gateway
@@ -202,7 +222,7 @@ export function decodeBingUrl(url: string): string {
 export async function searchDirectWeb(query: string, langCode?: string): Promise<SearchResult[]> {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2200);
+  const timeoutId = setTimeout(() => controller.abort(), 2400);
 
   const acceptLang = acceptLanguageFor(langCode);
 
@@ -221,13 +241,25 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
     const html = await res.text();
     const results: SearchResult[] = [];
 
-    const blocks = html.split(/<li[^>]*class="[^"]*b_algo/);
+    // 多重选择器兜底解析
+    let blocks = html.split(/<li[^>]*class="[^"]*(?:b_algo|b_ans)/i);
+    if (blocks.length <= 1) {
+      // 备用分块规则：按普通结果项或标题块分段
+      const secondaryMatches = html.match(/<li[^>]*class="[^"]*b_[^"]*"[^>]*>[\s\S]*?<\/li>/gi);
+      if (secondaryMatches && secondaryMatches.length > 0) {
+        blocks = ["", ...secondaryMatches];
+      }
+    }
+
     for (let i = 1; i < blocks.length; i++) {
       const block = blocks[i];
-      const linkMatch = block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>/i);
+      const linkMatch =
+        block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>/i) ||
+        block.match(/<a[^>]*href="([^"]+)"[^>]*><h2[^>]*>([\s\S]*?)<\/h2><\/a>/i);
       const snippetMatch =
         block.match(/<p[^>]*class="[^"]*b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
         block.match(/<div[^>]*class="[^"]*b_caption"[^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i) ||
+        block.match(/<div[^>]*class="[^"]*b_snippet"[^>]*>([\s\S]*?)<\/div>/i) ||
         block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
 
       if (linkMatch) {
@@ -258,6 +290,10 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
       if (results.length >= 20) break;
     }
 
+    if (results.length === 0 && html.length > 500) {
+      console.warn(`[searchDirectWeb] Bing HTML returned ${html.length} bytes but parsed 0 results for query: "${query}"`);
+    }
+
     return results;
   } catch {
     clearTimeout(timeoutId);
@@ -277,7 +313,7 @@ async function fetchSearxngResults(
   query: string,
   categories: string,
   langCode?: string,
-  timeoutMs = 1400,
+  timeoutMs = DEFAULT_SEARXNG_TIMEOUT_MS,
   page?: number
 ): Promise<any[] | null> {
   const url = new URL(`${instance}/search`);
@@ -344,7 +380,7 @@ async function fetchSearxngResults(
  * 单实例网页检索：把 SearXNG 的 general 结果映射为 SearchResult
  */
 async function searchSingleSearxng(instance: string, query: string, langCode?: string, page?: number): Promise<SearchResult[]> {
-  const items = await fetchSearxngResults(instance, query, "general", langCode, 1400, page);
+  const items = await fetchSearxngResults(instance, query, "general", langCode, DEFAULT_SEARXNG_TIMEOUT_MS, page);
   if (!items) return [];
 
   const mapped: SearchResult[] = [];

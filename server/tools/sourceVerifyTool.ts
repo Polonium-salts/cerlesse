@@ -1,34 +1,20 @@
 import { SearchResult } from "../../src/types.js";
-
-const OFFICIAL_DOMAINS = new Set([
-  "github.com", "mozilla.org", "microsoft.com", "google.com", "apple.com",
-  "python.org", "nodejs.org", "react.dev", "vuejs.org", "developer.apple.com",
-  "kubernetes.io", "docker.com", "apache.org", "linuxfoundation.org", "go.dev",
-  "rust-lang.org", "w3.org", "ietf.org", "ecma-international.org"
-]);
-
-const TIER2_DOMAINS = new Set([
-  "stackoverflow.com", "developer.mozilla.org", "medium.com", "dev.to",
-  "wikipedia.org", "arxiv.org", "infoq.cn", "juejin.cn", "v2ex.com"
-]);
-
-const SPAM_DOMAINS = new Set([
-  "baidu.com", "csdn.net", "360.cn", "toutiao.com"
-]);
+import {
+  isCanonicalOfficialDomain,
+  isCanonicalTier2Domain,
+  isCanonicalLowQualityDomain
+} from "../officialDomains.js";
 
 export function isOfficialDomain(host: string): boolean {
-  const h = host.toLowerCase().replace(/^www\./, "");
-  return OFFICIAL_DOMAINS.has(h) || h.endsWith(".gov") || h.endsWith(".edu");
+  return isCanonicalOfficialDomain(host);
 }
 
 export function isTier2Domain(host: string): boolean {
-  const h = host.toLowerCase().replace(/^www\./, "");
-  return TIER2_DOMAINS.has(h);
+  return isCanonicalTier2Domain(host);
 }
 
 export function isSpamDomain(host: string): boolean {
-  const h = host.toLowerCase().replace(/^www\./, "");
-  return SPAM_DOMAINS.has(h);
+  return isCanonicalLowQualityDomain(host);
 }
 
 export interface SourceVerifyInput {

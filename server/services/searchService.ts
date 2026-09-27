@@ -60,7 +60,6 @@ export async function executeWebSearch(
   ], {
     query,
     limit: options.limit ?? 12,
-    maxPerDomain: 2,
     recencyWindowDays: options.recencyDays,
     allowEncyclopedia: /维基|wikipedia|百科/i.test(query),
     filters: options.domains && options.domains.length > 0

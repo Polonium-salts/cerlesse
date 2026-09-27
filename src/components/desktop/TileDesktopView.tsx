@@ -24,7 +24,7 @@ import {
   tileWidthFromPlannedSize,
   spanOfTileWidth
 } from "../../lib/tileLayoutEngine.js";
-import { MANIFEST_MIN_WIDTHS } from "../../widgets/manifests/index.js";
+import { MANIFEST_MIN_WIDTHS, MANIFEST_ITEM_HEIGHTS } from "../../widgets/manifests/index.js";
 import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetRuntime } from "../../widgets/runtime.js";
 import { resolveDynamicCapabilityWidgets } from "../../lib/adaptiveLayout.js";
@@ -256,6 +256,22 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
 
       const measuredHeight = contentHeights[keyStr];
 
+      // 首帧高度预估（若小组件提供了 estimateItemCount 且配置了 itemHeightPx，在实测值到达前作为占位高度）
+      let estimatedHeightPx: number | undefined;
+      const itemHeightConfig = MANIFEST_ITEM_HEIGHTS[keyStr];
+      const itemHeightPx = module?.itemHeightPx ?? itemHeightConfig?.itemHeightPx;
+      const baseHeightPx = module?.baseHeightPx ?? itemHeightConfig?.baseHeightPx ?? 56;
+      if (itemHeightPx && typeof module?.estimateItemCount === "function") {
+        try {
+          const count = module.estimateItemCount(null, activeResult);
+          if (typeof count === "number" && count > 0) {
+            estimatedHeightPx = baseHeightPx + count * itemHeightPx;
+          }
+        } catch {
+          // ignore estimation error and fallback
+        }
+      }
+
       inputs.push({
         id: keyStr,
         size,
@@ -266,6 +282,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         priority,
         isEmphasized,
         contentHeightPx: measuredHeight,
+        estimatedHeightPx,
         minSpan: keyStr === "image_gallery" ? spanOfTileWidth(75, activeColumns) : minSpanFor(keyStr, size)
       });
     }

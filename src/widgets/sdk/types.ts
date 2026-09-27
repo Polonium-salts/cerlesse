@@ -299,6 +299,13 @@ export interface WidgetModule<TData = any> {
   ratioMode?: TileRatioMode;
   ratioByBreakpoint?: Partial<Record<Breakpoint, TileRatio>>;
   
+  /** 可选：单个内容条目的估算高度（px），用于首帧高度预估避免跳变 */
+  itemHeightPx?: number;
+  /** 可选：除条目列表外的固定开销高度（px） */
+  baseHeightPx?: number;
+  /** 可选：返回当前数据对应的"内容条目数"，供 itemHeightPx 公式估算首帧高度 */
+  estimateItemCount?: (data: TData, activeResult?: SearchSynthesisResult) => number;
+  
   // 磁贴主题与动效规范
   tileTheme?: TileThemeConfig;
 

@@ -12,6 +12,9 @@ import { manifestMeta } from "../manifests/moduleMeta.js";
  */
 export const takeawaysModule: WidgetModule<TakeawaysData> = {
   ...manifestMeta("takeaways"),
+  estimateItemCount: (data, activeResult) => {
+    return data?.items?.length || activeResult?.keyTakeaways?.length || 0;
+  },
   data: (activeResult) => buildTakeawaysData(activeResult),
   render: (ctx) => (
     <TakeawaysWidget

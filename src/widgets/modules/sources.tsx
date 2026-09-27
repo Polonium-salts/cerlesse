@@ -8,6 +8,13 @@ import { manifestMeta } from "../manifests/moduleMeta.js";
  */
 export const sourcesModule: WidgetModule = {
   ...manifestMeta("sources"),
+  estimateItemCount: (data, activeResult) => {
+    if (data?.sources && Array.isArray(data.sources)) {
+      return data.sources.length;
+    }
+    const list = activeResult?.sources || activeResult?.filteredResults || [];
+    return list.length;
+  },
   render: (ctx) => {
     return (
       <SourcesWidget

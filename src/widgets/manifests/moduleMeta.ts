@@ -29,6 +29,11 @@ export type WidgetModuleMeta = Pick<
   | "icon"
   | "width"
   | "supportedWidths"
+  | "ratio"
+  | "ratioMode"
+  | "ratioByBreakpoint"
+  | "itemHeightPx"
+  | "baseHeightPx"
   | "tileTheme"
 >;
 
@@ -44,9 +49,14 @@ export function manifestToModuleMeta(manifest: WidgetManifest): WidgetModuleMeta
     tags: manifest.tags,
     agentHint: manifest.agentHint,
     icon: resolveManifestIcon(manifest.icon),
-    // 宽度档位的唯一事实来源就是清单的 grid 段
+    // 宽度档位与比例规格的唯一事实来源就是清单的 grid 段
     width: manifest.grid.width,
     supportedWidths: manifest.grid.supportedWidths,
+    ratio: manifest.grid.ratio,
+    ratioMode: manifest.grid.ratioMode,
+    ratioByBreakpoint: manifest.grid.ratioByBreakpoint,
+    itemHeightPx: manifest.grid.itemHeightPx,
+    baseHeightPx: manifest.grid.baseHeightPx,
     tileTheme: manifest.theme
   };
 }

@@ -502,6 +502,11 @@ export interface TileLayoutInput {
    */
   contentHeightPx?: number;
   /**
+   * 预估内容所需高度（像素）。基于条目数等公式在渲染前计算出的首帧高度，
+   * 在 ResizeObserver 实测值到达前作为占位高度，消除首帧跳变。
+   */
+  estimatedHeightPx?: number;
+  /**
    * 优先排版侧偏好（用于 75%+25% 互补配对时指定 25% 置于左侧还是右侧）
    */
   preferredSide?: "left" | "right";
@@ -837,6 +842,8 @@ export function solveTileLayout(
       naturalHeight =
         input.contentHeightPx && input.contentHeightPx > 0
           ? Math.max(baseHeight, input.contentHeightPx)
+          : input.estimatedHeightPx && input.estimatedHeightPx > 0
+          ? Math.max(baseHeight, input.estimatedHeightPx)
           : baseHeight;
     } else if (input.id === "image_gallery") {
       // 图片墙高度由图片网格与底部操作栏决定，不能被 75% 宽度的比例高度撑出空白。
@@ -844,12 +851,18 @@ export function solveTileLayout(
       naturalHeight =
         input.contentHeightPx && input.contentHeightPx > 0
           ? Math.max(baseHeight, input.contentHeightPx)
+          : input.estimatedHeightPx && input.estimatedHeightPx > 0
+          ? Math.max(baseHeight, input.estimatedHeightPx)
           : baseHeight;
     } else {
+      const fallbackHeight =
+        input.estimatedHeightPx && input.estimatedHeightPx > 0
+          ? Math.max(ratioHeightPx, input.estimatedHeightPx)
+          : ratioHeightPx;
       naturalHeight =
         input.contentHeightPx && input.contentHeightPx > 0
           ? Math.max(ratioHeightPx, input.contentHeightPx)
-          : ratioHeightPx;
+          : fallbackHeight;
     }
 
     // 同行等高平齐对齐：若同排提供了统一对齐高度 targetHeightPx，则延展至统一下沿。
@@ -1001,16 +1014,24 @@ export function solveTileLayout(
       const baseHeight = 230;
       naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
         ? Math.max(baseHeight, t.contentHeightPx)
+        : t.estimatedHeightPx && t.estimatedHeightPx > 0
+        ? Math.max(baseHeight, t.estimatedHeightPx)
         : baseHeight;
     } else if (t.id === "image_gallery") {
       const baseHeight = 260;
       naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
         ? Math.max(baseHeight, t.contentHeightPx)
+        : t.estimatedHeightPx && t.estimatedHeightPx > 0
+        ? Math.max(baseHeight, t.estimatedHeightPx)
         : baseHeight;
     } else {
+      const fallbackHeight =
+        t.estimatedHeightPx && t.estimatedHeightPx > 0
+          ? Math.max(ratioHeightPx, t.estimatedHeightPx)
+          : ratioHeightPx;
       naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
         ? Math.max(ratioHeightPx, t.contentHeightPx)
-        : ratioHeightPx;
+        : fallbackHeight;
     }
     const pixelHeight = Math.round(naturalHeight);
 

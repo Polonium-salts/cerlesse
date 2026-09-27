@@ -412,3 +412,33 @@ describe("命中级别判定", () => {
     assert.equal(resolveHitLevel(0, 0), "no_hit", "零证据永远判为 no_hit");
   });
 });
+
+describe("通用结构化官网识别与动态配额验证", () => {
+  it("非 TIER1 白名单的小众品牌裸域名首页能够进入 Top 1 并被标记为官方", () => {
+    const candidatePool: CandidatePool = {
+      source: "test",
+      results: [
+        makeResult({
+          title: "Acme 工具评测与使用体验总结",
+          url: "https://tech-blog.example.com/acme-review",
+          snippet: "Acme 是一个全新的小众开发工具，本文分享实际使用测评与指南。"
+        }),
+        makeResult({
+          title: "Acme - Official Site | The Next Generation Tool",
+          url: "https://acme.org/",
+          snippet: "Welcome to Acme official site. Build faster with our modern developer tools."
+        }),
+        makeResult({
+          title: "Acme 常见问题汇总与报错解决方案",
+          url: "https://forum.example.com/topic/123",
+          snippet: "社区收集整理的 Acme 常见报错排查与安装避坑指南说明。"
+        })
+      ]
+    };
+
+    const { results } = rankSearchPools([candidatePool], { query: "Acme 官网", limit: 5 });
+    assert.ok(results.length > 0);
+    assert.equal(results[0].url, "https://acme.org/");
+    assert.equal(results[0].isOfficial, true);
+  });
+});
