@@ -1,5 +1,48 @@
-// EdgeOne Cloud Functions 别名路由：/api/agent/layout -> 小组件排版 Agent
-// 与 /api/layout/plan 共用同一实现，便于不同调用方按语义选择入口。
-import { onRequest } from "../layout/plan.js";
-export { onRequest };
+import { PagesFunction, jsonResponse, errorResponse } from "../types.js";
+import { solveLayoutTool } from "../../../server/tools/layoutTool.js";
 
+/**
+ * EdgeOne Cloud Functions 别名路由：/api/agent/layout -> 小组件排版 Agent
+ * 与 /api/layout/plan 功能一致，便于不同调用方按语义选择入口
+ */
+export const onRequest: PagesFunction = async (context) => {
+  if (context.request.method === "OPTIONS") {
+    return jsonResponse({ ok: true });
+  }
+
+  try {
+    if (context.request.method === "GET") {
+      const url = new URL(context.request.url);
+      const widgetsParam = url.searchParams.get("widgets");
+      const targetIds = widgetsParam ? widgetsParam.split(",") : ["ai_answer", "related_links", "takeaways"];
+      const result = solveLayoutTool({ widgetIds: targetIds });
+      return jsonResponse(result);
+    }
+
+    let body: any = {};
+    try {
+      body = await context.request.json();
+    } catch {
+      return errorResponse("无效的 JSON 请求体", 400);
+    }
+
+    const { widgetIds, widgetPlan } = body || {};
+    let targetIds: string[] = [];
+
+    if (Array.isArray(widgetIds)) {
+      targetIds = widgetIds;
+    } else if (widgetPlan?.selectedWidgets) {
+      targetIds = widgetPlan.selectedWidgets.map((w: any) => w.type || w.id);
+    } else if (widgetPlan?.widgetOrder) {
+      targetIds = widgetPlan.widgetOrder;
+    } else {
+      targetIds = ["ai_answer", "related_links", "takeaways"];
+    }
+
+    const result = solveLayoutTool({ widgetIds: targetIds });
+    return jsonResponse(result);
+  } catch (error: any) {
+    console.error("Edge widget layout solve error:", error);
+    return errorResponse(error.message || "小组件排版服务异常", 500);
+  }
+};
