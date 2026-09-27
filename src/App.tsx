@@ -15,6 +15,7 @@ import { TileDesktopView } from "./components/desktop/TileDesktopView.js";
 import { WidgetMarketplaceDrawer } from "./components/desktop/WidgetMarketplaceDrawer.js";
 import { CockpitWorkspace } from "./components/CockpitWorkspace.js";
 import { ImageGalleryPage } from "./components/ImageGalleryPage.js";
+import { ModelSettingsPage } from "./components/ModelSettingsPage.js";
 import { Alert, AlertDescription } from "./components/ui/alert.js";
 import { Button } from "./components/ui/button.js";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs.js";

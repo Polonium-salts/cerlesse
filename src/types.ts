@@ -989,7 +989,7 @@ export interface AiApiModel {
   isRecommended?: boolean;
 }
 
-export type ModelProviderType = "openrouter" | "openai" | "custom" | "none";
+export type ModelProviderType = "deepseek" | "unorouter" | "openrouter" | "openai" | "custom" | "none";
 
 export interface ModelInfo {
   id: string;
@@ -1007,6 +1007,9 @@ export interface ModelProviderStatus {
   models: ModelInfo[];
   defaultModel?: string;
   hasApiKey?: boolean;
+  hasDeepSeekKey?: boolean;
+  hasUnoRouterKey?: boolean;
+  hasOpenRouterKey?: boolean;
   isAiApiDisabled?: boolean;
   hasCustomSearxngUrl?: boolean;
   supportedLanguages?: Record<string, any>;
@@ -1014,6 +1017,11 @@ export interface ModelProviderStatus {
 
 export interface UserSettings {
   selectedModel: string;
+  customApiBaseUrl?: string;
+  customApiKey?: string;
+  customProvider?: string;
+  temperature?: number;
+  maxIterations?: number;
   searxngCustomUrl: string;
   language: string;
   maxResults: number;

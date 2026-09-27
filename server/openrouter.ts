@@ -1,47 +1,38 @@
 /**
- * OpenRouter 兼容层模块
- * 提供对 OpenRouter 供应商环境变量检测与模型列表的辅助支持
+ * OpenRouter & UnoRouter 网关兼容层
  */
+
+import {
+  GatewayModelDef,
+  isGatewayDisabled,
+  resolveGateway,
+  loadGatewayModels
+} from "./gateway.js";
 
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 
-export interface OpenRouterModelDef {
-  id: string;
-  name: string;
-  description: string;
-  contextLength?: string;
-  pricing?: string;
-  isRecommended?: boolean;
-}
+export type OpenRouterModelDef = GatewayModelDef;
 
 export function isOpenRouterDisabled(
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>
 ): boolean {
-  const source = env || (typeof process !== "undefined" ? process.env : {});
-  return (source as Record<string, string | undefined>).OPENROUTER_DISABLED?.trim().toLowerCase() === "true";
+  return isGatewayDisabled(env);
 }
 
 export function resolveOpenRouterApiKey(
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>
 ): string | undefined {
-  const source = env || (typeof process !== "undefined" ? process.env : {});
-  if (isOpenRouterDisabled(source)) return undefined;
-  const key = (source as Record<string, string | undefined>).OPENROUTER_API_KEY ||
-    (source as Record<string, string | undefined>).OPENROUTER_KEY;
-  if (!key || typeof key !== "string") return undefined;
-  const trimmed = key.trim();
-  if (
-    !trimmed ||
-    trimmed === "undefined" ||
-    trimmed === "null" ||
-    trimmed === "your_api_key_here" ||
-    trimmed === "your_openrouter_api_key_here" ||
-    trimmed.startsWith("your_") ||
-    trimmed.length < 8
-  ) {
-    return undefined;
+  const gw = resolveGateway(env);
+  if (gw.provider === "openrouter") {
+    return gw.apiKey;
   }
-  return trimmed;
+  // 兼顾直接读取 OPENROUTER_API_KEY 的场景
+  const source = (env || (typeof process !== "undefined" ? process.env : {})) as Record<string, string | undefined>;
+  const rawKey = source.OPENROUTER_API_KEY || source.OPENROUTER_KEY;
+  if (rawKey && typeof rawKey === "string" && rawKey.trim().length >= 8 && !rawKey.trim().startsWith("your_")) {
+    return rawKey.trim();
+  }
+  return undefined;
 }
 
 export function isOpenRouterEnabled(
@@ -51,16 +42,8 @@ export function isOpenRouterEnabled(
 }
 
 export async function loadAvailableFreeModels(
-  _env?: NodeJS.ProcessEnv | Record<string, string | undefined>
+  env?: NodeJS.ProcessEnv | Record<string, string | undefined>
 ): Promise<OpenRouterModelDef[]> {
-  return [
-    {
-      id: "openrouter/free",
-      name: "OpenRouter Free Router",
-      description: "OpenRouter 自动调度免费模型池",
-      contextLength: "128k",
-      pricing: "Free",
-      isRecommended: true
-    }
-  ];
+  const gw = resolveGateway(env);
+  return loadGatewayModels(gw);
 }

@@ -13,9 +13,17 @@ import {
   isOpenRouterEnabled,
   loadAvailableFreeModels
 } from "./openrouter.js";
+import {
+  resolveGateway,
+  isGatewayDisabled,
+  loadGatewayModels,
+  GATEWAY_REGISTRY,
+  ResolvedGateway
+} from "./gateway.js";
 
 export * from "./deepseek.js";
 export * from "./openrouter.js";
+export * from "./gateway.js";
 
 // Canonical base URL. The llmkit OpenAI provider appends /v1/chat/completions
 // itself, so the base is the origin only. /v1 or /chat/completions suffixes in
@@ -35,11 +43,11 @@ export interface AiApiModel {
   name: string;
   description: string;
   contextLength: string;
-  pricing: "Unknown";
+  pricing: "Unknown" | string;
   isRecommended?: boolean;
 }
 
-export type ModelProviderType = "deepseek" | "openrouter" | "openai" | "custom" | "none";
+export type ModelProviderType = "deepseek" | "unorouter" | "openrouter" | "openai" | "custom" | "none";
 
 export interface ModelInfo {
   id: string;
@@ -59,6 +67,7 @@ export interface ModelProviderStatus {
   hasApiKey: boolean;
   hasDeepSeekKey?: boolean;
   hasOpenRouterKey?: boolean;
+  hasUnoRouterKey?: boolean;
   isAiApiDisabled: boolean;
 }
 
@@ -85,6 +94,7 @@ function isValidKeyString(key?: string): boolean {
     trimmed !== "your_api_key_here" &&
     trimmed !== "your_openai_api_key_here" &&
     trimmed !== "your_openrouter_api_key_here" &&
+    trimmed !== "your_unorouter_api_key_here" &&
     !trimmed.startsWith("your_") &&
     trimmed.length >= 8
   );
@@ -92,24 +102,36 @@ function isValidKeyString(key?: string): boolean {
 
 export function isAiApiDisabled(env?: Record<string, string | undefined>): boolean {
   const source = environment(env);
-  return source.AI_API_DISABLED?.trim().toLowerCase() === "true" ||
-    source.OPENROUTER_DISABLED?.trim().toLowerCase() === "true";
+  return isGatewayDisabled(source);
 }
 
 export function resolveAiApiKey(env?: Record<string, string | undefined>): string | undefined {
   const source = environment(env);
   if (isAiApiDisabled(source)) return undefined;
+
+  // 1. 显式配置的通用 AI_API_KEY 优先
   if (isValidKeyString(source.AI_API_KEY)) {
     return source.AI_API_KEY!.trim();
   }
+
+  // 2. 独立直连 DeepSeek 官方
   const deepseekKey = resolveDeepSeekApiKey(source);
   if (deepseekKey) {
     return deepseekKey;
   }
+
+  // 3. 聚合网关 (UnoRouter / OpenRouter)
+  const gateway = resolveGateway(source);
+  if (gateway.apiKey) {
+    return gateway.apiKey;
+  }
+
+  // 4. 兼容直接读取旧变量
   const openrouterKey = resolveOpenRouterApiKey(source);
   if (openrouterKey) {
     return openrouterKey;
   }
+
   return undefined;
 }
 
@@ -117,13 +139,11 @@ function isDeepSeekConfig(source: Record<string, string | undefined>): boolean {
   if (Boolean(resolveDeepSeekApiKey(source))) return true;
   const base = source.AI_API_BASE_URL?.toLowerCase() || "";
   const model = source.AI_MODEL?.toLowerCase() || "";
+  // 排除带网关前缀（例如 unorouter 的 deepseek/deepseek-v4-flash）的场景
+  if (model.includes("/") || base.includes("unorouter.com") || base.includes("openrouter.ai")) {
+    return false;
+  }
   return base.includes("deepseek.com") || model.startsWith("deepseek-");
-}
-
-function legacyOpenRouterConfig(source: Record<string, string | undefined>): boolean {
-  return !source.AI_API_BASE_URL?.trim() &&
-    !source.AI_API_KEY?.trim() &&
-    Boolean(source.OPENROUTER_API_KEY?.trim() || source.OPENROUTER_KEY?.trim());
 }
 
 function normalizeBaseUrl(raw: string): string {
@@ -148,11 +168,22 @@ function normalizeBaseUrl(raw: string): string {
 export function getAiApiConfig(env?: Record<string, string | undefined>): AiApiConfig {
   const source = environment(env);
   const usingDeepSeek = isDeepSeekConfig(source);
-  const usingLegacyOpenRouter = !usingDeepSeek && legacyOpenRouterConfig(source);
-  const configuredBase = source.AI_API_BASE_URL?.trim() ||
-    (usingDeepSeek ? DEEPSEEK_BASE_URL : (usingLegacyOpenRouter ? "https://openrouter.ai/api" : DEFAULT_AI_API_BASE_URL));
-  const configuredModel = source.AI_MODEL?.trim() ||
-    (usingDeepSeek ? "deepseek-v4-flash" : (usingLegacyOpenRouter ? "openrouter/free" : DEFAULT_AI_MODEL));
+  const gateway = resolveGateway(source);
+
+  let defaultBase = DEFAULT_AI_API_BASE_URL;
+  let defaultModel = DEFAULT_AI_MODEL;
+
+  if (usingDeepSeek) {
+    defaultBase = DEEPSEEK_BASE_URL;
+    defaultModel = "deepseek-v4-flash";
+  } else if (gateway.provider !== "none") {
+    defaultBase = gateway.baseUrl || DEFAULT_AI_API_BASE_URL;
+    defaultModel = gateway.defaultModel || DEFAULT_AI_MODEL;
+  }
+
+  const configuredBase = source.AI_API_BASE_URL?.trim() || defaultBase;
+  const configuredModel = source.AI_MODEL?.trim() || defaultModel;
+
   return {
     apiBaseUrl: normalizeBaseUrl(configuredBase),
     model: configuredModel,
@@ -169,7 +200,7 @@ export function getAiApiClient(env?: Record<string, string | undefined>): Client
   }
   const apiKey = resolveAiApiKey(source);
   if (!apiKey) {
-    throw new LlmProviderError("未配置有效的 AI_API_KEY 或 DEEPSEEK_API_KEY。", "missing_api_key", 503);
+    throw new LlmProviderError("未配置有效的 AI_API_KEY、UNOROUTER_API_KEY 或 DEEPSEEK_API_KEY。", "missing_api_key", 503);
   }
   const config = getAiApiConfig(source);
   return openai(apiKey).baseURL(config.apiBaseUrl);
@@ -195,8 +226,9 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
   const disabled = isAiApiDisabled(source);
   const deepseekKey = resolveDeepSeekApiKey(source);
   const deepseekReady = !disabled && Boolean(deepseekKey);
-  const openrouterKey = resolveOpenRouterApiKey(source);
-  const openRouterReady = !disabled && !isOpenRouterDisabled(source) && Boolean(openrouterKey);
+  const gateway = resolveGateway(source);
+  const unoRouterReady = !disabled && gateway.provider === "unorouter";
+  const openRouterReady = !disabled && (gateway.provider === "openrouter" || Boolean(resolveOpenRouterApiKey(source)));
   const apiKey = resolveAiApiKey(source);
   const hasKey = Boolean(apiKey);
 
@@ -204,12 +236,13 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
     return {
       provider: "none",
       ready: false,
-      reason: "模型提供商已禁用 (AI_API_DISABLED/OPENROUTER_DISABLED=true)",
+      reason: "模型提供商已禁用 (AI_API_DISABLED/OPENROUTER_DISABLED/GATEWAY_DISABLED=true)",
       models: [],
       defaultModel: undefined,
       hasApiKey: hasKey,
       hasDeepSeekKey: deepseekReady,
       hasOpenRouterKey: openRouterReady,
+      hasUnoRouterKey: unoRouterReady,
       isAiApiDisabled: true
     };
   }
@@ -218,12 +251,13 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
     return {
       provider: "none",
       ready: false,
-      reason: "未配置 API Key，请在 .env 中设置 DEEPSEEK_API_KEY (或 AI_API_KEY / OPENROUTER_API_KEY)",
+      reason: "未配置 API Key，请在 .env 中设置 UNOROUTER_API_KEY、DEEPSEEK_API_KEY 或 AI_API_KEY",
       models: [],
       defaultModel: undefined,
       hasApiKey: false,
       hasDeepSeekKey: false,
       hasOpenRouterKey: false,
+      hasUnoRouterKey: false,
       isAiApiDisabled: false
     };
   }
@@ -231,9 +265,12 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
   const config = getAiApiConfig(source);
   let providerType: ModelProviderType = "custom";
   const urlLower = config.apiBaseUrl.toLowerCase();
-  if (deepseekReady || urlLower.includes("deepseek.com") || config.model.toLowerCase().startsWith("deepseek-")) {
+
+  if (deepseekReady || (urlLower.includes("deepseek.com") && !urlLower.includes("unorouter") && !urlLower.includes("openrouter"))) {
     providerType = "deepseek";
-  } else if (urlLower.includes("openrouter.ai") || apiKey?.startsWith("sk-or-") || Boolean(source.OPENROUTER_API_KEY && !source.AI_API_BASE_URL)) {
+  } else if (gateway.provider === "unorouter" || urlLower.includes("unorouter.com")) {
+    providerType = "unorouter";
+  } else if (gateway.provider === "openrouter" || urlLower.includes("openrouter.ai") || apiKey?.startsWith("sk-or-")) {
     providerType = "openrouter";
   } else if (urlLower.includes("api.openai.com")) {
     providerType = "openai";
@@ -259,6 +296,62 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
         isRecommended: true
       });
     }
+  } else if (providerType === "unorouter") {
+    models = [
+      {
+        id: "deepseek/deepseek-v4-flash",
+        name: "DeepSeek V4 Flash",
+        description: "UnoRouter 免费/快速调度模型",
+        contextLength: "128k",
+        pricing: "Free / Standard",
+        isRecommended: true
+      },
+      {
+        id: "meta-llama/llama-3.3-70b-instruct",
+        name: "Llama 3.3 70B Instruct",
+        description: "Meta 高性能开源大模型",
+        contextLength: "128k",
+        pricing: "Pay-as-you-go"
+      },
+      {
+        id: "google/gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        description: "Google 轻量级多模态高速模型",
+        contextLength: "1,000k",
+        pricing: "Pay-as-you-go"
+      }
+    ];
+    if (!models.some((m) => m.id === config.model)) {
+      models.unshift({
+        id: config.model,
+        name: config.model,
+        description: `UnoRouter 自定义模型 (${config.model})`,
+        contextLength: "128k",
+        pricing: "Gateway",
+        isRecommended: true
+      });
+    }
+  } else if (providerType === "openrouter") {
+    models = [
+      {
+        id: "openrouter/free",
+        name: "OpenRouter Free Router",
+        description: "OpenRouter 自动调度免费模型池",
+        contextLength: "128k",
+        pricing: "Free",
+        isRecommended: true
+      }
+    ];
+    if (!models.some((m) => m.id === config.model)) {
+      models.unshift({
+        id: config.model,
+        name: config.model,
+        description: `OpenRouter 自定义模型 (${config.model})`,
+        contextLength: "128k",
+        pricing: "Gateway",
+        isRecommended: true
+      });
+    }
   } else {
     models = [{
       id: config.model,
@@ -278,6 +371,7 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
     hasApiKey: true,
     hasDeepSeekKey: deepseekReady,
     hasOpenRouterKey: openRouterReady,
+    hasUnoRouterKey: unoRouterReady,
     isAiApiDisabled: false
   };
 }
@@ -408,6 +502,17 @@ export function loadAvailableModels(env?: Record<string, string | undefined>): A
       isRecommended: m.isRecommended ?? (m.id === "deepseek-v4-flash")
     }));
   }
+  const status = resolveModelProvider(env);
+  if (status.ready && status.models && status.models.length > 0) {
+    return status.models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      contextLength: m.contextLength || "128k",
+      pricing: m.pricing || "Unknown",
+      isRecommended: m.isRecommended
+    }));
+  }
   return [{
     id: config.model,
     name: config.model,
@@ -417,4 +522,3 @@ export function loadAvailableModels(env?: Record<string, string | undefined>): A
     isRecommended: true
   }];
 }
-
