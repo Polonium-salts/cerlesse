@@ -309,6 +309,36 @@ body {
    ========================================================================== */
 
 /* ==========================================================================
+   移动端与安全区适配令牌与工具类 (Mobile Safe Area Insets)
+   ========================================================================== */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
+.bottom-fixed-bar {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+.pt-safe {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+}
+
+.pb-safe {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+.pl-safe {
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+}
+
+.pr-safe {
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+/* ==========================================================================
    Muuri 磁贴系统动画与拖拽样式规范
    ========================================================================== */
 .muuri-grid {
@@ -319,13 +349,20 @@ body {
   position: absolute;
   display: block;
   z-index: 1;
-  touch-action: none;
-  user-select: none;
+  touch-action: pan-y; /* 保证触屏设备上下滑动正常滚动页面，避免被手势拦截 */
+  -webkit-touch-callout: none;
+}
+
+@media (pointer: fine) {
+  .muuri-tile-item {
+    user-select: none;
+  }
 }
 
 .muuri-tile-item.muuri-item-dragging {
   z-index: 50 !important;
   cursor: grabbing !important;
+  touch-action: none;
   opacity: 0.95;
   transform: scale(1.02);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
@@ -348,5 +385,20 @@ body {
 
 .muuri-drag-handle {
   touch-action: none;
+}
+
+/* 触屏设备上操作把手常驻半透明显示，无需 hover 触发 */
+@media (pointer: coarse), (hover: none) {
+  .mobile-touch-action-bar,
+  .group .muuri-drag-handle,
+  .group button[title*="切换至"],
+  .group button[title*="卸载此磁贴"] {
+    opacity: 0.75 !important;
+  }
+  .group:active .muuri-drag-handle,
+  .group:active button[title*="切换至"],
+  .group:active button[title*="卸载此磁贴"] {
+    opacity: 1 !important;
+  }
 }
 

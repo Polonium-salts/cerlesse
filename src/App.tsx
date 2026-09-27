@@ -1206,8 +1206,8 @@ export default function App() {
         }}
       />
 
-      {/* 页脚：一行元信息，无装饰 */}
-      <footer className="w-full border-t border-border text-xs text-muted-foreground mt-auto">
+      {/* 页脚：一行元信息，无装饰，带移动端底部安全区适配 */}
+      <footer className="w-full border-t border-border text-xs text-muted-foreground mt-auto pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-4 flex flex-wrap items-center justify-between gap-3 transition-all duration-200`}>
           <div className="flex items-center gap-2">
             <span className="font-medium text-foreground">Cerlesse</span>

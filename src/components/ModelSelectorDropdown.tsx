@@ -249,7 +249,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 
       {/* 现代悬浮卡片下拉列表 (Redesigned Model Dropdown Popover) */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[390px] md:w-[420px] rounded-2xl border border-border/80 bg-popover/98 text-popover-foreground shadow-2xl backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150 flex flex-col overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-[360px] sm:w-[390px] md:w-[420px] rounded-2xl border border-border/80 bg-popover/98 text-popover-foreground shadow-2xl backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150 flex flex-col overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
           {/* 1. 顶部搜索框与清空 */}
           <div className="p-3 pb-2 border-b border-border/60 bg-muted/30">
             <div className="relative flex items-center">

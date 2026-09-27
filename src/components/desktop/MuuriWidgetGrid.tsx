@@ -56,12 +56,21 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
     if (!containerRef.current) return;
 
     try {
+      const isTouchDevice = typeof window !== "undefined" && (
+        window.matchMedia("(pointer: coarse)").matches ||
+        "ontouchstart" in window ||
+        Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
+      );
+
       const grid = new Muuri(containerRef.current, {
         items: ".muuri-tile-item",
         dragEnabled: Boolean(dragEnabled),
         dragHandle: dragHandle || undefined,
         dragAxis: "xy",
         dragSort: Boolean(dragEnabled),
+        dragStartPredicate: isTouchDevice
+          ? { distance: 10, delay: 300 }
+          : { distance: 5, delay: 0 },
         dragSortPredicate: {
           action: dragSortAction,
           threshold: 45

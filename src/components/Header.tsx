@@ -107,11 +107,11 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-xl border-b border-border transition-colors">
+    <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-xl border-b border-border transition-colors pt-[env(safe-area-inset-top,0px)]">
       <div
         className={`${
           isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"
-        } mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-4 transition-all duration-200`}
+        } mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-2.5 sm:gap-4 transition-all duration-200`}
       >
         {/* Left: Brand Logo & Inline Search */}
         <div className="flex items-center gap-4 flex-1 max-w-3xl">
@@ -162,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
             </Button>
 
             {isQuickConfigOpen && (
-              <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 p-4 rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-sm sm:w-96 p-4 rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
                 <div className="flex items-center justify-between pb-2 border-b border-border/60 mb-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="size-4 text-primary" />

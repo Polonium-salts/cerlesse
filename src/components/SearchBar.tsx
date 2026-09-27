@@ -153,26 +153,26 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           type="submit"
           size="lg"
           disabled={!query.trim() || isLoading}
-          className={`rounded-full px-6 shrink-0 transition-all ${
+          className={`rounded-full px-3.5 sm:px-6 shrink-0 transition-all text-xs sm:text-sm ${
             deepSearch ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs" : ""
           }`}
         >
           {isLoading ? (
             <>
               <Loader2 className="animate-spin" />
-              搜索中
+              <span>搜索中</span>
             </>
           ) : (
             <>
-              {deepSearch ? "AI 研报" : "搜索"}
-              <CornerDownLeft className="opacity-60 size-4" />
+              <span>{deepSearch ? "AI 研报" : "搜索"}</span>
+              <CornerDownLeft className="opacity-60 size-3.5 sm:size-4 hidden sm:inline" />
             </>
           )}
         </Button>
       </form>
 
       {/* 检索模式切换与模型状态指示 */}
-      <div className="flex items-center justify-between w-full mt-4 px-2">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 w-full mt-4 px-1 sm:px-2">
         <Tabs
           value={deepSearch ? "deep" : "fast"}
           onValueChange={(v) => setDeepSearch(v === "deep")}

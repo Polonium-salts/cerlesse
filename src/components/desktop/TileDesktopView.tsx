@@ -299,6 +299,11 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   // 尺寸实际呈现由 Muuri 的 fillGaps 进行交叉补空，不使用手写 Skyline 坐标。
   const muuriTileInputs = useMemo(() => tileInputs.map((input) => {
     if (activeColumns === 12) return input;
+    if (activeColumns === 4) {
+      // 在移动端（4列）下单列流式排版，避免多列压挤导致文字换行异常
+      const mobileSize: TileWidth = input.size === 25 ? 50 : 100;
+      return { ...input, size: mobileSize };
+    }
     const responsiveSize: TileWidth = input.size === 100
       ? 100
       : input.size === 75

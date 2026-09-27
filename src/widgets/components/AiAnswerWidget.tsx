@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Sparkles,
   Copy,
@@ -12,7 +12,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { SearchSynthesisResult } from "../../types.js";
 import { IOSWidget } from "../../components/ui/IOSWidget.js";
@@ -52,6 +54,20 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   flipTile
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => {
+    return typeof window !== "undefined" ? window.innerWidth < 768 : false;
+  });
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const effectiveQuery = (customQuery || result?.query || "智能检索").trim();
   const summary = result?.summary || "";
@@ -208,15 +224,50 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
 
       {/* 2. AI 深度回答正文 (Markdown Content with citations and streaming indicator) */}
       {summary ? (
-        <div className="flex-1 bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4">
-          <MarkdownContent
-            className="leading-relaxed text-sm"
-            isStreaming={isStreaming}
-            sources={citations}
-            onOpenUrl={openUrl}
+        <div className="flex flex-col gap-1.5 flex-1">
+          <div
+            className={`flex-1 bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4 transition-all duration-300 ${
+              isMobile && !isExpanded && summary.length > 220
+                ? "max-h-[290px] overflow-hidden relative"
+                : ""
+            }`}
           >
-            {summary}
-          </MarkdownContent>
+            <MarkdownContent
+              className="leading-relaxed text-sm"
+              isStreaming={isStreaming}
+              sources={citations}
+              onOpenUrl={openUrl}
+            >
+              {summary}
+            </MarkdownContent>
+
+            {isMobile && !isExpanded && summary.length > 220 && (
+              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-card via-card/85 to-transparent pointer-events-none" />
+            )}
+          </div>
+
+          {/* 移动端长内容折叠与展开交互 */}
+          {isMobile && summary.length > 220 && (
+            <div className="flex justify-center -mt-1 relative z-10">
+              <Button
+                variant={isExpanded ? "ghost" : "outline"}
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className={`h-7 px-3 text-xs gap-1.5 rounded-full transition-all cursor-pointer ${
+                  isExpanded
+                    ? "text-muted-foreground hover:text-foreground"
+                    : "bg-card/90 backdrop-blur-sm border-border/80 shadow-xs hover:bg-muted text-foreground font-medium"
+                }`}
+              >
+                <span>{isExpanded ? "收起全文" : "展开完整回答"}</span>
+                {isExpanded ? (
+                  <ChevronUp className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="size-3.5 text-muted-foreground" />
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       ) : isStreaming ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground border border-dashed border-primary/30 bg-primary/[0.02] rounded-xl animate-pulse">
