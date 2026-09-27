@@ -70,8 +70,8 @@ const DOWNLOAD_INTENT_REGEX = /(下载|安装|安装包|installer|download|dmg|e
 const GITHUB_INTENT_REGEX = /(github|gitlab|仓库|开源项目|repo|源码|git\s*clone)/i;
 const TOOL_INTENT_REGEX = /(工具|替代品|alternative|好用|推荐工具)/i;
 
-/** 常驻锚点：由 Manifest presence='resident' 决定（ai_answer 智能速答 + sources 信源溯源存证，不走意图打分） */
-export const RESIDENT_WIDGET_IDS = ["ai_answer", "sources"] as const;
+/** 常驻锚点：由 Manifest presence='resident' 决定（ai_answer 智能速答 + sources 信源溯源存证 + image_gallery 视觉图集，不走意图打分） */
+export const RESIDENT_WIDGET_IDS = ["ai_answer", "sources", "image_gallery"] as const;
 export const ALWAYS_ON_WIDGET_IDS = RESIDENT_WIDGET_IDS;
 
 /** 单次绑定上限（与 WIDGET_ACTIVATION_POLICY.max 对齐，避免跨模块循环依赖） */
@@ -161,10 +161,8 @@ function passesEvidenceGate(
     }
 
     case "image_gallery":
-      // 必须有真实图片证据（配图返回 / 信源缩略图）或明确图片意图
-      return images.length > 0
-        || sources.some(s => Boolean(s.thumbnail))
-        || IMAGE_INTENT_REGEX.test(q);
+      // 视觉图集作为常驻核心视效组件：有配图/缩略图/意图时直出，无图时展示空态检索入口
+      return true;
 
     case "takeaways":
       // 要点卡要求：信源充足，且要点数据可产出（已有分点答案，或后续自动生成分点回答）
@@ -246,8 +244,8 @@ function scoreCatalogCandidates(
       (entry.id === "search_engine" && SEARCH_ENGINE_INTENT_REGEX.test(input.query || "") && queryKw.length === 0 && intentOverlap.length === 0)
       || (entry.id === "weather" && WEATHER_INTENT_REGEX.test(input.query || "") && queryKw.length === 0 && intentOverlap.length === 0);
 
-    // 降噪门槛：至少要有查询关键词、意图命中，或两条以上语料关键词证据
-    if (queryKw.length === 0 && intentOverlap.length === 0 && corpusKw.length < 2) {
+    // 降噪门槛：至少要有查询关键词、意图命中，或两条以上语料关键词证据（image_gallery 具备视效支撑，免于纯文字降噪过滤）
+    if (entry.id !== "image_gallery" && queryKw.length === 0 && intentOverlap.length === 0 && corpusKw.length < 2) {
       continue;
     }
 

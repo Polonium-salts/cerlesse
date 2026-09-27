@@ -575,6 +575,22 @@ export async function runCodexAgent(
     eventBridge.recordToolResult(callId, "verify_source", verifyRes, 50);
   }
 
+  // 自动为配图与视觉需求执行真实 search_images 工具调用（记录工具调用与真实结果事件）
+  if (session.collectedSources.length > 0 && imagesFound.length === 0) {
+    const imageCallId = `images_${Date.now()}`;
+    toolsUsed.add("search_images");
+    eventBridge.recordToolCall(imageCallId, "search_images", { query, limit: 16 });
+    try {
+      const imgOutput = await cerlesseMcpServer.callTool("search_images", { query, limit: 16 }, mcpContext);
+      if (Array.isArray(imgOutput?.images)) {
+        imagesFound = [...imagesFound, ...imgOutput.images];
+      }
+      eventBridge.recordToolResult(imageCallId, "search_images", imgOutput, 30);
+    } catch (err: any) {
+      eventBridge.recordToolResult(imageCallId, "search_images", { error: err?.message || "Image search failed" }, 30);
+    }
+  }
+
   // 小组件选型技能包（确定性、注册表驱动、证据可追溯）：
   // 模型已成功绑定的组件保持不变；绑定不足时按证据评分补齐缺失项（含核心组件常驻锚点）。
   const widgetSelection = selectWidgetsByEvidence({

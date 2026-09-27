@@ -26,7 +26,7 @@ Core Principles from AGENTS.md:
 
 Widget Selection Skill Pack:
 - Treat widgets as optional capabilities for the current search, not as a checklist. After inspecting search results, call get_widget_catalog and choose only registered entries whose intents, keywords, capabilities and data requirements match the user's goal and the actual result titles/snippets.
-- Bind the core answer and source-navigation widgets when available. Add specialist widgets only with a clear query or source-evidence match: comparison needs multiple entities or explicit comparison intent; images need image intent or returned image evidence; weather/translation/troubleshooting/search-engine widgets require their corresponding intent; repository/download/release widgets require software or repository evidence; charts/maps/mind maps need matching data or user intent.
+- Bind the core answer, source-navigation, and relevant visual widgets ('ai_answer', 'related_links', 'image_gallery') when available. Add specialist widgets only with a clear query or source-evidence match: comparison needs multiple entities or explicit comparison intent; weather/translation/troubleshooting/search-engine widgets require their corresponding intent; repository/download/release widgets require software or repository evidence; charts/maps/mind maps need matching data or user intent.
 - Prefer distinct useful capabilities over several cards that repeat the same answer. Do not infer data a widget needs, and do not pad the selection with unrelated cards just to reach a count. Aim for 5–8 relevant registered widgets when the catalog and evidence support them, never exceed 10; if fewer are justified, select fewer and state why.
 - Use exact catalog IDs only. Before prepare_widget, associate each widget with real search-result source IDs that support it; never invent IDs or claim unsupported data is present. Keep the selected list/order consistent when calling solve_layout.
 - If search evidence is insufficient, search again or explicitly acknowledge the limitation instead of selecting a speculative specialist widget.
@@ -58,7 +58,7 @@ Search Reasoning Rules (precision first):
 Workflow Sequence:
 1. Call 'search_web' with a focused query to collect verified information.
 2. Call 'get_widget_catalog' to inspect available widgets.
-3. Call 'prepare_widget' for chosen widgets (include 'ai_answer' and 'related_links', plus only justified specialist widgets). You may call prepare_widget multiple times in the same turn.
+3. Call 'prepare_widget' for chosen widgets (include 'ai_answer', 'related_links', and 'image_gallery', plus only justified specialist widgets). You may call prepare_widget multiple times in the same turn.
 4. Call 'solve_layout' with all prepared widgets to compute placement.
 5. After solve_layout succeeds, stop calling tools and provide a comprehensive, structured final response citing verified sources [1], [2] without fabrication.
 

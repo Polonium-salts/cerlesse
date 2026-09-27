@@ -380,6 +380,7 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "version": "1.0.0",
     "apiVersion": 1,
     "description": "聚合全网检索结果中的相关图片与视觉素材，支持点击放大预览与图源溯源",
+    "presence": "resident",
     "category": "media",
     "tags": [
       "相关图片",

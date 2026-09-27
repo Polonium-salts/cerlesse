@@ -343,7 +343,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     minWidth: 75,
     basePriority: 80,
     category: "secondary",
-    requiresData: (s) => Boolean(s.imageIntent || (s.imageCount && s.imageCount > 0))
+    requiresData: () => true
   },
   comparison: {
     id: "comparison",
@@ -622,7 +622,7 @@ export function resolveDynamicCapabilityWidgets(
   const selectable = allKeys.filter((key) => {
     const app = evaluateWidgetApplicability(key, query, activeResult);
     if (!app.applicable) return false;
-    if (["weather", "translation", "search_engine", "token_usage", "image_gallery"].includes(key)) {
+    if (["weather", "translation", "search_engine", "token_usage"].includes(key)) {
       return (WIDGET_CAPABILITY_REGISTRY[key]?.intentFit || []).includes(intent);
     }
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false;
@@ -632,7 +632,7 @@ export function resolveDynamicCapabilityWidgets(
   // 意图匹配落空时桌面会塌成三条横条。现在补到策略硬底，并按基础优先级取。
   if (selectable.length === 0) {
     return (Object.keys(WIDGET_REGISTRY) as ResultWidgetKey[])
-      .filter((k) => !["weather", "translation", "search_engine", "token_usage", "image_gallery"].includes(k))
+      .filter((k) => !["weather", "translation", "search_engine", "token_usage"].includes(k))
       .sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0))
       .slice(0, WIDGET_ACTIVATION_POLICY.hardFloor);
   }
@@ -642,7 +642,7 @@ export function resolveDynamicCapabilityWidgets(
     const picked = new Set(selectable.map(String));
     const fillers = allKeys
       .filter((k) => !picked.has(String(k)))
-      .filter((k) => !["weather", "translation", "search_engine", "token_usage", "image_gallery"].includes(k))
+      .filter((k) => !["weather", "translation", "search_engine", "token_usage"].includes(k))
       .sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0));
     for (const key of fillers) {
       if (selectable.length >= floorTargets.min) break;

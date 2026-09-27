@@ -154,6 +154,96 @@ describe("OpenAI Codex Agent End-to-End Suite", () => {
     assert.ok(result.legacySynthesis.layoutStrategy);
   });
 
+  it("视觉实体搜索：Codex 调 search_web 与 search_images -> 调 prepare_widget(image_gallery) -> 调 solve_layout", async () => {
+    const eventBridge = new CodexEventBridge();
+    const calledTools: string[] = [];
+
+    eventBridge.subscribe((ev) => {
+      if (ev.type === "tool_call") {
+        calledTools.push(ev.tool);
+      }
+    });
+
+    const result = await runCodexAgent("iPhone 16 Pro 外观与新按键设计", {
+      eventBridge,
+      mockStepExecutor: async (messages, tools, iteration) => {
+        if (iteration === 1) {
+          // 决策 1：并发或相继调用网页搜索与图片检索
+          return {
+            toolCalls: [
+              {
+                id: "call_search_web_1",
+                type: "function",
+                function: {
+                  name: "search_web",
+                  arguments: JSON.stringify({ query: "iPhone 16 Pro Camera Control button design" })
+                }
+              },
+              {
+                id: "call_search_img_1",
+                type: "function",
+                function: {
+                  name: "search_images",
+                  arguments: JSON.stringify({ query: "iPhone 16 Pro design photos" })
+                }
+              }
+            ]
+          };
+        } else if (iteration === 2) {
+          // 决策 2：绑定 image_gallery 与 ai_answer
+          return {
+            toolCalls: [
+              {
+                id: "call_widget_img",
+                type: "function",
+                function: {
+                  name: "prepare_widget",
+                  arguments: JSON.stringify({
+                    widgetId: "image_gallery",
+                    title: "iPhone 16 Pro 设计图集",
+                    data: {
+                      images: [
+                        { url: "https://example.com/iphone16pro.jpg", title: "iPhone 16 Pro 钛金属外观", thumbnail: "https://example.com/iphone16pro_thumb.jpg" }
+                      ]
+                    }
+                  })
+                }
+              }
+            ]
+          };
+        } else if (iteration === 3) {
+          // 决策 3：排版
+          return {
+            toolCalls: [
+              {
+                id: "call_layout_img",
+                type: "function",
+                function: {
+                  name: "solve_layout",
+                  arguments: JSON.stringify({
+                    widgetIds: ["ai_answer", "image_gallery", "related_links"]
+                  })
+                }
+              }
+            ]
+          };
+        } else {
+          return {
+            content: "iPhone 16 Pro 采用了钛金属材质与全新的相机控制按键 [src_1]。",
+            toolCalls: []
+          };
+        }
+      }
+    });
+
+    assert.ok(calledTools.includes("search_web"), "必须调用 search_web");
+    assert.ok(calledTools.includes("search_images"), "必须调用 search_images");
+    assert.ok(calledTools.includes("prepare_widget"), "必须调用 prepare_widget");
+    assert.ok(calledTools.includes("solve_layout"), "必须调用 solve_layout");
+    assert.ok(result.session.preparedWidgets.some((w) => w.widgetId === "image_gallery"));
+    assert.ok(result.legacySynthesis.widgetPlan?.widgets.some((w: any) => w.type === "image_gallery"));
+  });
+
   it("危险动作：Codex 调 execute_action -> 触发 requires_approval -> 拒绝后停止或修正", async () => {
     // 1. 调用需要用户审批的高危操作
     const actionResult = executeActionTool({

@@ -4,7 +4,7 @@
   "name": "相关图片",
   "version": "1.0.0",
   "description": "聚合全网检索结果中的相关图片，以自适应网格呈现，支持点击放大预览与图源溯源",
-  "presence": "conditional",
+  "presence": "resident",
   "category": "analysis",
   "tags": [
     "相关图片",

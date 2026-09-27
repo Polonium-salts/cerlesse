@@ -5,6 +5,7 @@ export const manifest: WidgetManifest = {
   name: "相关图片 / 视觉图集",
   version: "1.0.0",
   apiVersion: 1,
+  presence: "resident",
   description: "聚合全网检索结果中的相关图片与视觉素材，支持点击放大预览与图源溯源",
   category: "media",
   tags: [
