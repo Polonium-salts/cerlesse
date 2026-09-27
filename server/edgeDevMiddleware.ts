@@ -7,6 +7,8 @@ import { onRequest as handleTranslate } from "../cloud-functions/api/translate.j
 import { onRequest as handleAgent } from "../cloud-functions/api/agent.js";
 import { onRequest as handleAgentRun } from "../cloud-functions/api/agent/run.js";
 import { onRequest as handleAgentStream } from "../cloud-functions/api/agent/stream.js";
+import { onRequest as handleModelsDetect } from "../cloud-functions/api/models/detect.js";
+import { onRequest as handleModels } from "../cloud-functions/api/models.js";
 import type { PagesFunction } from "../cloud-functions/api/types.js";
 
 const routes: Record<string, PagesFunction> = {
@@ -18,7 +20,9 @@ const routes: Record<string, PagesFunction> = {
   "/api/translate": handleTranslate,
   "/api/agent": handleAgent,
   "/api/agent/run": handleAgentRun,
-  "/api/agent/stream": handleAgentStream
+  "/api/agent/stream": handleAgentStream,
+  "/api/models/detect": handleModelsDetect,
+  "/api/models": handleModels
 };
 
 /**

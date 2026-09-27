@@ -25,7 +25,7 @@ export const ModelProviderStatusSchema = z.object({
   models: z.array(ModelInfoSchema).default([]),
   defaultModel: z.string().optional(),
   hasCustomSearxngUrl: z.boolean().optional(),
-  supportedLanguages: z.array(z.string()).optional()
+  supportedLanguages: z.union([z.array(z.string()), z.record(z.string(), z.any())]).optional()
 });
 
 /**

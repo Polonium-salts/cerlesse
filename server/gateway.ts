@@ -101,13 +101,17 @@ export function resolveGateway(
 
   for (const provider of probeOrder) {
     const config = GATEWAY_REGISTRY[provider];
-    for (const keyName of config.envKeys) {
+    const candidateKeys = [...config.envKeys];
+    if (preferred === provider || source.AI_API_BASE_URL?.includes(provider)) {
+      candidateKeys.push("AI_API_KEY");
+    }
+    for (const keyName of candidateKeys) {
       const candidate = source[keyName];
       if (isValidKeyString(candidate)) {
         return {
           provider,
           name: config.name,
-          baseUrl: config.baseUrl,
+          baseUrl: (preferred === provider && source.AI_API_BASE_URL?.trim()) || config.baseUrl,
           apiKey: candidate!.trim(),
           defaultModel: config.defaultModel
         };
@@ -134,8 +138,24 @@ export async function loadGatewayModels(
         id: "deepseek/deepseek-v4-flash",
         name: "DeepSeek V4 Flash (UnoRouter)",
         description: "UnoRouter 免费/快速调度模型",
-        contextLength: "128k",
+        contextLength: "1,000k",
         pricing: "Free / Pay-as-you-go",
+        isRecommended: true
+      },
+      {
+        id: "deepseek/deepseek-chat",
+        name: "DeepSeek V3 (UnoRouter)",
+        description: "UnoRouter 托管通用大语言模型",
+        contextLength: "64k",
+        pricing: "低费率",
+        isRecommended: true
+      },
+      {
+        id: "deepseek/deepseek-reasoner",
+        name: "DeepSeek R1 (UnoRouter)",
+        description: "UnoRouter 深度推理模型",
+        contextLength: "64k",
+        pricing: "低费率",
         isRecommended: true
       },
       {
@@ -143,6 +163,13 @@ export async function loadGatewayModels(
         name: "Llama 3.3 70B Instruct",
         description: "Meta 开源前沿大模型",
         contextLength: "128k",
+        pricing: "Pay-as-you-go"
+      },
+      {
+        id: "google/gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        description: "Google 轻量级多模态高速模型",
+        contextLength: "1,000k",
         pricing: "Pay-as-you-go"
       }
     ];

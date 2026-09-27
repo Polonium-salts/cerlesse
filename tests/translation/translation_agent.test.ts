@@ -42,14 +42,14 @@ test("translateText maps the structured payload and preserves the endpoint shape
       text: "apple",
       sourceLang: "en",
       targetLang: "zh",
-      model: "qwen/qwen3.8-27b:free",
-      env: { AI_API_KEY: VALID_KEY, AI_API_BASE_URL: "https://openrouter.ai/api" }
+      model: "deepseek/deepseek-v4-flash",
+      env: { AI_API_KEY: VALID_KEY, AI_API_BASE_URL: "https://api.unorouter.com/v1" }
     });
 
     assert.equal(calls, 1);
-    assert.equal(requestedUrl, "https://openrouter.ai/api/v1/chat/completions");
+    assert.equal(requestedUrl, "https://api.unorouter.com/v1/chat/completions");
     assert.equal(authorizationHeader, `Bearer ${VALID_KEY}`);
-    assert.equal(requestedBody.model, "qwen/qwen3.8-27b:free");
+    assert.equal(requestedBody.model, "deepseek/deepseek-v4-flash");
     assert.ok(Array.isArray(requestedBody.messages));
 
     assert.equal(result.text, "苹果");

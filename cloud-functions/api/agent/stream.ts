@@ -15,7 +15,7 @@ export const onRequest: PagesFunction = async (context) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, x-custom-api-key, x-custom-base-url, x-custom-provider"
       }
     });
   }
@@ -23,6 +23,12 @@ export const onRequest: PagesFunction = async (context) => {
   let query: string | undefined;
   let model: string | undefined;
   let customSearxngUrl: string | undefined;
+  let apiKey: string | undefined;
+  let apiBaseUrl: string | undefined;
+
+  const reqHeaders = context.request.headers;
+  apiKey = cleanParam(reqHeaders.get("x-custom-api-key")) || cleanParam(reqHeaders.get("authorization")?.replace(/^Bearer\s+/i, ""));
+  apiBaseUrl = cleanParam(reqHeaders.get("x-custom-base-url"));
 
   if (context.request.method === "POST") {
     try {
@@ -30,6 +36,8 @@ export const onRequest: PagesFunction = async (context) => {
       query = cleanParam(body?.query);
       model = cleanParam(body?.model);
       customSearxngUrl = cleanParam(body?.customSearxngUrl || body?.searxngUrl);
+      apiKey = apiKey || cleanParam(body?.apiKey);
+      apiBaseUrl = apiBaseUrl || cleanParam(body?.apiBaseUrl);
     } catch {
       // fallback to URL search params
     }
@@ -40,6 +48,8 @@ export const onRequest: PagesFunction = async (context) => {
     query = cleanParam(url.searchParams.get("q") || url.searchParams.get("query"));
     model = model || cleanParam(url.searchParams.get("model"));
     customSearxngUrl = customSearxngUrl || cleanParam(url.searchParams.get("searxngUrl") || url.searchParams.get("customSearxngUrl"));
+    apiKey = apiKey || cleanParam(url.searchParams.get("apiKey"));
+    apiBaseUrl = apiBaseUrl || cleanParam(url.searchParams.get("apiBaseUrl"));
   }
 
   if (!query) {
@@ -83,10 +93,17 @@ export const onRequest: PagesFunction = async (context) => {
         }
       });
 
+      const effectiveEnv = {
+        ...(typeof process !== "undefined" ? process.env : {}),
+        ...(context.env || {})
+      } as Record<string, string | undefined>;
+
       const result = await runCodexAgent(query!.trim(), {
         model,
         customSearxngUrl,
-        env: context.env,
+        apiKey,
+        apiBaseUrl,
+        env: effectiveEnv,
         eventBridge
       });
 

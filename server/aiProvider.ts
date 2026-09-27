@@ -2,18 +2,6 @@ import { APIError } from "@aktagon/llmkit-ts";
 import type { Client } from "@aktagon/llmkit-ts";
 import { openai } from "@aktagon/llmkit-ts/builders";
 import {
-  DEEPSEEK_BASE_URL,
-  DEEPSEEK_MODELS,
-  isDeepSeekEnabled,
-  resolveDeepSeekApiKey
-} from "./deepseek.js";
-import {
-  isOpenRouterDisabled,
-  resolveOpenRouterApiKey,
-  isOpenRouterEnabled,
-  loadAvailableFreeModels
-} from "./openrouter.js";
-import {
   resolveGateway,
   isGatewayDisabled,
   loadGatewayModels,
@@ -21,15 +9,11 @@ import {
   ResolvedGateway
 } from "./gateway.js";
 
-export * from "./deepseek.js";
-export * from "./openrouter.js";
 export * from "./gateway.js";
 
-// Canonical base URL. The llmkit OpenAI provider appends /v1/chat/completions
-// itself, so the base is the origin only. /v1 or /chat/completions suffixes in
-// AI_API_BASE_URL are accepted and normalized away.
-export const DEFAULT_AI_API_BASE_URL = "https://api.openai.com";
-export const DEFAULT_AI_MODEL = "gpt-4o-mini";
+// 规范默认地址与模型：以 UnoRouter 网关为核心
+export const DEFAULT_AI_API_BASE_URL = "https://api.unorouter.com/v1";
+export const DEFAULT_AI_MODEL = "deepseek/deepseek-v4-flash";
 
 export interface AiApiConfig {
   apiBaseUrl: string;
@@ -47,7 +31,7 @@ export interface AiApiModel {
   isRecommended?: boolean;
 }
 
-export type ModelProviderType = "deepseek" | "unorouter" | "openrouter" | "openai" | "custom" | "none";
+export type ModelProviderType = "unorouter" | "openai" | "custom" | "none";
 
 export interface ModelInfo {
   id: string;
@@ -65,8 +49,6 @@ export interface ModelProviderStatus {
   models: ModelInfo[];
   defaultModel?: string;
   hasApiKey: boolean;
-  hasDeepSeekKey?: boolean;
-  hasOpenRouterKey?: boolean;
   hasUnoRouterKey?: boolean;
   isAiApiDisabled: boolean;
 }
@@ -93,7 +75,6 @@ function isValidKeyString(key?: string): boolean {
     trimmed !== "null" &&
     trimmed !== "your_api_key_here" &&
     trimmed !== "your_openai_api_key_here" &&
-    trimmed !== "your_openrouter_api_key_here" &&
     trimmed !== "your_unorouter_api_key_here" &&
     !trimmed.startsWith("your_") &&
     trimmed.length >= 8
@@ -109,41 +90,18 @@ export function resolveAiApiKey(env?: Record<string, string | undefined>): strin
   const source = environment(env);
   if (isAiApiDisabled(source)) return undefined;
 
-  // 1. 显式配置的通用 AI_API_KEY 优先
-  if (isValidKeyString(source.AI_API_KEY)) {
-    return source.AI_API_KEY!.trim();
-  }
-
-  // 2. 独立直连 DeepSeek 官方
-  const deepseekKey = resolveDeepSeekApiKey(source);
-  if (deepseekKey) {
-    return deepseekKey;
-  }
-
-  // 3. 聚合网关 (UnoRouter / OpenRouter)
+  // 1. UnoRouter 网关 API Key
   const gateway = resolveGateway(source);
   if (gateway.apiKey) {
     return gateway.apiKey;
   }
 
-  // 4. 兼容直接读取旧变量
-  const openrouterKey = resolveOpenRouterApiKey(source);
-  if (openrouterKey) {
-    return openrouterKey;
+  // 2. 显式配置的通用 AI_API_KEY
+  if (isValidKeyString(source.AI_API_KEY)) {
+    return source.AI_API_KEY!.trim();
   }
 
   return undefined;
-}
-
-function isDeepSeekConfig(source: Record<string, string | undefined>): boolean {
-  if (Boolean(resolveDeepSeekApiKey(source))) return true;
-  const base = source.AI_API_BASE_URL?.toLowerCase() || "";
-  const model = source.AI_MODEL?.toLowerCase() || "";
-  // 排除带网关前缀（例如 unorouter 的 deepseek/deepseek-v4-flash）的场景
-  if (model.includes("/") || base.includes("unorouter.com") || base.includes("openrouter.ai")) {
-    return false;
-  }
-  return base.includes("deepseek.com") || model.startsWith("deepseek-");
 }
 
 function normalizeBaseUrl(raw: string): string {
@@ -157,8 +115,7 @@ function normalizeBaseUrl(raw: string): string {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new LlmProviderError("AI_API_BASE_URL 仅支持 HTTP 或 HTTPS。", "invalid_base_url", 500);
   }
-  // The llmkit OpenAI provider appends /v1/chat/completions itself. Accept
-  // common base URL forms with an optional /v1 or /chat/completions suffix.
+  // llmkit 追加 /v1/chat/completions，规范化去除多余后缀
   let pathname = url.pathname.replace(/\/+$/, "");
   pathname = pathname.replace(/\/chat\/completions$/i, "");
   pathname = pathname.replace(/\/v1$/i, "");
@@ -170,16 +127,9 @@ export function sanitizeModelForBaseUrl(model: string, baseUrl: string): string 
   const trimmedModel = model.trim();
   const baseLower = (baseUrl || "").toLowerCase();
 
-  // 如果目标上游是 DeepSeek 官方或 DeepSeek 兼容端点，但传入了非 DeepSeek 模型（如 OpenRouter 的 nemotron、:free 模型等）
-  if (baseLower.includes("deepseek.com") || baseLower.includes("api.deepseek")) {
-    if (trimmedModel.includes(":free") || trimmedModel.includes("/") || trimmedModel.includes("nemotron") || trimmedModel.includes("llama")) {
-      return "deepseek-flash";
-    }
-  }
-
-  // 如果目标上游是 OpenAI 官方，但传入了第三方网关特有模型
+  // 如果目标上游是 OpenAI 官方端点
   if (baseLower.includes("api.openai.com")) {
-    if (trimmedModel.includes(":free") || trimmedModel.includes("/") || trimmedModel.includes("deepseek")) {
+    if (trimmedModel.includes("/") || trimmedModel.includes("deepseek")) {
       return "gpt-4o-mini";
     }
   }
@@ -189,19 +139,10 @@ export function sanitizeModelForBaseUrl(model: string, baseUrl: string): string 
 
 export function getAiApiConfig(env?: Record<string, string | undefined>): AiApiConfig {
   const source = environment(env);
-  const usingDeepSeek = isDeepSeekConfig(source);
   const gateway = resolveGateway(source);
 
-  let defaultBase = DEFAULT_AI_API_BASE_URL;
-  let defaultModel = DEFAULT_AI_MODEL;
-
-  if (usingDeepSeek) {
-    defaultBase = DEEPSEEK_BASE_URL;
-    defaultModel = "deepseek-v4-flash";
-  } else if (gateway.provider !== "none") {
-    defaultBase = gateway.baseUrl || DEFAULT_AI_API_BASE_URL;
-    defaultModel = gateway.defaultModel || DEFAULT_AI_MODEL;
-  }
+  const defaultBase = gateway.baseUrl || DEFAULT_AI_API_BASE_URL;
+  const defaultModel = gateway.defaultModel || DEFAULT_AI_MODEL;
 
   const configuredBase = source.AI_API_BASE_URL?.trim() || defaultBase;
   const normalizedBase = normalizeBaseUrl(configuredBase);
@@ -224,7 +165,7 @@ export function getAiApiClient(env?: Record<string, string | undefined>): Client
   }
   const apiKey = resolveAiApiKey(source);
   if (!apiKey) {
-    throw new LlmProviderError("未配置有效的 AI_API_KEY、UNOROUTER_API_KEY 或 DEEPSEEK_API_KEY。", "missing_api_key", 503);
+    throw new LlmProviderError("未配置有效的 UNOROUTER_API_KEY 或 AI_API_KEY。", "missing_api_key", 503);
   }
   const config = getAiApiConfig(source);
   return openai(apiKey).baseURL(config.apiBaseUrl);
@@ -248,11 +189,8 @@ export function getProviderStatus(env?: Record<string, string | undefined>): {
 export function resolveModelProvider(env?: Record<string, string | undefined>): ModelProviderStatus {
   const source = environment(env);
   const disabled = isAiApiDisabled(source);
-  const deepseekKey = resolveDeepSeekApiKey(source);
-  const deepseekReady = !disabled && Boolean(deepseekKey);
   const gateway = resolveGateway(source);
   const unoRouterReady = !disabled && gateway.provider === "unorouter";
-  const openRouterReady = !disabled && (gateway.provider === "openrouter" || Boolean(resolveOpenRouterApiKey(source)));
   const apiKey = resolveAiApiKey(source);
   const hasKey = Boolean(apiKey);
 
@@ -260,12 +198,10 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
     return {
       provider: "none",
       ready: false,
-      reason: "模型提供商已禁用 (AI_API_DISABLED/OPENROUTER_DISABLED/GATEWAY_DISABLED=true)",
+      reason: "模型提供商已禁用 (AI_API_DISABLED/GATEWAY_DISABLED=true)",
       models: [],
       defaultModel: undefined,
       hasApiKey: hasKey,
-      hasDeepSeekKey: deepseekReady,
-      hasOpenRouterKey: openRouterReady,
       hasUnoRouterKey: unoRouterReady,
       isAiApiDisabled: true
     };
@@ -275,59 +211,52 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
     return {
       provider: "none",
       ready: false,
-      reason: "未配置 API Key，请在 .env 中设置 UNOROUTER_API_KEY、DEEPSEEK_API_KEY 或 AI_API_KEY",
+      reason: "未配置 API Key，请在环境变量或设置中配置 UNOROUTER_API_KEY",
       models: [],
       defaultModel: undefined,
       hasApiKey: false,
-      hasDeepSeekKey: false,
-      hasOpenRouterKey: false,
       hasUnoRouterKey: false,
       isAiApiDisabled: false
     };
   }
 
   const config = getAiApiConfig(source);
-  let providerType: ModelProviderType = "custom";
+  let providerType: ModelProviderType = "unorouter";
   const urlLower = config.apiBaseUrl.toLowerCase();
 
-  if (deepseekReady || (urlLower.includes("deepseek.com") && !urlLower.includes("unorouter") && !urlLower.includes("openrouter"))) {
-    providerType = "deepseek";
-  } else if (gateway.provider === "unorouter" || urlLower.includes("unorouter.com")) {
-    providerType = "unorouter";
-  } else if (gateway.provider === "openrouter" || urlLower.includes("openrouter.ai") || apiKey?.startsWith("sk-or-")) {
-    providerType = "openrouter";
-  } else if (urlLower.includes("api.openai.com")) {
+  if (urlLower.includes("api.openai.com")) {
     providerType = "openai";
+  } else if (urlLower.includes("unorouter.com") || gateway.provider === "unorouter") {
+    providerType = "unorouter";
+  } else {
+    providerType = "custom";
   }
 
   let models: ModelInfo[] = [];
-  if (providerType === "deepseek") {
-    models = DEEPSEEK_MODELS.map((m) => ({
-      id: m.id,
-      name: m.name,
-      description: m.description || `DeepSeek 官方模型 (${m.name})`,
-      contextLength: `${(m.contextWindow / 1000).toLocaleString()}k`,
-      pricing: m.pricing || "官方按量计费",
-      isRecommended: m.isRecommended ?? (m.id === "deepseek-v4-flash")
-    }));
-    if (!models.some((m) => m.id === config.model)) {
-      models.unshift({
-        id: config.model,
-        name: config.model,
-        description: `自定义 DeepSeek 模型 (${config.model})`,
-        contextLength: "1,000k",
-        pricing: "官方按量计费",
-        isRecommended: true
-      });
-    }
-  } else if (providerType === "unorouter") {
+  if (providerType === "unorouter") {
     models = [
       {
         id: "deepseek/deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
         description: "UnoRouter 免费/快速调度模型",
-        contextLength: "128k",
+        contextLength: "1,000k",
         pricing: "Free / Standard",
+        isRecommended: true
+      },
+      {
+        id: "deepseek/deepseek-chat",
+        name: "DeepSeek V3 (通用研报)",
+        description: "UnoRouter 托管 DeepSeek-V3",
+        contextLength: "64k",
+        pricing: "低费率",
+        isRecommended: true
+      },
+      {
+        id: "deepseek/deepseek-reasoner",
+        name: "DeepSeek R1 (深度思考)",
+        description: "UnoRouter 托管 DeepSeek-R1 强化学习模型",
+        contextLength: "64k",
+        pricing: "低费率",
         isRecommended: true
       },
       {
@@ -343,6 +272,13 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
         description: "Google 轻量级多模态高速模型",
         contextLength: "1,000k",
         pricing: "Pay-as-you-go"
+      },
+      {
+        id: "openai/gpt-4o-mini",
+        name: "GPT-4o Mini",
+        description: "OpenAI 轻量级高性能模型",
+        contextLength: "128k",
+        pricing: "Pay-as-you-go"
       }
     ];
     if (!models.some((m) => m.id === config.model)) {
@@ -355,74 +291,68 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
         isRecommended: true
       });
     }
-  } else if (providerType === "openrouter") {
+  } else if (providerType === "openai") {
     models = [
-      {
-        id: "openrouter/free",
-        name: "OpenRouter Free Router",
-        description: "OpenRouter 自动调度免费模型池",
-        contextLength: "128k",
-        pricing: "Free",
-        isRecommended: true
-      }
+      { id: "gpt-4o-mini", name: "GPT-4o Mini", description: "OpenAI 高性价比模型", contextLength: "128k", pricing: "按量计费", isRecommended: true },
+      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false }
     ];
-    if (!models.some((m) => m.id === config.model)) {
-      models.unshift({
-        id: config.model,
-        name: config.model,
-        description: `OpenRouter 自定义模型 (${config.model})`,
-        contextLength: "128k",
-        pricing: "Gateway",
-        isRecommended: true
-      });
-    }
   } else {
-    models = [{
-      id: config.model,
-      name: config.model,
-      description: `由 AI_MODEL 配置的 ${providerType.toUpperCase()} 兼容模型`,
-      contextLength: "未知",
-      pricing: "Unknown",
-      isRecommended: true
-    }];
+    models = [
+      { id: config.model, name: config.model, description: `自定义 OpenAI-compatible 模型 (${config.model})`, contextLength: "128k", pricing: "Custom", isRecommended: true }
+    ];
   }
 
   return {
     provider: providerType,
     ready: true,
     models,
-    defaultModel: config.model,
+    defaultModel: config.model || models[0]?.id,
     hasApiKey: true,
-    hasDeepSeekKey: deepseekReady,
-    hasOpenRouterKey: openRouterReady,
     hasUnoRouterKey: unoRouterReady,
     isAiApiDisabled: false
   };
 }
 
-/**
- * 主动探测模型服务真实联通性 (最小开销 Ping)
- */
-export async function pingModel(
-  envOrStatus?: ModelProviderStatus | Record<string, string | undefined>
-): Promise<{ ok: boolean; provider: string; latencyMs?: number; error?: string }> {
-  const isStatusObj = Boolean(envOrStatus && typeof envOrStatus === "object" && "ready" in envOrStatus);
-  const status = isStatusObj
-    ? (envOrStatus as ModelProviderStatus)
-    : resolveModelProvider(envOrStatus as Record<string, string | undefined> | undefined);
+export function respondAgentError(
+  error: unknown,
+  sink?: any
+): { status: number; message: string } {
+  const err = error instanceof LlmProviderError ? error : toLlmProviderError(error);
+  const status = err.status ?? (err.code === "provider_disabled" || err.code === "missing_api_key" ? 503 : 500);
+  const message = err.message;
 
+  if (sink) {
+    if (typeof sink === "function") {
+      sink("error", { message, status });
+    } else if (typeof sink.status === "function") {
+      sink.status(status).json({ error: message });
+    }
+  }
+
+  return { status, message };
+}
+
+export async function pingModel(
+  _statusOrEnv?: any
+): Promise<{ ok: boolean; provider: string; latencyMs?: number; error?: string }> {
+  return checkAiHealth(typeof _statusOrEnv === "object" && !("provider" in _statusOrEnv) ? _statusOrEnv : undefined);
+}
+
+/** 探测连通性并拉取上游提供商与模型 */
+export async function checkAiHealth(
+  env?: Record<string, string | undefined>
+): Promise<{ ok: boolean; provider: string; latencyMs?: number; error?: string }> {
+  const status = resolveModelProvider(env);
   if (!status.ready) {
     return { ok: false, provider: status.provider, error: status.reason || "模型服务未就绪" };
   }
 
-  const envRecord = isStatusObj ? undefined : (envOrStatus as Record<string, string | undefined> | undefined);
-  const source = environment(envRecord);
-  const config = getAiApiConfig(source);
-  const apiKey = resolveAiApiKey(source);
+  const config = getAiApiConfig(env);
+  const apiKey = resolveAiApiKey(env);
   const startTime = Date.now();
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  const timer = setTimeout(() => controller.abort(), 5000);
 
   try {
     let res = await fetch(`${config.apiBaseUrl}/models`, {
@@ -481,34 +411,18 @@ export function toLlmProviderError(error: unknown): LlmProviderError {
     return new LlmProviderError(message, code, httpStatus);
   }
 
-  const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof Error && error.name === "AbortError") {
-    return new LlmProviderError("AI API 请求超时，Agent 未能完成模型调用。", "provider_timeout", 504);
+  if (error instanceof Error) {
+    if (error.name === "AbortError" || error.message.includes("timeout") || error.message.includes("aborted")) {
+      return new LlmProviderError("AI 模型请求超时，请稍后重试。", "provider_timeout", 504);
+    }
+    const message = error.message;
+    if (message.includes("fetch failed") || message.includes("ECONNREFUSED") || message.includes("ETIMEDOUT") || message.includes("ENOTFOUND")) {
+      return new LlmProviderError(`无法连接到 AI 提供商（${message}）。请检查网络或 AI_API_BASE_URL。`, "connection_failed", 502);
+    }
+    return new LlmProviderError(message, "internal_error", 500);
   }
-  return new LlmProviderError(`AI API 调用失败：${message}`, "provider_error", 502);
-}
 
-export interface AgentErrorResult {
-  status: number;
-  message: string;
-  isProviderIssue: boolean;
-}
-
-/** 统一 Agent 错误处理 helper：收敛日志分级与状态码，供 REST 与 SSE 共同调用 */
-export function respondAgentError(
-  err: unknown,
-  sink?: { status: (code: number) => { json: (body: any) => void } } | ((event: string, data: any) => void)
-): AgentErrorResult {
-  const isProviderIssue = err instanceof LlmProviderError;
-  const message = err instanceof Error ? err.message : String(err);
-  (isProviderIssue ? console.warn : console.error)("[agent]", message);
-  const status = isProviderIssue && err.status ? err.status : 500;
-  if (typeof sink === "function") {
-    sink("error", { message, status });
-  } else if (sink && typeof sink.status === "function") {
-    sink.status(status).json({ error: message });
-  }
-  return { status, message, isProviderIssue };
+  return new LlmProviderError("未知的 AI 模型错误。", "unknown", 500);
 }
 
 export interface DetectedProviderResult {
@@ -520,10 +434,11 @@ export interface DetectedProviderResult {
   defaultModel?: string;
   source: "remote_api" | "preset_catalog" | "env";
   message?: string;
+  error?: string;
 }
 
 /**
- * 自动根据填入的 API Key / Base URL 探测识别上游服务与动态加载可用模型列表
+ * 启发式探测上游服务商并尝试实时从 /models 提取可用模型
  */
 export async function detectAndFetchModels(params: {
   apiKey?: string;
@@ -532,65 +447,32 @@ export async function detectAndFetchModels(params: {
   env?: Record<string, string | undefined>;
 }): Promise<DetectedProviderResult> {
   const env = environment(params.env);
-  const rawKey = params.apiKey?.trim() || resolveAiApiKey(env) || "";
+  const rawKey = params.apiKey?.trim() || "";
   let rawBase = params.apiBaseUrl?.trim() || "";
 
   // 1. 启发式识别 Provider 类型与规范 Base URL
-  let providerType: ModelProviderType = "custom";
-  let providerName = "自定义兼容服务";
-  let defaultModel = "gpt-4o-mini";
+  let providerType: ModelProviderType = "unorouter";
+  let providerName = "UnoRouter 聚合网关";
+  let defaultModel = "deepseek/deepseek-v4-flash";
 
   const keyLower = rawKey.toLowerCase();
   const baseLower = rawBase.toLowerCase();
 
-  if (baseLower.includes("unorouter.com") || params.provider === "unorouter") {
-    providerType = "unorouter";
-    providerName = "UnoRouter 聚合网关";
-    rawBase = rawBase || "https://api.unorouter.com/v1";
-    defaultModel = "deepseek/deepseek-v4-flash";
-  } else if (keyLower.startsWith("sk-or-") || baseLower.includes("openrouter.ai") || params.provider === "openrouter") {
-    providerType = "openrouter";
-    providerName = "OpenRouter 聚合网关";
-    rawBase = rawBase || "https://openrouter.ai/api/v1";
-    defaultModel = "openrouter/free";
-  } else if (baseLower.includes("deepseek.com") || params.provider === "deepseek") {
-    providerType = "deepseek";
-    providerName = "DeepSeek 官方直连";
-    rawBase = rawBase || "https://api.deepseek.com/v1";
-    defaultModel = "deepseek-v4-flash";
-  } else if (keyLower.startsWith("gsk_") || baseLower.includes("groq.com") || params.provider === "groq") {
-    providerType = "custom";
-    providerName = "Groq 极速云引擎";
-    rawBase = rawBase || "https://api.groq.com/openai/v1";
-    defaultModel = "llama-3.3-70b-versatile";
-  } else if (baseLower.includes("openai.com") || keyLower.startsWith("sk-proj-") || params.provider === "openai") {
+  if (baseLower.includes("openai.com") || keyLower.startsWith("sk-proj-") || params.provider === "openai") {
     providerType = "openai";
     providerName = "OpenAI 官方 API";
     rawBase = rawBase || "https://api.openai.com/v1";
     defaultModel = "gpt-4o-mini";
-  } else if (rawBase) {
+  } else if (baseLower && !baseLower.includes("unorouter.com") && params.provider === "custom") {
     providerType = "custom";
     providerName = "自定义 OpenAI 兼容网关";
     defaultModel = "gpt-4o-mini";
   } else {
-    // 默认如果服务端已有配置，按服务端配置回退
-    const status = resolveModelProvider(env);
-    if (status.ready) {
-      const config = getAiApiConfig(env);
-      return {
-        success: true,
-        provider: status.provider,
-        providerName: status.provider === "deepseek" ? "DeepSeek 官方直连" : status.provider === "unorouter" ? "UnoRouter 聚合网关" : "默认配置服务",
-        apiBaseUrl: config.apiBaseUrl,
-        models: status.models,
-        defaultModel: status.defaultModel || status.models[0]?.id,
-        source: "env"
-      };
-    }
-    rawBase = "https://api.deepseek.com/v1";
-    providerType = "deepseek";
-    providerName = "DeepSeek 官方直连";
-    defaultModel = "deepseek-v4-flash";
+    // 默认首选 UnoRouter 聚合网关
+    providerType = "unorouter";
+    providerName = "UnoRouter 聚合网关";
+    rawBase = rawBase || "https://api.unorouter.com/v1";
+    defaultModel = "deepseek/deepseek-v4-flash";
   }
 
   // 规范化 Base URL
@@ -634,7 +516,7 @@ export async function detectAndFetchModels(params: {
           const models: ModelInfo[] = rawList.map((item: any) => {
             const id = String(item.id || item.name || "");
             const name = String(item.name || item.id || "");
-            const isRec = id.includes("deepseek-v4") || id.includes("gpt-4o") || id.includes("claude-3-5") || id.includes("free");
+            const isRec = id.includes("deepseek-v4") || id.includes("deepseek-chat") || id.includes("deepseek-reasoner") || id.includes("free");
             return {
               id,
               name,
@@ -666,42 +548,33 @@ export async function detectAndFetchModels(params: {
           };
         }
       }
-    } catch (fetchErr) {
+    } catch {
       clearTimeout(timeout);
       // 远程探测失败，平滑降级至内置预设列表
     }
   }
 
-  // 3. 降级回退：加载该提供商的标准预设模型库
+  // 3. 降级回退：加载 UnoRouter 标准预设模型库
   let fallbackModels: ModelInfo[] = [];
-  if (providerType === "deepseek") {
-    fallbackModels = DEEPSEEK_MODELS.map((m) => ({
-      id: m.id,
-      name: m.name,
-      description: m.description || `DeepSeek 官方模型 (${m.name})`,
-      contextLength: `${(m.contextWindow / 1000).toLocaleString()}k`,
-      pricing: m.pricing || "官方按量计费",
-      isRecommended: m.id === "deepseek-v4-flash"
-    }));
-  } else if (providerType === "unorouter") {
+  if (providerType === "unorouter") {
     fallbackModels = [
       { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (推荐)", description: "UnoRouter 高速推理模型，支持代码与通用研报", contextLength: "1,000k", pricing: "免费/低费率", isRecommended: true },
       { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (通用研报)", description: "UnoRouter 托管 DeepSeek-V3", contextLength: "64k", pricing: "低费率", isRecommended: true },
       { id: "deepseek/deepseek-reasoner", name: "DeepSeek R1 (深度思考)", description: "UnoRouter 托管 DeepSeek-R1 强化学习模型", contextLength: "64k", pricing: "低费率", isRecommended: true },
+      { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", description: "Meta 高性能开源大模型", contextLength: "128k", pricing: "按量计费", isRecommended: false },
+      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Google 轻量级多模态高速模型", contextLength: "1,000k", pricing: "按量计费", isRecommended: false },
       { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", description: "OpenAI 轻量级高性能模型", contextLength: "128k", pricing: "按量计费", isRecommended: false },
       { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", description: "Anthropic 极速模型", contextLength: "200k", pricing: "按量计费", isRecommended: false }
     ];
-  } else if (providerType === "openrouter") {
+  } else if (providerType === "openai") {
     fallbackModels = [
-      { id: "openrouter/free", name: "OpenRouter Free Router (免费自动路由)", description: "自动轮询当前可用的免费上游模型", contextLength: "128k", pricing: "免费", isRecommended: true },
-      { id: "deepseek/deepseek-chat:free", name: "DeepSeek V3 (Free)", description: "OpenRouter 免费 DeepSeek V3", contextLength: "64k", pricing: "免费", isRecommended: true },
-      { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1 (Free)", description: "OpenRouter 免费 DeepSeek R1", contextLength: "64k", pricing: "免费", isRecommended: true }
+      { id: "gpt-4o-mini", name: "GPT-4o Mini (推荐)", description: "OpenAI 高性价比模型", contextLength: "128k", pricing: "按量计费", isRecommended: true },
+      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false }
     ];
   } else {
     fallbackModels = [
       { id: "gpt-4o-mini", name: "GPT-4o Mini (推荐)", description: "OpenAI 高性价比模型", contextLength: "128k", pricing: "按量计费", isRecommended: true },
-      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false },
-      { id: "deepseek-chat", name: "DeepSeek Chat", description: "DeepSeek 通用模型", contextLength: "64k", pricing: "按量计费", isRecommended: true }
+      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false }
     ];
   }
 
@@ -721,17 +594,6 @@ export async function detectAndFetchModels(params: {
 export function loadAvailableModels(env?: Record<string, string | undefined>): AiApiModel[] {
   const config = getAiApiConfig(env);
   if (config.isDisabled) return [];
-  const source = environment(env);
-  if (isDeepSeekConfig(source)) {
-    return DEEPSEEK_MODELS.map((m) => ({
-      id: m.id,
-      name: m.name,
-      description: m.description || `DeepSeek 官方模型 (${m.name})`,
-      contextLength: `${(m.contextWindow / 1000).toLocaleString()}k`,
-      pricing: "Unknown" as const,
-      isRecommended: m.isRecommended ?? (m.id === "deepseek-v4-flash")
-    }));
-  }
   const status = resolveModelProvider(env);
   if (status.ready && status.models && status.models.length > 0) {
     return status.models.map((m) => ({
@@ -746,7 +608,7 @@ export function loadAvailableModels(env?: Record<string, string | undefined>): A
   return [{
     id: config.model,
     name: config.model,
-    description: "由 AI_MODEL 配置的 OpenAI-compatible 模型",
+    description: "由 AI_MODEL 配置的 UnoRouter / OpenAI-compatible 模型",
     contextLength: "未知",
     pricing: "Unknown",
     isRecommended: true
