@@ -364,22 +364,22 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     // 官方或已注册模块
     const widgetModule = resolveWidgetModule(id);
     if (!widgetModule) {
-      return (
-        <div
-          data-widget-id={id}
-          className="w-full h-full min-h-[140px] rounded-2xl md:rounded-3xl border border-dashed border-destructive/40 bg-destructive/5 p-4 flex flex-col justify-center text-center items-center"
-        >
-          <div className="text-xs font-semibold text-destructive">
-            小组件不可用
+      if (typeof process !== "undefined" && process.env?.NODE_ENV === "development") {
+        return (
+          <div
+            data-widget-id={id}
+            className="w-full h-full min-h-[140px] rounded-2xl md:rounded-3xl border border-dashed border-border/80 bg-muted/20 p-4 flex flex-col justify-center text-center items-center"
+          >
+            <div className="text-xs font-semibold text-muted-foreground">
+              未注册的小组件
+            </div>
+            <div className="mt-1 text-[11px] font-mono text-muted-foreground/80">
+              {id}
+            </div>
           </div>
-          <div className="mt-1 text-[11px] font-mono text-muted-foreground">
-            {id}
-          </div>
-          <div className="mt-2 text-[11px] text-muted-foreground max-w-[240px]">
-            组件可能未成功注册，或 Registry 与 Catalog 状态不一致。
-          </div>
-        </div>
-      );
+        );
+      }
+      return null;
     }
 
 

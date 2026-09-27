@@ -5,6 +5,7 @@ import {
   withWidgetContainer,
   type WidgetPaddingMode,
   type WidgetSkeletonType,
+  type WidgetRatioMode,
   type WidgetContainerProps
 } from "../../widgets/core/WidgetContainer.js";
 
@@ -23,6 +24,8 @@ export interface IOSWidgetProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   noPadding?: boolean;
   padding?: WidgetPaddingMode;
+  ratioMode?: WidgetRatioMode;
+  maxHeightPx?: number;
   isLoading?: boolean;
   skeletonType?: WidgetSkeletonType;
   error?: Error | string | null;
@@ -47,6 +50,8 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
   children,
   noPadding = false,
   padding,
+  ratioMode,
+  maxHeightPx,
   isLoading,
   skeletonType,
   error,
@@ -68,6 +73,8 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
       isCompact={size === 25}
       noPadding={noPadding}
       padding={padding}
+      ratioMode={ratioMode}
+      maxHeightPx={maxHeightPx}
       className={className}
       headerClassName={headerClassName}
       contentClassName={contentClassName}

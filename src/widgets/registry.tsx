@@ -1,5 +1,5 @@
 import React from "react";
-import { WidgetModule, ResultWidgetKey } from "./sdk/types.js";
+import { WidgetModule, ResultWidgetKey, WidgetContext } from "./sdk/types.js";
 import { safeInstantiateWidgetModule } from "./sdk/sandbox.js";
 import type { TileWidth } from "../lib/tileLayoutEngine.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
@@ -356,6 +356,54 @@ class WidgetRegistryClass {
       manifest,
       cdnInfo: parsedCdn
     };
+  }
+}
+
+export function UnimplementedWidgetPlaceholder({ id }: { id: string }) {
+  return (
+    <div className="w-full h-full min-h-[120px] rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-4 flex flex-col justify-center items-center text-center">
+      <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">组件未注册或正在开发中</div>
+      <div className="mt-1 text-[11px] font-mono text-muted-foreground">{id}</div>
+    </div>
+  );
+}
+
+/**
+ * 安全渲染单个规划组件
+ */
+export function renderWidgetSafe(
+  widgetId: string,
+  context: WidgetContext,
+  hasRenderer: boolean = true
+): React.ReactNode {
+  if (!hasRenderer) {
+    if (import.meta.env.DEV) {
+      return <UnimplementedWidgetPlaceholder id={widgetId} />;
+    }
+    return null;
+  }
+
+  const module = WidgetRegistry.get(widgetId);
+  if (!module) {
+    if (import.meta.env.DEV) {
+      return <UnimplementedWidgetPlaceholder id={widgetId} />;
+    }
+    return null;
+  }
+
+  try {
+    const rendered = module.render(context);
+    if (rendered && typeof rendered === "object" && "sections" in rendered) {
+      return <TileAtomRenderer descriptor={rendered as any} context={context} />;
+    }
+    return rendered as React.ReactNode;
+  } catch (err) {
+    console.error(`[WidgetRegistry] 组件 ${widgetId} 渲染异常:`, err);
+    return (
+      <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-destructive text-xs">
+        组件 {widgetId} 渲染遇到错误
+      </div>
+    );
   }
 }
 

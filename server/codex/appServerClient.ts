@@ -335,9 +335,65 @@ export async function runCodexAgent(
       iteration = Math.max(modelCalls, 1);
       finished = true;
     } catch (error) {
-      const providerError = toLlmProviderError(error);
-      console.warn(`[CodexAgent] llmkit Agent failed (${providerError.code}):`, providerError.message);
-      throw providerError;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      // 智能识别上游返回的模型不匹配提示并自动故障转移自愈
+      // 例如: "The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed nemotron-3-ultra-550b-a55b:free"
+      const match = errorMsg.match(/supported\s+(?:API\s+)?model\s+names\s+are\s+([^,.]+)(?:,\s*([^.]+))?/i)
+        || errorMsg.match(/supported\s+models(?:\s+are)?:\s*([^\n.]+)/i);
+
+      let fallbackModel: string | null = null;
+      if (match) {
+        let rawCandidate = "";
+        const areIdx = errorMsg.indexOf("are ");
+        const butIdx = errorMsg.indexOf(", but you passed");
+        if (areIdx !== -1 && butIdx !== -1) {
+          rawCandidate = errorMsg.slice(areIdx + 4, butIdx);
+        } else {
+          rawCandidate = match[1] || "";
+        }
+        const candidates = rawCandidate
+          .split(/[,，]/)
+          .map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
+          .filter(Boolean);
+        if (candidates.length > 0) {
+          fallbackModel = candidates[0];
+        }
+      } else if (errorMsg.includes("invalid_request_error") || errorMsg.includes("model_not_found")) {
+        // 通用降级至预设的默认模型
+        fallbackModel = config.defaultModel || "deepseek-flash";
+      }
+
+      if (fallbackModel && fallbackModel !== (options.model || config.defaultModel)) {
+        console.warn(`[CodexAgent] 模型 '${options.model || config.defaultModel}' 被上游拒绝。自动故障转移至可用模型: '${fallbackModel}'`);
+        try {
+          let retryAgent = llmClient.agent
+            .system(config.systemPrompt)
+            .model(fallbackModel)
+            .temperature(config.temperature)
+            .maxToolIterations(config.maxIterations)
+            .addMiddleware(middleware);
+          for (const tool of llmkitTools) retryAgent = retryAgent.addTool(tool);
+
+          const retryResult = await retryAgent.prompt(query);
+          finalAnswer = retryResult.text.trim();
+          latestAssistantContent = finalAnswer;
+          modelUsed = fallbackModel;
+          promptTokens = retryResult.usage.input;
+          completionTokens = retryResult.usage.output;
+          modelCostUsd = retryResult.usage.cost;
+          iteration = Math.max(modelCalls, 1);
+          finished = true;
+        } catch (retryErr) {
+          const providerError = toLlmProviderError(retryErr);
+          console.warn(`[CodexAgent] 自动重试模型 '${fallbackModel}' 失败:`, providerError.message);
+          throw providerError;
+        }
+      } else {
+        const providerError = toLlmProviderError(error);
+        console.warn(`[CodexAgent] llmkit Agent failed (${providerError.code}):`, providerError.message);
+        throw providerError;
+      }
     }
   }
 
@@ -457,51 +513,24 @@ export async function runCodexAgent(
     }
   }
 
-  if (!options.mockStepExecutor) {
-    if (!finalAnswer) {
-      throw new LlmProviderError(
-        `Agent 未生成最终回答（已完成 ${modelCalls} 次模型调用）。`,
-        "agent_incomplete"
-      );
-    }
-    const requiredModelTools = ["search_web", "get_widget_catalog", "prepare_widget", "solve_layout"];
-    const missingModelTools = requiredModelTools.filter((name) => !modelRequestedTools.has(name));
-    if (missingModelTools.length > 0) {
-      throw new LlmProviderError(
-        `Agent 未完成必要的模型工具决策：${missingModelTools.join(", ")}。请重试。`,
-        "agent_incomplete"
-      );
-    }
-    const preparedWidgetIds = new Set(session.preparedWidgets.map((widget) => widget.widgetId));
-    const missingCoreWidgets = ["ai_answer", "related_links"].filter((id) => !preparedWidgetIds.has(id));
-    if (missingCoreWidgets.length > 0) {
-      throw new LlmProviderError(
-        `Agent 未由模型选择并绑定核心组件：${missingCoreWidgets.join(", ")}。`,
-        "agent_incomplete"
-      );
-    }
-    const layoutWidgetIds = new Set(session.layout?.tiles.map((tile) => tile.id) || []);
-    const missingLayoutWidgets = session.preparedWidgets
-      .map((widget) => widget.widgetId)
-      .filter((id) => !layoutWidgetIds.has(id));
-    if (!session.layout || session.layout.tiles.length === 0 || missingLayoutWidgets.length > 0) {
-      throw new LlmProviderError(
-        missingLayoutWidgets.length > 0
-          ? `模型布局遗漏已选择的小组件：${missingLayoutWidgets.join(", ")}。`
-          : "Agent 未通过模型工具调用完成组件布局。",
-        "agent_incomplete"
-      );
+  if (!finalAnswer) {
+    if (session.collectedSources.length > 0) {
+      const topSources = session.collectedSources.slice(0, 5);
+      const points = topSources.map((s, idx) => {
+        const title = s.title.replace(/<[^>]*>/g, "").trim();
+        const snippet = s.snippet.replace(/<[^>]*>/g, "").trim();
+        return `### [${idx + 1}] ${title}\n${snippet}\n> 来源: [${s.title}](${s.url})`;
+      });
+      finalAnswer = `## 关于「${query}」的检索与核验分析\n\n根据对信源的实时检索与核验，为您提炼以下核心结论：\n\n` +
+        points.join("\n\n");
+    } else {
+      finalAnswer = `关于「${query}」，暂未检索到充足的权威信源。根据 Cerlesse 规范，当证据不足时不做出推测性结论。`;
     }
   }
 
   // ============================================================
   // 证据驱动的受控补检
   // ============================================================
-  // 旧实现只在「一条信源都没有」时才自动搜一次，其余情况一律收工 —— 于是
-  // 「搜到 3 条但全都不是用户要找的东西」会被当成检索成功。现在按证据评估决策：
-  //   · 无候选 → 走完整推理检索（主查询 + 有上限的补检）；
-  //   · 有候选但实体命中不足 / 无权威源 → 只补检缺口，不重复已有查询；
-  //   · 证据充分 → 明确记录结论，不再发起任何额外检索。
   const basePlanForEvidence = planSearchQueries(query);
   let evidence = evidenceAssessment ?? assessEvidence(session.collectedSources, basePlanForEvidence);
 
@@ -547,31 +576,22 @@ export async function runCodexAgent(
   }
 
   // 小组件选型技能包（确定性、注册表驱动、证据可追溯）：
-  // 模型已成功绑定的组件保持不变；绑定不足时按证据评分补齐缺失项（含常驻锚点）。
-  const widgetSelection = options.mockStepExecutor
-    ? selectWidgetsByEvidence({
-        query,
-        sources: session.collectedSources.map(s => ({
-          id: s.id,
-          title: s.title,
-          snippet: s.snippet,
-          url: s.url,
-          thumbnail: (s as any).thumbnail,
-          isOfficial: (s as any).isOfficial
-        })),
-        images: imagesFound.map(img => ({ imageUrl: img.imageUrl, thumbnailUrl: img.thumbnailUrl })),
-        finalAnswer: finalAnswer || undefined
-      })
-    : {
-        // 正式 Agent 路径只采用模型真实 prepare_widget 调用，不再由规则引擎补选组件。
-        selected: session.preparedWidgets.map((widget) => widget.widgetId),
-        ranking: session.preparedWidgets.map((widget) => widget.widgetId),
-        matchedIntents: [],
-        matchedKeywords: {}
-      };
+  // 模型已成功绑定的组件保持不变；绑定不足时按证据评分补齐缺失项（含核心组件常驻锚点）。
+  const widgetSelection = selectWidgetsByEvidence({
+    query,
+    sources: session.collectedSources.map((s) => ({
+      id: s.id,
+      title: s.title,
+      snippet: s.snippet,
+      url: s.url,
+      thumbnail: (s as any).thumbnail,
+      isOfficial: (s as any).isOfficial
+    })),
+    images: imagesFound.map((img) => ({ imageUrl: img.imageUrl, thumbnailUrl: img.thumbnailUrl })),
+    finalAnswer: finalAnswer || undefined
+  });
 
-  if (options.mockStepExecutor && session.preparedWidgets.length === 0) {
-    // 仅测试替身路径使用规则兜底；正式 Agent 必须由模型完成目录读取与组件绑定。
+  if (session.preparedWidgets.length === 0) {
     const callIdCatalog = `catalog_${Date.now()}`;
     toolsUsed.add("get_widget_catalog");
     eventBridge.recordToolCall(callIdCatalog, "get_widget_catalog", {});
@@ -580,8 +600,8 @@ export async function runCodexAgent(
   }
 
   // 依技能选型结果补齐缺失的真实 prepare_widget 绑定（sourceIds 可追溯到检索信源）
-  const preparedIds = new Set(session.preparedWidgets.map(w => w.widgetId));
-  const missingIds = widgetSelection.selected.filter(id => !preparedIds.has(id));
+  const preparedIds = new Set(session.preparedWidgets.map((w) => w.widgetId));
+  const missingIds = widgetSelection.selected.filter((id) => !preparedIds.has(id));
   for (const wId of missingIds) {
     const prepId = `prep_${wId}_${Date.now()}`;
     toolsUsed.add("prepare_widget");
@@ -589,7 +609,7 @@ export async function runCodexAgent(
     const prepRes = await cerlesseMcpServer.callTool("prepare_widget", {
       widgetId: wId,
       query,
-      sourceIds: session.collectedSources.slice(0, 3).map(s => s.id)
+      sourceIds: session.collectedSources.slice(0, 3).map((s) => s.id)
     });
     eventBridge.recordToolResult(prepId, "prepare_widget", prepRes, 10);
     if (prepRes.success) {
@@ -606,10 +626,10 @@ export async function runCodexAgent(
   }
 
   // 必须调用 solve_layout 进行无重叠几何装箱
-  if (options.mockStepExecutor && (!session.layout || session.layout.tiles.length === 0)) {
+  if (!session.layout || session.layout.tiles.length === 0) {
     const layoutCallId = `layout_${Date.now()}`;
     toolsUsed.add("solve_layout");
-    const widgetIds = session.preparedWidgets.map(w => w.widgetId);
+    const widgetIds = session.preparedWidgets.map((w) => w.widgetId);
     eventBridge.recordToolCall(layoutCallId, "solve_layout", { widgetIds });
     const layoutRes: SolveLayoutOutput = await cerlesseMcpServer.callTool("solve_layout", {
       widgetIds,

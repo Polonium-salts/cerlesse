@@ -1,14 +1,26 @@
-import React from "react";
+import React, { useState } from "react";
 import { GoogleLogo } from "./GoogleLogo.js";
 import { SearchBar } from "./SearchBar.js";
 import { Button } from "./ui/button.js";
-import { Sun, Moon, History, Maximize2, Minimize2, LayoutGrid, SlidersHorizontal } from "lucide-react";
+import {
+  Sun,
+  Moon,
+  Sparkles,
+  Key,
+  Loader2,
+  Check,
+  CheckCircle2,
+  SlidersHorizontal,
+  X
+} from "lucide-react";
 import { AiApiModel } from "../types.js";
+import { useModelProviderStore } from "../state/modelProviderStore.js";
+import { ModelSelectorDropdown } from "./ModelSelectorDropdown.js";
 
 interface HeaderProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
-  onOpenHistory: () => void;
+  onOpenHistory?: () => void;
   onReset: () => void;
   selectedModel: string;
   availableModels: AiApiModel[];
@@ -16,7 +28,7 @@ interface HeaderProps {
   isProviderConfigured?: boolean;
   isProviderDisabled?: boolean;
   isModelConfigLoaded?: boolean;
-  searxngStatus: string;
+  searxngStatus?: string;
   isHomeView: boolean;
   currentQuery?: string;
   onSearch?: (query: string, deep: boolean) => void;
@@ -34,33 +46,73 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   darkMode,
   onToggleDarkMode,
-  onOpenHistory,
   onReset,
-  selectedModel,
-  availableModels,
+  selectedModel: propSelectedModel,
+  availableModels: propAvailableModels,
   onSelectModel,
-  isProviderConfigured = false,
-  isProviderDisabled = false,
-  isModelConfigLoaded = true,
-  searxngStatus,
   isHomeView,
   currentQuery = "",
   onSearch,
   isLoading = false,
   isWideCanvas = true,
-  onToggleCanvasWidth,
-  onOpenWidgetGrid,
-  isGridActive = false,
   onOpenSettings,
-  isSettingsActive = false,
-  hasCustomApiKey = false
+  isSettingsActive = false
 }) => {
-  const selectedModelInfo = availableModels.find((model) => model.id === selectedModel);
-  const modelShortName = selectedModelInfo?.name || selectedModel;
+  const {
+    status,
+    models: storeModels,
+    selectedModel: storeSelectedModel,
+    setSelectedModel: setStoreSelectedModel,
+    detectAndLoadModels,
+    isDetecting,
+    detectedProviderName,
+    customApiKey
+  } = useModelProviderStore();
+
+  const [isQuickConfigOpen, setIsQuickConfigOpen] = useState(false);
+  const [inputKey, setInputKey] = useState(customApiKey || "");
+  const [inputBaseUrl, setInputBaseUrl] = useState("");
+  const [configFeedback, setConfigFeedback] = useState<string | null>(null);
+
+  // 合并 Props 与 Store 中的模型列表
+  const effectiveModels = storeModels.length > 0
+    ? storeModels
+    : (propAvailableModels.length > 0 ? propAvailableModels : []);
+  
+  const currentModel = storeSelectedModel || propSelectedModel || effectiveModels[0]?.id || "deepseek-chat";
+
+  const handleModelChange = (modelId: string) => {
+    setStoreSelectedModel(modelId);
+    onSelectModel(modelId);
+  };
+
+  const handleApplyQuickKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputKey.trim()) return;
+
+    setConfigFeedback("正在自动识别服务与拉取可用模型...");
+    const result = await detectAndLoadModels(inputKey.trim(), inputBaseUrl.trim() || undefined);
+    if (result && result.models && result.models.length > 0) {
+      setConfigFeedback(`✓ 已识别并自动加载 ${result.models.length} 个可用模型`);
+      if (result.defaultModel) {
+        onSelectModel(result.defaultModel);
+      }
+      setTimeout(() => {
+        setIsQuickConfigOpen(false);
+        setConfigFeedback(null);
+      }, 1200);
+    } else {
+      setConfigFeedback("未检测到有效模型，请检查 API Key 或网络");
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-xl border-b border-border transition-colors">
-      <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-4 transition-all duration-200`}>
+      <div
+        className={`${
+          isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"
+        } mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-4 transition-all duration-200`}
+      >
         {/* Left: Brand Logo & Inline Search */}
         <div className="flex items-center gap-4 flex-1 max-w-3xl">
           <div
@@ -83,107 +135,119 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Right: 快速操作 */}
-        <div className="flex items-center gap-2">
-          {onOpenSettings && (
-            <Button
-              variant={isSettingsActive ? "default" : "outline"}
-              size="sm"
-              onClick={onOpenSettings}
-              className="h-8 gap-1.5 text-xs font-medium cursor-pointer"
-              title="配置 AI 大模型、自定义 API Key 与兼容中转接口"
-            >
-              <SlidersHorizontal className="size-3.5" />
-              <span className="hidden sm:inline">模型设置</span>
-              {hasCustomApiKey && (
-                <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" title="已配置自定义 API Key" />
-              )}
-            </Button>
-          )}
+        {/* Right: 重构后的现代化模型选择面板、API 快捷探查与主题切换 */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* 1. 现代化重构的模型选择面板 */}
+          <ModelSelectorDropdown
+            currentModelId={currentModel}
+            models={effectiveModels}
+            onSelectModel={handleModelChange}
+            isDetecting={isDetecting}
+            providerName={detectedProviderName || status?.provider}
+            onOpenSettings={onOpenSettings}
+          />
 
-          {onOpenWidgetGrid && !isSettingsActive && (
-            <Button
-              variant={isGridActive ? "default" : "outline"}
-              size="sm"
-              onClick={onOpenWidgetGrid}
-              className="h-8 gap-1.5 text-xs font-medium"
-              title="显示搜索引擎小组件网格 (Live Tile 12 栅格全景视图)"
-            >
-              <LayoutGrid className="size-3.5" />
-              <span className="hidden sm:inline">小组件网格</span>
-            </Button>
-          )}
-
-          {!isProviderDisabled && availableModels.length > 0 ? (
-            <label className="flex min-w-0 items-center">
-              <span className="sr-only">选择 AI 模型</span>
-              <select
-                aria-label="选择 AI 模型"
-                title={`当前选择模型: ${selectedModel}（Agent 将调用此模型）`}
-                value={selectedModel}
-                onChange={(event) => onSelectModel(event.target.value)}
-                className="h-8 w-[115px] sm:w-[170px] lg:w-[220px] rounded-lg border border-border/80 bg-background/80 hover:bg-muted/80 px-2.5 text-xs font-medium text-foreground outline-none transition-all shadow-xs focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-              >
-                {availableModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.isRecommended ? "★ " : ""}{model.name}（{model.id}）
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : isProviderDisabled ? (
-            <div
-              className="h-8 px-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1.5 text-xs font-medium cursor-default"
-              title="AI API 当前处于禁用状态，已暂停向上游发起模型请求"
-            >
-              <span className="size-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-              <span className="truncate">AI API 已禁用</span>
-            </div>
-          ) : isModelConfigLoaded ? (
-            <span className="text-xs text-muted-foreground">没有可用模型</span>
-          ) : (
-            <span className="text-xs text-muted-foreground">正在加载模型…</span>
-          )}
-
-          <div
-            onClick={onOpenSettings}
-            className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-muted-foreground bg-muted/50 border border-border/60 rounded-full transition-colors truncate max-w-[200px] ${onOpenSettings ? "cursor-pointer hover:bg-muted" : ""}`}
-            title={isProviderDisabled
-              ? "AI API 当前处于禁用状态，已暂停向上游发起模型请求"
-              : `当前 AI 模型：${selectedModelInfo?.name || selectedModel} (${selectedModel})\n点击进入模型与 API 设置`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isProviderDisabled ? "bg-amber-500" : hasCustomApiKey ? "bg-emerald-500" : isProviderConfigured ? "bg-blue-500" : "bg-muted-foreground"}`} />
-            <span className="truncate">{isProviderDisabled ? "AI API 已禁用" : hasCustomApiKey ? `自定义: ${modelShortName}` : isProviderConfigured ? modelShortName : "未配置密钥"}</span>
-          </div>
-
-          {onToggleCanvasWidth && (
+          {/* 快速 API 密钥填入与自动拉取模型弹层 */}
+          <div className="relative">
             <Button
               variant="outline"
               size="icon"
-              onClick={onToggleCanvasWidth}
-              title={isWideCanvas ? "切换为居中标准画幅 (1280px)" : "切换为全屏宽画幅 (卡片铺满两侧空白)"}
+              onClick={() => setIsQuickConfigOpen((v) => !v)}
+              className={`h-9 w-9 rounded-xl transition-all cursor-pointer shadow-xs ${
+                isQuickConfigOpen || customApiKey ? "border-primary/40 text-primary bg-primary/5" : "border-border/80"
+              }`}
+              title="填入 API Key 自动加载对应服务与可用模型"
             >
-              {isWideCanvas ? <Minimize2 /> : <Maximize2 />}
+              <Key className="size-3.5" />
             </Button>
-          )}
 
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onOpenHistory}
-            title="搜索与研报历史"
-          >
-            <History />
-          </Button>
+            {isQuickConfigOpen && (
+              <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 p-4 rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-2 border-b border-border/60 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-primary" />
+                    <span className="font-semibold text-xs text-foreground">API 自动识别与模型加载</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickConfigOpen(false)}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
 
+                <form onSubmit={handleApplyQuickKey} className="space-y-3">
+                  <div>
+                    <label className="text-[11px] font-medium text-foreground block mb-1">
+                      API Key（自动识别 DeepSeek / UnoRouter / OpenRouter / Groq / OpenAI）
+                    </label>
+                    <input
+                      type="password"
+                      value={inputKey}
+                      onChange={(e) => setInputKey(e.target.value)}
+                      placeholder="粘贴 sk-... / gsk_... 等密钥"
+                      className="w-full h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground block mb-1">
+                      自定义 Base URL（可选，留空则由 Key 自动推断）
+                    </label>
+                    <input
+                      type="text"
+                      value={inputBaseUrl}
+                      onChange={(e) => setInputBaseUrl(e.target.value)}
+                      placeholder="例如：https://api.deepseek.com/v1"
+                      className="w-full h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+
+                  {configFeedback && (
+                    <div className="text-[11px] p-2 rounded-md bg-muted/60 text-foreground font-medium flex items-center gap-1.5">
+                      {isDetecting ? <Loader2 className="size-3 animate-spin text-primary" /> : <CheckCircle2 className="size-3 text-emerald-500" />}
+                      <span>{configFeedback}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      已识别服务: <strong className="text-foreground">{detectedProviderName || "自动适配"}</strong>
+                    </span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={isDetecting || !inputKey.trim()}
+                      className="h-7 px-3 text-xs gap-1 cursor-pointer bg-primary text-primary-foreground"
+                    >
+                      {isDetecting ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                      <span>自动探测并拉取</span>
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+
+          {/* 2. 主题切换 */}
           <Button
             variant="outline"
             size="icon"
             onClick={onToggleDarkMode}
-            title={darkMode ? "当前：深色模式 (点击切换为浅色模式)" : "当前：浅色模式 (点击切换为深色模式)"}
+            className="h-9 w-9 rounded-xl border-border/80 hover:bg-muted/70 transition-all cursor-pointer shadow-xs"
+            title={
+              darkMode
+                ? "当前：深色模式 (点击切换为浅色模式)"
+                : "当前：浅色模式 (点击切换为深色模式)"
+            }
             aria-label={darkMode ? "切换到浅色模式" : "切换到深色模式"}
           >
-            {darkMode ? <Moon /> : <Sun />}
+            {darkMode ? (
+              <Moon className="size-4 text-primary transition-transform duration-200" />
+            ) : (
+              <Sun className="size-4 text-amber-500 transition-transform duration-200" />
+            )}
             <span className="sr-only">
               {darkMode ? "当前深色模式，点击切换浅色模式" : "当前浅色模式，点击切换深色模式"}
             </span>

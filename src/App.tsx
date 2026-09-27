@@ -43,6 +43,7 @@ import {
 } from "./lib/adaptiveLayout.js";
 import { resolveActivationTargets, applyAlwaysOnGuarantee, WIDGET_ACTIVATION_POLICY } from "./widgets/widgetContract.js";
 import { evaluateWidgetApplicability } from "./widgets/applicability.js";
+import { modelProviderStore } from "./state/modelProviderStore.js";
 import { navigate, readRoute, useRoute, RouteTab } from "./lib/router.js";
 import { motion } from "motion/react";
 import { 
@@ -418,31 +419,46 @@ export default function App() {
     localStorage.setItem("ai_search_settings", JSON.stringify(settings));
   }, [settings]);
 
-  // Load config and the configured model from the server; the API key stays server-side.
+  // Load config and the configured model from the server or auto-detect from API Key
   useEffect(() => {
+    if (settings.customApiKey) {
+      modelProviderStore
+        .detectAndLoadModels(settings.customApiKey, settings.customApiBaseUrl)
+        .then((res) => {
+          if (res) {
+            setIsAiApiConfigured(true);
+            setIsAiApiDisabled(false);
+            setAvailableModels(res.models as AiApiModel[]);
+          }
+        })
+        .catch((err) => console.warn("Auto model detect failed", err))
+        .finally(() => setIsModelConfigLoaded(true));
+      return;
+    }
+
     fetch("/api/config")
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error(`Configuration request failed (${res.status})`);
         return res.json();
       })
-      .then(data => {
+      .then((data) => {
         setIsAiApiConfigured(Boolean(data.hasApiKey));
         setIsAiApiDisabled(Boolean(data.isAiApiDisabled));
-        const models = Array.isArray(data.models) ? data.models as AiApiModel[] : [];
+        const models = Array.isArray(data.models) ? (data.models as AiApiModel[]) : [];
         setAvailableModels(models);
-        setSettings(prev => {
+        setSettings((prev) => {
           if (prev.customApiKey || prev.customApiBaseUrl || prev.customProvider) return prev;
           const configuredModelIds = new Set(models.map((model) => model.id));
           if (configuredModelIds.has(prev.selectedModel)) return prev;
           const nextModel = configuredModelIds.has(data.defaultModel)
             ? data.defaultModel
-            : (models[0]?.id || DEFAULT_SETTINGS.selectedModel);
+            : models[0]?.id || DEFAULT_SETTINGS.selectedModel;
           return { ...prev, selectedModel: nextModel };
         });
       })
-      .catch(err => console.warn("Failed to load server config", err))
+      .catch((err) => console.warn("Failed to load server config", err))
       .finally(() => setIsModelConfigLoaded(true));
-  }, []);
+  }, [settings.customApiKey, settings.customApiBaseUrl]);
 
   const handleSelectModel = (modelId: string) => {
     setSettings(prev => {

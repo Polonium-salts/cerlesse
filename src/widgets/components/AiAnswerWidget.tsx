@@ -10,18 +10,24 @@ import {
   ArrowRight,
   HelpCircle,
   CheckCircle2,
-  Share2,
+  AlertTriangle,
+  RefreshCw,
   ExternalLink
 } from "lucide-react";
 import { SearchSynthesisResult } from "../../types.js";
 import { IOSWidget } from "../../components/ui/IOSWidget.js";
-import { MarkdownContent } from "./MarkdownContent.js";
+import { MarkdownContent, SourceCitation } from "./MarkdownContent.js";
 import { Button } from "../../components/ui/button.js";
 import { Badge } from "../../components/ui/badge.js";
 
 export interface AiAnswerWidgetProps {
   result?: SearchSynthesisResult;
   query?: string;
+  isStreaming?: boolean;
+  isProviderError?: boolean;
+  errorText?: string;
+  onRetry?: () => void;
+  ratioMode?: "flexible" | "strict";
   onExecuteSearch?: (query: string, deep?: boolean) => void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
@@ -35,6 +41,11 @@ export interface AiAnswerWidgetProps {
 export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   result,
   query: customQuery,
+  isStreaming = false,
+  isProviderError = false,
+  errorText,
+  onRetry,
+  ratioMode = "flexible",
   onExecuteSearch,
   openUrl,
   copyText,
@@ -48,7 +59,18 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   const followUpQuestions = result?.followUpQuestions || [];
   const modelUsed = result?.modelUsed || "AI 深度推理引擎";
   const executionTimeMs = result?.executionTimeMs || 0;
-  const sourcesCount = result?.filteredResults?.length || 0;
+  const filteredResults = result?.filteredResults || [];
+  const sourcesCount = filteredResults.length;
+
+  // 将信源转换为 Markdown 可溯源引用的格式
+  const citations: SourceCitation[] = useMemo(() => {
+    return filteredResults.map((item, idx) => ({
+      index: idx + 1,
+      title: item.title,
+      url: item.url,
+      snippet: item.snippet
+    }));
+  }, [filteredResults]);
 
   const handleCopy = () => {
     const textToCopy = `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${summary}`;
@@ -71,13 +93,22 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
     <IOSWidget
       title="AI 智能回答"
       icon={<Sparkles className="size-4 text-primary" />}
+      ratioMode={ratioMode}
       badge={
         <div className="flex items-center gap-1.5 flex-wrap">
-          <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/10 text-primary border-primary/20">
-            <Bot className="size-3" />
-            <span className="truncate max-w-[120px]">{modelUsed}</span>
-          </Badge>
-          {executionTimeMs > 0 && (
+          {isStreaming ? (
+            <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/15 text-primary border-primary/30 animate-pulse">
+              <span className="size-1.5 rounded-full bg-primary animate-ping" />
+              <span>正在生成中</span>
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/10 text-primary border-primary/20">
+              <Bot className="size-3" />
+              <span className="truncate max-w-[120px]">{modelUsed}</span>
+            </Badge>
+          )}
+
+          {executionTimeMs > 0 && !isStreaming && (
             <Badge variant="outline" className="text-[11px] h-5 gap-1 text-muted-foreground font-normal">
               <Timer className="size-3" />
               <span>{(executionTimeMs / 1000).toFixed(1)}s</span>
@@ -87,25 +118,27 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
       }
       actions={
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCopy}
-            className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-            title="复制 AI 回答全文"
-          >
-            {copied ? (
-              <>
-                <Check className="size-3.5 text-emerald-500" />
-                <span className="text-emerald-600 font-medium">已复制</span>
-              </>
-            ) : (
-              <>
-                <Copy className="size-3.5" />
-                <span>复制</span>
-              </>
-            )}
-          </Button>
+          {summary && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCopy}
+              className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              title="复制 AI 回答全文"
+            >
+              {copied ? (
+                <>
+                  <Check className="size-3.5 text-emerald-500" />
+                  <span className="text-emerald-600 font-medium">已复制</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3.5" />
+                  <span>复制</span>
+                </>
+              )}
+            </Button>
+          )}
 
           {flipTile && (
             <Button
@@ -120,9 +153,41 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
           )}
         </div>
       }
-      className="w-full h-full border-border/80 bg-card"
+      className={`w-full h-full transition-all duration-300 ${
+        isStreaming ? "border-primary/40 ring-1 ring-primary/15 shadow-sm" : "border-border/80"
+      } bg-card`}
       contentClassName="p-3.5 sm:p-4 flex flex-col gap-3"
     >
+      {/* 状态三：Provider Error 局部克制提示 (保留已搜索信源，不整页崩溃) */}
+      {isProviderError && (
+        <div className="rounded-xl border border-amber-300/40 bg-amber-50/50 dark:bg-amber-950/20 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
+                AI 服务暂时不可用，已为你保留网页搜索结果
+              </p>
+              {errorText && (
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-300/70 mt-0.5">
+                  {errorText}
+                </p>
+              )}
+            </div>
+          </div>
+          {onRetry && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRetry}
+              className="h-7 px-2.5 text-xs gap-1 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 self-end sm:self-auto cursor-pointer"
+            >
+              <RefreshCw className="size-3" />
+              <span>重试生成</span>
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* 1. 核心结论要点 (Key Takeaways) */}
       {keyTakeaways.length > 0 && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex flex-col gap-2">
@@ -141,25 +206,40 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
         </div>
       )}
 
-      {/* 2. AI 深度回答正文 (Markdown Content) */}
+      {/* 2. AI 深度回答正文 (Markdown Content with citations and streaming indicator) */}
       {summary ? (
         <div className="flex-1 bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4">
-          <MarkdownContent className="leading-relaxed text-sm">
+          <MarkdownContent
+            className="leading-relaxed text-sm"
+            isStreaming={isStreaming}
+            sources={citations}
+            onOpenUrl={openUrl}
+          >
             {summary}
           </MarkdownContent>
         </div>
+      ) : isStreaming ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground border border-dashed border-primary/30 bg-primary/[0.02] rounded-xl animate-pulse">
+          <Sparkles className="size-6 text-primary mb-2 animate-spin" />
+          <p className="text-xs sm:text-sm font-medium text-foreground">
+            Codex 智能体正在流式组织深度回答...
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            正在根据全网检索的权威信源交叉验证并撰写报告
+          </p>
+        </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground border border-dashed border-border rounded-xl">
-          <Bot className="size-7 text-muted-foreground/50 mb-1.5 animate-pulse" />
-          <p className="text-xs sm:text-sm font-medium">正在生成 AI 综合智能回答...</p>
+          <Bot className="size-7 text-muted-foreground/50 mb-1.5" />
+          <p className="text-xs sm:text-sm font-medium">暂无 AI 回答内容</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            正在调度智能体清洗信源并进行深度结构化提炼
+            可尝试重新检索或选择其他模型
           </p>
         </div>
       )}
 
       {/* 3. 智能拓展追问 (Follow-up Questions) */}
-      {followUpQuestions.length > 0 && (
+      {followUpQuestions.length > 0 && !isStreaming && (
         <div className="flex flex-col gap-1.5 pt-1.5 border-t border-border/60">
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <HelpCircle className="size-3.5 text-primary" />

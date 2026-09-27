@@ -2,6 +2,8 @@ import React, { useState, useEffect, FormEvent } from "react";
 import { Search, X, Sparkles, Zap, ArrowRight, CornerDownLeft, Loader2 } from "lucide-react";
 import { Button } from "./ui/button.js";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.js";
+import { motion, AnimatePresence } from "motion/react";
+import { ModelStatusIndicator } from "./ModelStatusIndicator.js";
 
 interface SearchBarProps {
   onSearch: (query: string, deep: boolean) => void;
@@ -34,15 +36,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return (
       <form
         onSubmit={handleSubmit}
-        className="w-full flex items-center h-10 px-3.5 rounded-full border border-border bg-muted/50 focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/30 transition-all"
+        className={`w-full flex items-center h-10 px-3.5 rounded-full border bg-muted/40 transition-all duration-200 ${
+          deepSearch
+            ? "border-primary/40 focus-within:border-primary/70 focus-within:ring-2 focus-within:ring-primary/20 bg-primary/[0.02]"
+            : "border-border focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/30"
+        }`}
       >
-        <Search className="size-4 text-muted-foreground shrink-0 mr-2.5" />
+        <div className="relative mr-2 shrink-0 flex items-center">
+          {deepSearch ? (
+            <Sparkles className="size-4 text-primary animate-pulse" />
+          ) : (
+            <Search className="size-4 text-muted-foreground" />
+          )}
+        </div>
 
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="在 Cerlesse 中搜索任何内容..."
+          placeholder={deepSearch ? "在 Cerlesse 中向 AI 智能体提问..." : "快速搜索网页与链接..."}
           disabled={isLoading}
           className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
         />
@@ -65,7 +77,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           size="icon-sm"
           disabled={!query.trim() || isLoading}
           title="执行搜索"
-          className="rounded-full"
+          className="rounded-full shrink-0 ml-1"
         >
           {isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
         </Button>
@@ -78,15 +90,47 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
       <form
         onSubmit={handleSubmit}
-        className="w-full rounded-full border border-border bg-card shadow-sm p-2 pl-4 sm:pl-5 flex items-center gap-2.5 transition-all focus-within:ring-2 focus-within:ring-ring/30"
+        className={`w-full rounded-2xl sm:rounded-full border bg-card shadow-sm p-2 pl-4 sm:pl-5 flex items-center gap-2.5 transition-all duration-300 ${
+          deepSearch
+            ? "border-primary/40 ring-2 ring-primary/15 shadow-md shadow-primary/5 focus-within:ring-4 focus-within:ring-primary/25"
+            : "border-border focus-within:ring-2 focus-within:ring-ring/30"
+        }`}
       >
-        <Search className="size-5 text-muted-foreground shrink-0 ml-1" />
+        <div className="relative flex items-center shrink-0 ml-1">
+          <AnimatePresence mode="wait">
+            {deepSearch ? (
+              <motion.div
+                key="sparkles"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Sparkles className="size-5 text-primary" />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="search"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Search className="size-5 text-muted-foreground" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="检索技术架构、方案选型、官方网站或复杂问题..."
+          placeholder={
+            deepSearch
+              ? "向 Codex 智能体提问技术架构、深度对比、代码诊断或综合研报..."
+              : "检索网页链接、官方网站与即时资讯..."
+          }
           disabled={isLoading}
           autoFocus
           className="w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
@@ -99,7 +143,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             size="icon-sm"
             onClick={() => setQuery("")}
             title="清空"
-            className="rounded-full"
+            className="rounded-full shrink-0"
           >
             <X />
           </Button>
@@ -109,7 +153,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           type="submit"
           size="lg"
           disabled={!query.trim() || isLoading}
-          className="rounded-full px-6"
+          className={`rounded-full px-6 shrink-0 transition-all ${
+            deepSearch ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs" : ""
+          }`}
         >
           {isLoading ? (
             <>
@@ -118,30 +164,35 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </>
           ) : (
             <>
-              搜索
-              <CornerDownLeft className="opacity-60" />
+              {deepSearch ? "AI 研报" : "搜索"}
+              <CornerDownLeft className="opacity-60 size-4" />
             </>
           )}
         </Button>
       </form>
 
-      {/* 检索模式：二选一，占用同一个分段控件 */}
-      <Tabs
-        value={deepSearch ? "deep" : "fast"}
-        onValueChange={(v) => setDeepSearch(v === "deep")}
-        className="mt-5"
-      >
-        <TabsList>
-          <TabsTrigger value="deep">
-            <Sparkles />
-            深度 Agent
-          </TabsTrigger>
-          <TabsTrigger value="fast">
-            <Zap />
-            极速直答
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* 检索模式切换与模型状态指示 */}
+      <div className="flex items-center justify-between w-full mt-4 px-2">
+        <Tabs
+          value={deepSearch ? "deep" : "fast"}
+          onValueChange={(v) => setDeepSearch(v === "deep")}
+        >
+          <TabsList className="bg-muted/60 p-0.5 rounded-full border border-border/40">
+            <TabsTrigger value="deep" className="rounded-full text-xs gap-1.5 px-3 py-1">
+              <Sparkles className="size-3.5 text-primary" />
+              AI 深度研报
+            </TabsTrigger>
+            <TabsTrigger value="fast" className="rounded-full text-xs gap-1.5 px-3 py-1">
+              <Zap className="size-3.5 text-amber-500" />
+              极速直达
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="flex items-center gap-2">
+          <ModelStatusIndicator showText={true} />
+        </div>
+      </div>
     </div>
   );
 };

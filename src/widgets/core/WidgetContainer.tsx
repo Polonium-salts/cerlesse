@@ -4,6 +4,7 @@ import { Loader2, AlertCircle, Inbox } from "lucide-react";
 
 export type WidgetPaddingMode = "none" | "compact" | "normal" | "spacious";
 export type WidgetSkeletonType = "card" | "list" | "text" | "chart";
+export type WidgetRatioMode = "flexible" | "strict";
 
 export interface WidgetContainerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   id?: string;
@@ -18,6 +19,8 @@ export interface WidgetContainerProps extends Omit<React.HTMLAttributes<HTMLDivE
   hideHeader?: boolean;
   noPadding?: boolean;
   padding?: WidgetPaddingMode;
+  ratioMode?: WidgetRatioMode;
+  maxHeightPx?: number;
   className?: string;
   headerClassName?: string;
   contentClassName?: string;
@@ -52,6 +55,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
   hideHeader = false,
   noPadding = false,
   padding,
+  ratioMode = "flexible",
+  maxHeightPx,
   className = "",
   headerClassName = "",
   contentClassName = "",
@@ -64,6 +69,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
   border = true,
   onClick,
   children,
+  style,
   ...rest
 }) => {
   const effectivePadding: WidgetPaddingMode = noPadding
@@ -71,15 +77,20 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
     : padding || (isCompact ? "compact" : "normal");
 
   const hasHeader = !hideHeader && Boolean(title || icon || badge || actions);
+  const containerStyle: React.CSSProperties = {
+    ...style,
+    ...(ratioMode === "strict" && maxHeightPx ? { maxHeight: `${maxHeightPx}px` } : {})
+  };
 
   return (
     <div
       id={id || widgetId}
       data-widget-id={widgetId || id}
       onClick={onClick}
+      style={containerStyle}
       className={`relative flex flex-col h-full w-full rounded-2xl overflow-hidden bg-card text-card-foreground transition-all duration-200 ${
         border ? "border border-border/60 shadow-xs" : ""
-      } ${surfaceClassName} ${className}`}
+      } ${ratioMode === "strict" ? "overflow-y-auto" : ""} ${surfaceClassName} ${className}`}
       {...rest}
     >
       {hasHeader && (
@@ -142,6 +153,10 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
           children
         )}
       </div>
+
+      {ratioMode === "strict" && (
+        <div className="h-6 bg-gradient-to-t from-card to-transparent -mt-6 relative pointer-events-none" />
+      )}
     </div>
   );
 };

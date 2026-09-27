@@ -8,6 +8,7 @@ import {
   getProviderStatus,
   loadAvailableModels,
   resolveModelProvider,
+  detectAndFetchModels,
   pingModel,
   respondAgentError,
   LlmProviderError
@@ -93,15 +94,40 @@ app.get("/api/config", async (_req, res) => {
   });
 });
 
+// 根据 API Key / Base URL 自动探测上游提供商与动态加载可用模型
+app.all("/api/models/detect", async (req, res) => {
+  try {
+    const apiKey = (req.headers["x-custom-api-key"] as string) || req.body?.apiKey || (req.query?.apiKey as string);
+    const apiBaseUrl = (req.headers["x-custom-base-url"] as string) || req.body?.apiBaseUrl || (req.query?.apiBaseUrl as string);
+    const provider = req.body?.provider || (req.query?.provider as string);
+    const result = await detectAndFetchModels({
+      apiKey,
+      apiBaseUrl,
+      provider,
+      env: process.env
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 const handleAgentRun = async (req: express.Request, res: express.Response) => {
   try {
     const { query, model, customSearxngUrl } = req.body || {};
     if (typeof query !== "string" || !query.trim()) {
       return res.status(400).json({ error: "缺少搜索关键词" });
     }
+    const apiKey = (req.headers["x-custom-api-key"] as string) || req.body?.apiKey;
+    const apiBaseUrl = (req.headers["x-custom-base-url"] as string) || req.body?.apiBaseUrl;
     const result = await runCodexAgent(query.trim(), {
       model: cleanParam(model),
       customSearxngUrl: cleanParam(customSearxngUrl),
+      apiKey: cleanParam(apiKey),
+      apiBaseUrl: cleanParam(apiBaseUrl),
       env: process.env
     });
     return res.json(result.legacySynthesis);
@@ -122,6 +148,8 @@ app.get("/api/agent/stream", async (req, res) => {
 
   const model = cleanParam(req.query.model);
   const customSearxngUrl = cleanParam(req.query.searxngUrl);
+  const apiKey = (req.headers["x-custom-api-key"] as string) || (req.query.apiKey as string);
+  const apiBaseUrl = (req.headers["x-custom-base-url"] as string) || (req.query.apiBaseUrl as string);
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -154,6 +182,8 @@ app.get("/api/agent/stream", async (req, res) => {
     const result = await runCodexAgent(query, {
       model,
       customSearxngUrl,
+      apiKey: cleanParam(apiKey),
+      apiBaseUrl: cleanParam(apiBaseUrl),
       env: process.env,
       eventBridge
     });
