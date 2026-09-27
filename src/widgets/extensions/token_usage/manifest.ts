@@ -5,7 +5,8 @@ export const manifest: WidgetManifest = {
   name: "Token 消耗统计",
   version: "1.0.0",
   apiVersion: 1,
-  description: "显示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
+  presence: "resident",
+  description: "展示每次搜索与 Codex Agent 调用的真实 Token 消耗、吞吐速率、历史记录与全局累计监控",
   category: "developer",
   tags: [
     "Token",
@@ -13,12 +14,14 @@ export const manifest: WidgetManifest = {
     "吞吐效率",
     "大模型度量",
     "成本监控",
-    "性能度量"
+    "性能度量",
+    "遥测监控"
   ],
   capabilities: [
     "agent_telemetry",
-    "source_telemetry",
-    "confidence_meter"
+    "token_telemetry",
+    "cost_telemetry",
+    "search_history"
   ],
   intents: [
     "research",
@@ -26,13 +29,16 @@ export const manifest: WidgetManifest = {
   ],
   keywords: [
     "token",
+    "tokens",
     "消耗",
     "开销",
     "成本",
-    "字数",
+    "用量",
     "吞吐",
     "速度",
-    "模型用量"
+    "模型用量",
+    "usage",
+    "cost"
   ],
   examples: [
     "大模型 Token 消耗监控",

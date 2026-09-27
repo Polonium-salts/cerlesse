@@ -75,11 +75,10 @@ describe("小组件适用性网关 (Unified Applicability Gate)", () => {
       assert.equal(img.status, "ready");
     });
 
-    it("Token 消耗组件无指标且无度量意图，必须判定为不适用 (not_applicable)", () => {
+    it("Token 消耗组件作为系统常驻遥测与监控组件，恒定保持适用 (ready)", () => {
       const token = evaluateWidgetApplicability("token_usage", "google", googleResult);
-      assert.equal(token.applicable, false);
-      assert.equal(token.status, "not_applicable");
-      assert.equal(token.reason, "query_not_supported");
+      assert.equal(token.applicable, true);
+      assert.equal(token.status, "ready");
     });
 
     it("天气与翻译组件无对应意图，必须判定为不适用 (not_applicable)", () => {
@@ -154,7 +153,7 @@ describe("小组件适用性网关 (Unified Applicability Gate)", () => {
   });
 
   describe("filterApplicableWidgets 与 selectAgentWidgets 联动", () => {
-    it("Agent 规划包含常驻图集时，无图信号下仍保留并过滤其他不适用组件", () => {
+    it("Agent 规划包含常驻组件时，无图信号下仍保留并过滤其他不适用组件", () => {
       const googleResult = makeMockResult({
         query: "google",
         relatedImages: [],
@@ -164,7 +163,7 @@ describe("小组件适用性网关 (Unified Applicability Gate)", () => {
       const planned = ["ai_answer", "related_links", "image_gallery", "token_usage", "weather"] as const;
       const filtered = filterApplicableWidgets([...planned], "google", googleResult);
 
-      assert.deepEqual(filtered, ["ai_answer", "related_links", "image_gallery"]);
+      assert.deepEqual(filtered, ["ai_answer", "related_links", "image_gallery", "token_usage"]);
     });
 
     it("selectAgentWidgets 结合适用性网关，保证输出清单皆为适用组件", () => {
@@ -194,7 +193,7 @@ describe("小组件适用性网关 (Unified Applicability Gate)", () => {
       });
 
       assert.ok(selected.includes("image_gallery"), "常驻图集即使没有图片信号也必须入选");
-      assert.ok(!selected.includes("token_usage"), "不适用的 token_usage 不应入选");
+      assert.ok(selected.includes("token_usage"), "常驻 token_usage 必须入选");
       assert.ok(selected.includes("ai_answer"), "核心速答必须入选");
       assert.ok(selected.includes("related_links"), "权威入口必须入选");
     });

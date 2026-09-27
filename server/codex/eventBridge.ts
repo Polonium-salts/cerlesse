@@ -29,6 +29,7 @@ export type AgentEventType =
   | "reasoning"
   | "source_update"
   | "widget_update"
+  | "token_usage_update"
   | "final_response"
   | "error";
 
@@ -37,6 +38,19 @@ export interface ToolCallEvent {
   callId: string;
   tool: string;
   arguments: Record<string, any>;
+  timestamp: number;
+}
+
+export interface TokenUsageUpdateEvent {
+  type: "token_usage_update";
+  searchId: string;
+  sequence: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  model?: string;
+  costUsd?: number;
+  durationMs?: number;
   timestamp: number;
 }
 
@@ -92,6 +106,7 @@ export type CerlesseAgentEvent =
   | ReasoningEvent
   | SourceEvent
   | WidgetEvent
+  | TokenUsageUpdateEvent
   | { type: "final_response"; threadId: string; response: CerlesseAgentResponse; timestamp: number }
   | { type: "error"; error: string; timestamp: number };
 

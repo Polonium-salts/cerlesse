@@ -402,8 +402,7 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     minWidth: 25,
     basePriority: 8,
     category: "utility",
-    // 门槛：仅在查询显式关注意图、研报度量或有 tokenUsageIntent 时才加载
-    requiresData: (s) => Boolean(s.tokenUsageIntent)
+    requiresData: () => true
   },
   weather: {
     id: "weather",
@@ -600,7 +599,7 @@ export function selectAgentWidgets(params: {
     if (key === "weather") return Boolean(params.signals.weatherIntent);
     if (key === "translation") return Boolean(params.signals.translationIntent);
     if (key === "search_engine") return Boolean(params.signals.searchEngineIntent);
-    if (key === "token_usage") return Boolean(params.signals.tokenUsageIntent);
+    if (key === "token_usage") return true;
     if (key === "takeaways") return params.signals.takeawayCount > 0;
 
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;
@@ -622,7 +621,7 @@ export function resolveDynamicCapabilityWidgets(
   const selectable = allKeys.filter((key) => {
     const app = evaluateWidgetApplicability(key, query, activeResult);
     if (!app.applicable) return false;
-    if (["weather", "translation", "search_engine", "token_usage"].includes(key)) {
+    if (["weather", "translation", "search_engine"].includes(key)) {
       return (WIDGET_CAPABILITY_REGISTRY[key]?.intentFit || []).includes(intent);
     }
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(intent) ?? false;
@@ -632,7 +631,7 @@ export function resolveDynamicCapabilityWidgets(
   // 意图匹配落空时桌面会塌成三条横条。现在补到策略硬底，并按基础优先级取。
   if (selectable.length === 0) {
     return (Object.keys(WIDGET_REGISTRY) as ResultWidgetKey[])
-      .filter((k) => !["weather", "translation", "search_engine", "token_usage"].includes(k))
+      .filter((k) => !["weather", "translation", "search_engine"].includes(k))
       .sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0))
       .slice(0, WIDGET_ACTIVATION_POLICY.hardFloor);
   }
@@ -642,7 +641,7 @@ export function resolveDynamicCapabilityWidgets(
     const picked = new Set(selectable.map(String));
     const fillers = allKeys
       .filter((k) => !picked.has(String(k)))
-      .filter((k) => !["weather", "translation", "search_engine", "token_usage"].includes(k))
+      .filter((k) => !["weather", "translation", "search_engine"].includes(k))
       .sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0));
     for (const key of fillers) {
       if (selectable.length >= floorTargets.min) break;
@@ -964,7 +963,6 @@ export function createLayoutPlan(params: {
         if (k === "weather" && !signals.weatherIntent) return false;
         if (k === "translation" && !signals.translationIntent) return false;
         if (k === "search_engine" && !signals.searchEngineIntent) return false;
-        if (k === "token_usage" && !signals.tokenUsageIntent) return false;
         return true;
       })
       .sort((a, b) => (WIDGET_REGISTRY[b]?.basePriority ?? 0) - (WIDGET_REGISTRY[a]?.basePriority ?? 0));

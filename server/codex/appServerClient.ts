@@ -22,6 +22,7 @@ import { getAiApiClient, getAiApiConfig, LlmProviderError, toLlmProviderError } 
 import { PreparedWidgetOutput } from "../tools/widgetTool.js";
 import { SolveLayoutOutput } from "../tools/layoutTool.js";
 import { selectWidgetsByEvidence, WidgetEvidenceInput } from "./widgetSelectionSkill.js";
+import { TokenUsageCollector } from "./tokenUsageCollector.js";
 
 export interface CodexRunOptions {
   model?: string;
@@ -112,9 +113,7 @@ export async function runCodexAgent(
   const modelRequestedTools = new Set<string>();
   let modelUsed: string | undefined;
   let modelCalls = 0;
-  let promptTokens = 0;
-  let completionTokens = 0;
-  let modelCostUsd = 0;
+  const tokenCollector = new TokenUsageCollector();
   const actions: WidgetAction[] = [];
   let finalAnswer = "";
   let latestAssistantContent = "";
@@ -286,12 +285,40 @@ export async function runCodexAgent(
   }));
 
   const middleware: MiddlewareFn = (_context, event) => {
-    if (event.op === "llm_request" && event.phase === "post") {
-      modelCalls++;
-      modelUsed = event.model || options.model || config.defaultModel;
-      promptTokens += event.usage?.input ?? 0;
-      completionTokens += event.usage?.output ?? 0;
-      modelCostUsd += event.usage?.cost ?? 0;
+    if (event.op === "llm_request") {
+      const requestId = (event as any).id || `llm_${modelCalls + 1}`;
+      if (event.phase === "pre") {
+        tokenCollector.markRequestStart(requestId);
+      } else if (event.phase === "post") {
+        modelCalls++;
+        const durationMs = tokenCollector.computeRequestDuration(requestId);
+        const callModel = event.model || options.model || config.defaultModel;
+        modelUsed = callModel;
+
+        const callRecord = tokenCollector.recordCall({
+          id: requestId,
+          sequence: modelCalls,
+          model: callModel,
+          promptTokens: event.usage?.input ?? 0,
+          completionTokens: event.usage?.output ?? 0,
+          costUsd: event.usage?.cost,
+          durationMs,
+          timestamp: Date.now()
+        });
+
+        eventBridge.emit({
+          type: "token_usage_update",
+          searchId: threadId,
+          sequence: modelCalls,
+          promptTokens: callRecord.promptTokens,
+          completionTokens: callRecord.completionTokens,
+          totalTokens: callRecord.totalTokens,
+          model: callModel,
+          costUsd: callRecord.costUsd,
+          durationMs,
+          timestamp: Date.now()
+        });
+      }
     }
     return null;
   };
@@ -329,9 +356,14 @@ export async function runCodexAgent(
       finalAnswer = result.text.trim();
       latestAssistantContent = finalAnswer;
       modelUsed = modelUsed || options.model || config.defaultModel;
-      promptTokens = result.usage.input;
-      completionTokens = result.usage.output;
-      modelCostUsd = result.usage.cost;
+      if (tokenCollector.getCallCount() === 0 && result.usage) {
+        tokenCollector.recordCall({
+          model: modelUsed,
+          promptTokens: result.usage.input,
+          completionTokens: result.usage.output,
+          costUsd: result.usage.cost
+        });
+      }
       iteration = Math.max(modelCalls, 1);
       finished = true;
     } catch (error) {
@@ -379,9 +411,14 @@ export async function runCodexAgent(
           finalAnswer = retryResult.text.trim();
           latestAssistantContent = finalAnswer;
           modelUsed = fallbackModel;
-          promptTokens = retryResult.usage.input;
-          completionTokens = retryResult.usage.output;
-          modelCostUsd = retryResult.usage.cost;
+          if (tokenCollector.getCallCount() === 0 && retryResult.usage) {
+            tokenCollector.recordCall({
+              model: modelUsed,
+              promptTokens: retryResult.usage.input,
+              completionTokens: retryResult.usage.output,
+              costUsd: retryResult.usage.cost
+            });
+          }
           iteration = Math.max(modelCalls, 1);
           finished = true;
         } catch (retryErr) {
@@ -724,14 +761,18 @@ export async function runCodexAgent(
     // 让「展示给用户的检索计划」与「实际下发过的检索式 / 真实命中级别」一致
     { subQueries: executedSearchQueries, hitLevel: evidence?.level }
   );
-  if (!options.mockStepExecutor && (promptTokens > 0 || completionTokens > 0)) {
-    legacySynthesis.tokenUsage = {
-      promptTokens,
-      completionTokens,
-      totalTokens: promptTokens + completionTokens,
-      estimatedCostUsd: modelCostUsd || undefined,
-      model: modelUsed
-    };
+
+  const tokenRecord = tokenCollector.buildRecord({
+    searchId: threadId,
+    query,
+    model: modelUsed || options.model || config.defaultModel,
+    durationMs,
+    accuracy: options.mockStepExecutor ? "estimated" : undefined
+  });
+
+  legacySynthesis.tokenUsageRecord = tokenRecord;
+  if (tokenRecord.promptTokens > 0 || tokenRecord.completionTokens > 0) {
+    legacySynthesis.tokenUsage = TokenUsageCollector.toLegacyStats(tokenRecord);
   }
 
   return {

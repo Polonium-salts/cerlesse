@@ -188,6 +188,9 @@ export const CANONICAL_CAPABILITIES = [
   "mobile_handoff",
   "qr_scan_action",
   "agent_telemetry",
+  "token_telemetry",
+  "cost_telemetry",
+  "search_history",
   "dag_trace",
 
   // ── 声明式组件 ──

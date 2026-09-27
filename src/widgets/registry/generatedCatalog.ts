@@ -989,6 +989,7 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "name": "Token 消耗统计",
     "version": "1.0.0",
     "apiVersion": 1,
+    "presence": "resident",
     "description": "显示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
     "category": "developer",
     "tags": [

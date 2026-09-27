@@ -70,8 +70,8 @@ const DOWNLOAD_INTENT_REGEX = /(下载|安装|安装包|installer|download|dmg|e
 const GITHUB_INTENT_REGEX = /(github|gitlab|仓库|开源项目|repo|源码|git\s*clone)/i;
 const TOOL_INTENT_REGEX = /(工具|替代品|alternative|好用|推荐工具)/i;
 
-/** 常驻锚点：由 Manifest presence='resident' 决定（ai_answer 智能速答 + sources 信源溯源存证 + image_gallery 视觉图集，不走意图打分） */
-export const RESIDENT_WIDGET_IDS = ["ai_answer", "sources", "image_gallery"] as const;
+/** 常驻锚点：由 Manifest presence='resident' 决定（ai_answer 智能速答 + sources 信源溯源存证 + image_gallery 视觉图集 + token_usage 遥测监控，不走意图打分） */
+export const RESIDENT_WIDGET_IDS = ["ai_answer", "sources", "image_gallery", "token_usage"] as const;
 export const ALWAYS_ON_WIDGET_IDS = RESIDENT_WIDGET_IDS;
 
 /** 单次绑定上限（与 WIDGET_ACTIVATION_POLICY.max 对齐，避免跨模块循环依赖） */

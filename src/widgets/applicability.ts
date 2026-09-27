@@ -134,21 +134,9 @@ export function evaluateWidgetApplicability(
       // 图集为常驻组件；无图片时由组件自身呈现空态与图片搜索入口
       return { applicable: true, status: "ready", reason: "ready" };
 
-    case "token_usage": {
-      // 必须满足：存在真实 tokenUsage 遥测数据 OR 查询明确关注 Token/耗费/成本度量
-      const hasTokenData = Boolean(activeResult?.tokenUsage);
-      const hasTokenIntent = TOKEN_USAGE_INTENT_REGEX.test(q);
-
-      if (!hasTokenData && !hasTokenIntent) {
-        return {
-          applicable: false,
-          status: "not_applicable",
-          reason: "query_not_supported",
-          message: "无 Token 消耗数据且查询未关注意图度量"
-        };
-      }
+    case "token_usage":
+      // Token 真实消耗遥测与监控组件保持常驻加载，不受 Agent 控制/过滤
       return { applicable: true, status: "ready", reason: "ready" };
-    }
 
     case "weather": {
       // 仅在明确涉及气象天气时适用

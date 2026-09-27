@@ -266,9 +266,7 @@ export default function App() {
       }
     }
     const boundedOrder = candidateOrder.slice(0, WIDGET_ACTIVATION_POLICY.max);
-    const safeVisibleOrder = modelSelectedWidgetsOnly
-      ? boundedOrder
-      : applyAlwaysOnGuarantee(boundedOrder, (key) => eligibleSet.has(key));
+    const safeVisibleOrder = applyAlwaysOnGuarantee(boundedOrder, (key) => eligibleSet.has(key));
 
     if (visibleOrder.length < floorRequired) {
       console.warn(
@@ -911,47 +909,6 @@ export default function App() {
                 initialQuery={currentQuery}
                 isHomeView={true}
               />
-            </div>
-
-            {/* 首页小组件中心与图片图库快捷入口 */}
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsMarketplaceOpen(true)}
-                className="rounded-full h-8 px-3.5 gap-1.5 border-border/80 bg-background/60 hover:bg-muted/80 backdrop-blur-md shadow-xs transition-all hover:scale-105"
-                title="浏览所有搜索引擎小组件 (Live Tile 磁贴矩阵与插件系统)"
-              >
-                <LayoutGrid className="size-3.5 text-primary" />
-                <span className="font-medium text-foreground">小组件网格库</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono font-semibold">12 磁贴</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => goToPage("images")}
-                className="rounded-full h-8 px-3.5 gap-1.5 border-border/80 bg-background/60 hover:bg-muted/80 backdrop-blur-md shadow-xs transition-all hover:scale-105"
-                title="进入专门加载与浏览图片的页面"
-              >
-                <Images className="size-3.5 text-pink-500" />
-                <span className="font-medium text-foreground">图片图库专区</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/10 text-pink-500 font-mono font-semibold">HD 画廊</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => goToPage("settings")}
-                className="rounded-full h-8 px-3.5 gap-1.5 border-border/80 bg-background/60 hover:bg-muted/80 backdrop-blur-md shadow-xs transition-all hover:scale-105"
-                title="选择 AI 大语言模型并配置自定义 API Key"
-              >
-                <SlidersHorizontal className="size-3.5 text-amber-500" />
-                <span className="font-medium text-foreground">模型与 API 设置</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-semibold">
-                  {settings.customApiKey ? "已自定义" : "配置"}
-                </span>
-              </Button>
             </div>
           </div>
         )}

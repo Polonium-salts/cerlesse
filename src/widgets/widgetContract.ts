@@ -73,7 +73,8 @@ export const WIDGET_ACTIVATION_POLICY: WidgetActivationPolicy = {
 export const ALWAYS_ON_WIDGETS: ResultWidgetKey[] = [
   "ai_answer",
   "related_links",
-  "image_gallery"
+  "image_gallery",
+  "token_usage"
 ];
 
 /** 判断某组件是否为常驻组件 */

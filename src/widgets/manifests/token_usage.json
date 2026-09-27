@@ -3,6 +3,7 @@
   "id": "token_usage",
   "name": "Token 消耗统计",
   "version": "1.0.0",
+  "presence": "resident",
   "description": "显示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
   "category": "analytics",
   "tags": [

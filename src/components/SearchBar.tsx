@@ -1,9 +1,7 @@
 import React, { useState, useEffect, FormEvent } from "react";
-import { Search, X, Sparkles, Zap, ArrowRight, CornerDownLeft, Loader2 } from "lucide-react";
+import { Search, X, Sparkles, ArrowRight, CornerDownLeft, Loader2 } from "lucide-react";
 import { Button } from "./ui/button.js";
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.js";
 import { motion, AnimatePresence } from "motion/react";
-import { ModelStatusIndicator } from "./ModelStatusIndicator.js";
 
 interface SearchBarProps {
   onSearch: (query: string, deep: boolean) => void;
@@ -170,29 +168,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           )}
         </Button>
       </form>
-
-      {/* 检索模式切换与模型状态指示 */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 w-full mt-4 px-1 sm:px-2">
-        <Tabs
-          value={deepSearch ? "deep" : "fast"}
-          onValueChange={(v) => setDeepSearch(v === "deep")}
-        >
-          <TabsList className="bg-muted/60 p-0.5 rounded-full border border-border/40">
-            <TabsTrigger value="deep" className="rounded-full text-xs gap-1.5 px-3 py-1">
-              <Sparkles className="size-3.5 text-primary" />
-              AI 深度研报
-            </TabsTrigger>
-            <TabsTrigger value="fast" className="rounded-full text-xs gap-1.5 px-3 py-1">
-              <Zap className="size-3.5 text-amber-500" />
-              极速直达
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <div className="flex items-center gap-2">
-          <ModelStatusIndicator showText={true} />
-        </div>
-      </div>
     </div>
   );
 };

@@ -254,6 +254,71 @@ export interface TokenUsageStats {
   tokensPerSecond?: number;
   model?: string;
   contextTokens?: number;
+  accuracy?: "actual" | "estimated";
+}
+
+/** 单次 LLM 模型调用 Token 消耗明细 */
+export interface LlmTokenCallRecord {
+  id: string;
+  /** 当前搜索内部的调用序号 (1-indexed) */
+  sequence: number;
+  /** 模型名称 */
+  model?: string;
+  /** 输入 Prompt Token */
+  promptTokens: number;
+  /** 输出 Completion Token */
+  completionTokens: number;
+  /** 总 Token (prompt + completion) */
+  totalTokens: number;
+  /** 成本 (USD) */
+  costUsd?: number;
+  /** 单次调用耗时 (毫秒) */
+  durationMs?: number;
+  /** 调用发生时间戳 */
+  timestamp: number;
+}
+
+/** 单次搜索全局 Token 消耗完整记录 */
+export interface SearchTokenUsageRecord {
+  /** 每次搜索唯一 ID (通常与 threadId 一致) */
+  searchId: string;
+  /** 搜索关键词 */
+  query: string;
+  /** 搜索发生时间 */
+  timestamp: number;
+  /** 本次使用的主要模型 */
+  model?: string;
+  /** LLM 调用总次数 */
+  modelCalls: number;
+  /** 总 Prompt Token */
+  promptTokens: number;
+  /** 总 Completion Token */
+  completionTokens: number;
+  /** 总 Token */
+  totalTokens: number;
+  /** 总成本 (USD) */
+  costUsd?: number;
+  /** 平均输出吞吐速度 (tokens/second) */
+  tokensPerSecond?: number;
+  /** 搜索或 LLM 总耗时 (毫秒) */
+  durationMs: number;
+  /** 每次 LLM 调用明细 */
+  calls?: LlmTokenCallRecord[];
+  /** 数据准确度来源 */
+  accuracy: "actual" | "estimated";
+}
+
+/** 全局 Token 累计监控与统计 */
+export interface TokenUsageAggregate {
+  searchCount: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalTokens: number;
+  totalCostUsd: number;
+  averageTokensPerSearch: number;
+  averageCostPerSearch: number;
+  latestSearch?: SearchTokenUsageRecord;
+  history: SearchTokenUsageRecord[];
 }
 
 export type OfficialWidgetId =
@@ -913,6 +978,7 @@ export interface SearchSynthesisResult {
   widgetPlan?: WidgetPlan;
   troubleshootingPlan?: TroubleshootingPlan;
   tokenUsage?: TokenUsageStats;
+  tokenUsageRecord?: SearchTokenUsageRecord;
 }
 
 export interface TroubleshootingCheckItem {
@@ -989,7 +1055,7 @@ export interface AiApiModel {
   isRecommended?: boolean;
 }
 
-export type ModelProviderType = "deepseek" | "unorouter" | "openrouter" | "openai" | "custom" | "none";
+export type ModelProviderType = "unorouter" | "openai" | "custom" | "none";
 
 export interface ModelInfo {
   id: string;

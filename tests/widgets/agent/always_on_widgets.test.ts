@@ -72,14 +72,15 @@ function makePlan(widgetOrder: ResultWidgetKey[]): WidgetPlan {
 }
 
 describe("常驻组件契约", () => {
-  it("常驻清单固定为 AI 回答 / 权威跳转 / 图片图集三件套", () => {
-    assert.deepEqual(ALWAYS_ON_WIDGETS, ["ai_answer", "related_links", "image_gallery"]);
+  it("常驻清单固定为 AI 回答 / 权威跳转 / 图片图集 / Token 消耗四件套", () => {
+    assert.deepEqual(ALWAYS_ON_WIDGETS, ["ai_answer", "related_links", "image_gallery", "token_usage"]);
   });
 
-  it("isAlwaysOnWidget 只认这三个键", () => {
+  it("isAlwaysOnWidget 校验常驻键", () => {
     assert.equal(isAlwaysOnWidget("ai_answer"), true);
     assert.equal(isAlwaysOnWidget("related_links"), true);
     assert.equal(isAlwaysOnWidget("image_gallery"), true);
+    assert.equal(isAlwaysOnWidget("token_usage"), true);
     assert.equal(isAlwaysOnWidget("weather"), false);
     assert.equal(isAlwaysOnWidget("takeaways"), false);
   });
@@ -90,16 +91,17 @@ describe("injectAlwaysOnWidgets", () => {
     const result = injectAlwaysOnWidgets(["weather", "mindmap"]);
     assert.equal(result[0], "ai_answer", "速答应置顶");
     assert.equal(result[1], "related_links", "权威入口应紧跟速答");
+    assert.ok(result.includes("token_usage"), "Token 遥测应被补入");
   });
 
   it("已存在的常驻组件保持原位不动，不被重复插入", () => {
-    const result = injectAlwaysOnWidgets(["mindmap", "ai_answer", "related_links", "image_gallery"]);
-    assert.deepEqual(result, ["mindmap", "ai_answer", "related_links", "image_gallery"]);
+    const result = injectAlwaysOnWidgets(["mindmap", "ai_answer", "related_links", "image_gallery", "token_usage"]);
+    assert.deepEqual(result, ["mindmap", "ai_answer", "related_links", "image_gallery", "token_usage"]);
   });
 
   it("完全为空的清单也能被补齐", () => {
     const result = injectAlwaysOnWidgets([]);
-    assert.deepEqual(result, ["ai_answer", "related_links", "image_gallery"]);
+    assert.deepEqual(result, ["ai_answer", "related_links", "image_gallery", "token_usage"]);
   });
 });
 
