@@ -1,0 +1,17 @@
+# Cerlesse Codex Agent Configuration
+[agent]
+name = "cerlesse-codex"
+version = "2.0.0"
+runtime = "openai-codex"
+default_model = "gpt-4o"
+
+[mcp]
+enabled = true
+server_name = "cerlesse-mcp"
+endpoint = "in-process"
+
+[skills]
+search = ".codex/skills/cerlesse-search"
+widgets = ".codex/skills/cerlesse-widgets"
+verification = ".codex/skills/source-verification"
+formatting = ".codex/skills/answer-format"

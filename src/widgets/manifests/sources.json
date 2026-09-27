@@ -1,0 +1,57 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "sources",
+  "name": "信源溯源存证",
+  "version": "1.0.0",
+  "description": "基于全网交叉核验的信源存证、权威度认证、来源域名与原始引用可追溯链路",
+  "presence": "resident",
+  "category": "synthesis",
+  "tags": [
+    "信源溯源",
+    "证据链",
+    "权威认证",
+    "交叉核验",
+    "引用文献",
+    "真实性存证"
+  ],
+  "agentHint": {
+    "functionality": "结构化展示已验证的互联网权威信源清单，包含信源编号[1]、标题、域名、可信度认证徽标及原文直达入口，支撑结论可追溯",
+    "bestFor": [
+      "需要提供事实证据支撑和信源核验的严肃查询",
+      "多方观点比对与学术/事实核查",
+      "所有通用搜索任务的常驻可信存证"
+    ],
+    "dataRequirements": [
+      "已检索到的有效信源列表",
+      "来源 URL 与标题摘要"
+    ],
+    "selectionHeuristics": "作为全网信息真实性与反幻觉的核心常驻基石，与 AI 智能回答天然配对呈现。",
+    "triggerKeywords": [
+      "信源",
+      "来源",
+      "参考",
+      "出处",
+      "证据",
+      "核验",
+      "真实性"
+    ]
+  },
+  "icon": "ShieldCheck",
+  "grid": {
+    "width": 50,
+    "supportedWidths": [25, 50, 75, 100],
+    "ratio": "4:3",
+    "minWidth": 25
+  },
+  "layout": {
+    "defaultWidth": 50,
+    "minWidth": 25,
+    "maxWidth": 100,
+    "preferredRoles": ["primary", "secondary"],
+    "canPairWith": ["ai_answer", "related_links", "takeaways"]
+  },
+  "theme": {
+    "accentColor": "#10b981",
+    "flipAnimation": "3d-flip"
+  }
+}

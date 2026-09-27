@@ -1,0 +1,25 @@
+{
+  "id": "comparison",
+  "name": "对比评测矩阵",
+  "version": "1.0.0",
+  "description": "技术方案与实体横向参数评测、优缺点裁决与选型指南",
+  "category": "analysis",
+  "tags": ["对比", "矩阵", "PK", "区别", "选型", "comparison"],
+  "icon": "ArrowRightLeft",
+  "grid": {
+    "width": 100,
+    "supportedWidths": [50, 75, 100],
+    "ratio": "16:9",
+    "minWidth": 50
+  },
+  "layout": {
+    "defaultWidth": 100,
+    "minWidth": 50,
+    "maxWidth": 100,
+    "preferredRoles": ["hero", "primary"],
+    "canPairWith": ["actions_toolbox", "takeaways"]
+  },
+  "theme": {
+    "accentColor": "#6366f1"
+  }
+}

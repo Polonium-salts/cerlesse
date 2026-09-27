@@ -1,0 +1,194 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cerlesse.local/schemas/widget-manifest.json",
+  "title": "小组件插件清单 (Widget Manifest)",
+  "description": "一个 JSON 即一个小组件的插件清单：元信息 + 网格规格 + 磁贴主题。改这份 JSON 就改变了磁贴的形状与尺寸，无需触碰任何 TSX。",
+  "type": "object",
+  "required": ["id", "name", "version", "grid"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "description": "全局唯一 ID。必须与 WidgetModule.id 完全一致，布局引擎据此查表取网格比例。"
+    },
+    "name": {
+      "type": "string",
+      "description": "磁贴标题栏显示的名称"
+    },
+    "version": {
+      "type": "string",
+      "description": "插件版本号，遵循 semver"
+    },
+    "description": {
+      "type": "string",
+      "description": "一句话描述，用于插件市场卡片"
+    },
+    "presence": {
+      "type": "string",
+      "enum": ["conditional", "resident"],
+      "description": "常驻模式声明：resident（恒定常驻，无需触发打分，不可被意图过滤），conditional（条件触发，默认）"
+    },
+    "category": {
+      "enum": ["synthesis", "analysis", "action", "portal", "custom"],
+      "description": "插件归类，决定其在插件市场中的分组"
+    },
+    "tags": {
+      "type": "array",
+      "description": "语义与功能标签列表（如 [\"AI回答\", \"全网总结\", \"深度要点\"]），供 Agent 结合检索内容智能选取",
+      "items": {
+        "type": "string"
+      }
+    },
+    "agentHint": {
+      "type": "object",
+      "description": "底层属性与 Agent 提示词契约，定义小组件的功能、最适用场景、信源数据要求与实用性评价准则",
+      "required": ["functionality", "bestFor", "selectionHeuristics"],
+      "properties": {
+        "functionality": {
+          "type": "string",
+          "description": "核心功能与呈现形式概述"
+        },
+        "bestFor": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "最适用的检索意图与场景描述"
+        },
+        "dataRequirements": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "要求检索结果或底层数据具备的特征"
+        },
+        "selectionHeuristics": {
+          "type": "string",
+          "description": "Agent 选取该组件的实用性启发式准则"
+        },
+        "triggerKeywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "推荐触发关键词"
+        },
+        "antiPatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "不推荐选取的反模式或互斥场景"
+        }
+      }
+    },
+    "icon": {
+      "type": "string",
+      "description": "lucide 图标名（如 Zap / Database）。仅接受 src/widgets/manifests/icons.ts 白名单内的名称，未命中会回落到默认图标。"
+    },
+    "grid": {
+      "type": "object",
+      "description": "网格规格 —— 磁贴形状的唯一事实来源",
+      "required": ["width", "supportedWidths", "ratio"],
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "enum": [25, 50, 75, 100],
+          "description": "默认占宽百分比（12 栅格基准）：25=3格 / 50=6格 / 75=9格 / 100=12格"
+        },
+        "supportedWidths": {
+          "type": "array",
+          "minItems": 1,
+          "description": "允许用户切换的宽度百分比集合，取值仅限 25 / 50 / 75 / 100",
+          "items": {
+            "enum": [25, 50, 75, 100]
+          }
+        },
+        "ratio": {
+          "enum": ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"],
+          "description": "网格宽高比。磁贴高度恒等于 宽度 ÷ ratio，比例一经声明即不随任何条件漂移。"
+        },
+        "ratioMode": {
+          "type": "string",
+          "enum": ["strict", "flexible"],
+          "default": "flexible",
+          "description": "比例模式：strict 严格锁定高度为 宽度/ratio 并使用内部滚动；flexible 为比例作为高度下限、内容超出时自然长高（默认）"
+        },
+        "ratioByBreakpoint": {
+          "type": "object",
+          "description": "响应式断点比例覆盖",
+          "additionalProperties": false,
+          "properties": {
+            "desktop": { "enum": ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"] },
+            "tablet": { "enum": ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"] },
+            "mobile": { "enum": ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"] }
+          }
+        },
+        "minWidth": {
+          "type": "integer",
+          "enum": [25, 50, 75, 100],
+          "description": "可选。允许求解器收窄到的最小占宽百分比。缺省时沿用通用规则「最多收窄一档」；内容密集的插件可声明此值，表示宁可有空洞也不许压到这个宽度以下。"
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "description": "布局角色与偏好元数据",
+      "required": ["defaultWidth", "minWidth", "maxWidth", "preferredRoles"],
+      "additionalProperties": false,
+      "properties": {
+        "defaultWidth": {
+          "enum": [25, 50, 75, 100],
+          "description": "默认宽度百分比"
+        },
+        "minWidth": {
+          "enum": [25, 50, 75, 100],
+          "description": "最小宽度百分比"
+        },
+        "maxWidth": {
+          "enum": [25, 50, 75, 100],
+          "description": "最大宽度百分比"
+        },
+        "preferredRoles": {
+          "type": "array",
+          "items": {
+            "enum": ["hero", "primary", "secondary", "supporting", "utility"]
+          },
+          "description": "推荐担任的排版角色列表"
+        },
+        "canPairWith": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "推荐配对小组件 ID 列表"
+        },
+        "avoidPairWith": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "避免相邻小组件 ID 列表"
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "description": "磁贴主题与动效（可选）",
+      "additionalProperties": false,
+      "properties": {
+        "accentColor": {
+          "type": "string",
+          "description": "磁贴身份点缀色（品牌/图标例外层，非框架色）"
+        },
+        "gradient": {
+          "type": "string",
+          "description": "背景渐变"
+        },
+        "accentBg": {
+          "type": "string",
+          "description": "强调浅色底"
+        },
+        "liveBadge": {
+          "type": ["string", "number"],
+          "description": "动态徽标 / 数字"
+        },
+        "flipAnimation": {
+          "enum": ["3d-flip", "slide", "fade"],
+          "description": "翻面动效"
+        }
+      }
+    }
+  }
+}
