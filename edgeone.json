@@ -11,8 +11,6 @@
     }
   ],
   "cloudFunctions": {
-    "nodejs": {
-      "maxDuration": 60
-    }
+    "maxDuration": 60
   }
 }

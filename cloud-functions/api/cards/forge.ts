@@ -8,4 +8,3 @@ export const onRequest: PagesFunction = async (context) => {
   return errorResponse("AI 卡片生成 API 已暂时移除。", 503);
 };
 
-export default onRequest;

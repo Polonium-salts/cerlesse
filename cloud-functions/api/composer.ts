@@ -7,4 +7,3 @@ export const onRequest: PagesFunction = async (context) => {
   return jsonResponse({ disabled: true, message: "Widget Composer has been permanently disabled." });
 };
 
-export default onRequest;

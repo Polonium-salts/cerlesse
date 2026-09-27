@@ -40,4 +40,3 @@ export const onRequest: PagesFunction = async (context) => {
   }
 };
 
-export default onRequest;

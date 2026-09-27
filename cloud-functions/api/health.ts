@@ -9,4 +9,3 @@ export const onRequest: PagesFunction = async () => {
   });
 };
 
-export default onRequest;
