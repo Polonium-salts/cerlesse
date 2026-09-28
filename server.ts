@@ -38,11 +38,12 @@ app.get("/api/widgets/health", (_req, res) => {
 
 // 单一来源转述模型提供商状态，配合搜索与多语言配置
 app.get("/api/config", async (_req, res) => {
-  res.json(getSystemConfig(process.env));
+  const config = await getSystemConfig(process.env);
+  res.json(config);
 });
 
 // 根据 API Key / Base URL 自动探测上游提供商与动态加载可用模型
-app.all("/api/models/detect", async (req, res) => {
+app.all(["/api/models/detect", "/api/models"], async (req, res) => {
   try {
     const { apiKey, apiBaseUrl, provider } = extractAuthHeaders(req);
     const result = await detectModels({

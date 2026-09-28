@@ -84,4 +84,23 @@ describe("EdgeOne Cloud Functions UnoRouter Integration", () => {
     assert.ok(body.models.length >= 1);
     assert.ok(body.models.some((m: any) => m.id.includes("deepseek")));
   });
+
+  it("EdgeOne /api/config correctly recognizes LLM_API_KEY and LLM_BASE_URL bindings", async () => {
+    const mockContext: any = {
+      request: new Request("https://example.com/api/config"),
+      env: {
+        LLM_API_KEY: TEST_UNO_KEY,
+        LLM_BASE_URL: "https://api.unorouter.com/v1"
+      }
+    };
+
+    const response = await handleConfig(mockContext);
+    assert.equal(response.status, 200);
+
+    const body = await response.json();
+    const parsed = ModelProviderStatusSchema.parse(body);
+    assert.equal(parsed.provider, "unorouter");
+    assert.equal(parsed.ready, true);
+    assert.ok(parsed.models.length >= 1);
+  });
 });

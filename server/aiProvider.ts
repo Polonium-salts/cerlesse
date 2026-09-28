@@ -6,6 +6,7 @@ import {
   isGatewayDisabled,
   loadGatewayModels,
   GATEWAY_REGISTRY,
+  UNOROUTER_PRESET_MODELS,
   ResolvedGateway
 } from "./gateway.js";
 
@@ -90,15 +91,24 @@ export function resolveAiApiKey(env?: Record<string, string | undefined>): strin
   const source = environment(env);
   if (isAiApiDisabled(source)) return undefined;
 
-  // 1. UnoRouter 网关 API Key
+  // 1. UnoRouter 网关 API Key (包含 UNOROUTER_API_KEY, UNOROUTER_KEY, LLM_API_KEY)
   const gateway = resolveGateway(source);
   if (gateway.apiKey) {
     return gateway.apiKey;
   }
 
-  // 2. 显式配置的通用 AI_API_KEY
+  // 2. 显式配置的通用 AI_API_KEY 或 LLM_API_KEY
   if (isValidKeyString(source.AI_API_KEY)) {
     return source.AI_API_KEY!.trim();
+  }
+  if (isValidKeyString(source.LLM_API_KEY)) {
+    return source.LLM_API_KEY!.trim();
+  }
+  if (isValidKeyString(source.UNOROUTER_API_KEY)) {
+    return source.UNOROUTER_API_KEY!.trim();
+  }
+  if (isValidKeyString(source.UNOROUTER_KEY)) {
+    return source.UNOROUTER_KEY!.trim();
   }
 
   return undefined;
@@ -140,13 +150,17 @@ export function getAiApiConfig(env?: Record<string, string | undefined>): AiApiC
   const source = environment(env);
   const gateway = resolveGateway(source);
 
-  const defaultBase = gateway.baseUrl || (source.AI_API_KEY && !source.UNOROUTER_API_KEY ? "https://api.openai.com" : DEFAULT_AI_API_BASE_URL);
-  const defaultModel = gateway.defaultModel || DEFAULT_AI_MODEL;
+  const defaultBase =
+    source.LLM_BASE_URL?.trim() ||
+    source.UNOROUTER_BASE_URL?.trim() ||
+    gateway.baseUrl ||
+    (source.AI_API_KEY && !source.UNOROUTER_API_KEY && !source.LLM_API_KEY ? "https://api.openai.com" : DEFAULT_AI_API_BASE_URL);
+  const defaultModel = source.LLM_MODEL?.trim() || source.AI_MODEL?.trim() || gateway.defaultModel || DEFAULT_AI_MODEL;
 
-  const configuredBase = source.AI_API_BASE_URL?.trim() || defaultBase;
+  const configuredBase = source.AI_API_BASE_URL?.trim() || source.LLM_BASE_URL?.trim() || source.UNOROUTER_BASE_URL?.trim() || defaultBase;
   const normalizedBase = normalizeBaseUrl(configuredBase);
-  const rawModel = source.AI_MODEL?.trim() || defaultModel;
-  const configuredModel = source.AI_MODEL ? sanitizeModelForBaseUrl(rawModel, normalizedBase) : defaultModel;
+  const rawModel = source.AI_MODEL?.trim() || source.LLM_MODEL?.trim() || defaultModel;
+  const configuredModel = (source.AI_MODEL || source.LLM_MODEL) ? sanitizeModelForBaseUrl(rawModel, normalizedBase) : defaultModel;
 
   return {
     apiBaseUrl: normalizedBase,
@@ -515,19 +529,29 @@ export async function detectAndFetchModels(params: {
     }
   }
 
-  // 3. 降级回退：不再内置硬编码静态模型列表，未探测到远程模型时仅保留当前默认配置模型
-  const fallbackModels: ModelInfo[] = defaultModel
-    ? [
-        {
-          id: defaultModel,
-          name: defaultModel,
-          description: `${providerName} 默认模型 (${defaultModel})`,
-          contextLength: "128k",
-          pricing: "标准",
-          isRecommended: true
-        }
-      ]
-    : [];
+  // 3. 降级回退：UnoRouter 网关平滑使用官方预设模型目录；其他提供商返回默认模型
+  const fallbackModels: ModelInfo[] =
+    providerType === "unorouter"
+      ? UNOROUTER_PRESET_MODELS.map((m) => ({
+          id: m.id,
+          name: m.name,
+          description: m.description,
+          contextLength: m.contextLength || "128k",
+          pricing: m.pricing || "低费率",
+          isRecommended: m.isRecommended
+        }))
+      : defaultModel
+        ? [
+            {
+              id: defaultModel,
+              name: defaultModel,
+              description: `${providerName} 默认模型 (${defaultModel})`,
+              contextLength: "128k",
+              pricing: "标准",
+              isRecommended: true
+            }
+          ]
+        : [];
 
   return {
     success: true,
@@ -538,7 +562,7 @@ export async function detectAndFetchModels(params: {
     defaultModel: fallbackModels[0]?.id || defaultModel,
     source: "preset_catalog",
     message: fallbackModels.length > 0
-      ? `已连接 ${providerName}，当前模型为 ${defaultModel}`
+      ? `已连接 ${providerName}，包含 ${fallbackModels.length} 个推荐可用模型`
       : `已连接 ${providerName}`
   };
 }

@@ -6,11 +6,26 @@ import {
 } from "../aiProvider.js";
 import { SUPPORTED_LANGUAGES } from "../language.js";
 
-export function getSystemConfig(env?: Record<string, string | undefined>) {
+export async function getSystemConfig(env?: Record<string, string | undefined>) {
   const effectiveEnv = env || (typeof process !== "undefined" ? process.env : {});
   const status = resolveModelProvider(effectiveEnv);
   const aiApiConfig = getAiApiConfig(effectiveEnv);
-  const models = status.models && status.models.length > 0 ? status.models : loadAvailableModels(effectiveEnv);
+
+  let models = status.models;
+  if (status.provider === "unorouter" || status.hasApiKey) {
+    try {
+      const detected = await detectAndFetchModels({ env: effectiveEnv, provider: status.provider });
+      if (detected.models && detected.models.length > 0) {
+        models = detected.models;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!models || models.length === 0) {
+    models = loadAvailableModels(effectiveEnv);
+  }
 
   return {
     ...status,

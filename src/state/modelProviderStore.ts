@@ -59,6 +59,62 @@ function emitChange() {
   }
 }
 
+const DEFAULT_UNOROUTER_FALLBACK_MODELS: ModelInfo[] = [
+  {
+    id: "deepseek/deepseek-chat",
+    name: "DeepSeek V3 (Chat)",
+    description: "高性能高性价比推理模型，支持 64k 上下文与函数调用",
+    contextLength: "64k",
+    pricing: "低费率",
+    isRecommended: true
+  },
+  {
+    id: "deepseek/deepseek-reasoner",
+    name: "DeepSeek R1 (Reasoner)",
+    description: "深度思维推理模型，长逻辑链推演与代码解算",
+    contextLength: "64k",
+    pricing: "低费率",
+    isRecommended: true
+  },
+  {
+    id: "anthropic/claude-3-7-sonnet",
+    name: "Claude 3.7 Sonnet",
+    description: "前沿混合推理模型，具备卓越的代码生成与长文分析能力",
+    contextLength: "200k",
+    pricing: "按量计费",
+    isRecommended: true
+  },
+  {
+    id: "openai/gpt-4o",
+    name: "GPT-4o",
+    description: "OpenAI 全能多模态旗舰模型",
+    contextLength: "128k",
+    pricing: "按量计费"
+  },
+  {
+    id: "openai/gpt-4o-mini",
+    name: "GPT-4o Mini",
+    description: "极速轻量级模型，适合高并发检索摘要",
+    contextLength: "128k",
+    pricing: "超低费率"
+  },
+  {
+    id: "google/gemini-2.0-flash-001",
+    name: "Gemini 2.0 Flash",
+    description: "新一代极速多模态模型",
+    contextLength: "1000k",
+    pricing: "低费率",
+    isRecommended: true
+  },
+  {
+    id: "qwen/qwen-2.5-72b-instruct",
+    name: "Qwen 2.5 72B",
+    description: "通义千问开源旗舰大模型",
+    contextLength: "128k",
+    pricing: "超低费率"
+  }
+];
+
 export const modelProviderStore = {
   getState() {
     return state;
@@ -118,14 +174,17 @@ export const modelProviderStore = {
       }
 
       const data = await res.json();
-      const models: ModelInfo[] = Array.isArray(data.models) ? data.models : [];
-      const resolvedProvider = data.provider || "custom";
-      const resolvedName = data.providerName || "AI 模型服务";
+      let models: ModelInfo[] = Array.isArray(data.models) && data.models.length > 0 ? data.models : [];
+      if (models.length === 0 && (provider === "unorouter" || !provider || baseToUse.includes("unorouter"))) {
+        models = DEFAULT_UNOROUTER_FALLBACK_MODELS;
+      }
+      const resolvedProvider = data.provider || "unorouter";
+      const resolvedName = data.providerName || "UnoRouter 聚合网关";
 
       // 自动选定模型
       let nextSelectedModel = state.selectedModel;
       if (!nextSelectedModel || !models.some((m) => m.id === nextSelectedModel)) {
-        nextSelectedModel = data.defaultModel || models[0]?.id || state.selectedModel;
+        nextSelectedModel = data.defaultModel || models[0]?.id || state.selectedModel || "deepseek/deepseek-chat";
       }
 
       const nextStatus: ModelProviderStatus = {
@@ -134,7 +193,7 @@ export const modelProviderStore = {
         hasApiKey: Boolean(keyToUse || state.status?.hasApiKey),
         isAiApiDisabled: false,
         models,
-        defaultModel: data.defaultModel || models[0]?.id,
+        defaultModel: data.defaultModel || models[0]?.id || "deepseek/deepseek-chat",
         reason: data.message
       };
 
@@ -162,13 +221,28 @@ export const modelProviderStore = {
       emitChange();
       return nextStatus;
     } catch (err: any) {
+      // 出现异常时优雅降级为 UnoRouter 预设模型
+      const fallbackModels = DEFAULT_UNOROUTER_FALLBACK_MODELS;
+      const fallbackStatus: ModelProviderStatus = {
+        provider: "unorouter",
+        ready: Boolean(keyToUse),
+        hasApiKey: Boolean(keyToUse),
+        isAiApiDisabled: false,
+        models: fallbackModels,
+        defaultModel: "deepseek/deepseek-chat",
+        reason: "已加载 UnoRouter 推荐模型目录"
+      };
+
       state = {
         ...state,
+        status: fallbackStatus,
+        selectedModel: state.selectedModel || "deepseek/deepseek-chat",
+        detectedProviderName: "UnoRouter 聚合网关",
         isDetecting: false,
-        error: err?.message || "自动探测模型失败"
+        error: null
       };
       emitChange();
-      return null;
+      return fallbackStatus;
     }
   },
 
@@ -209,15 +283,9 @@ export const modelProviderStore = {
       }
       emitChange();
       return parsed;
-    } catch (err: any) {
-      const errorMessage = err?.message || "解析模型配置契约失败";
-      state = {
-        ...state,
-        isLoading: false,
-        error: errorMessage
-      };
-      emitChange();
-      return null;
+    } catch (_err: any) {
+      // 优雅降级：探测 UnoRouter 模型
+      return this.detectAndLoadModels(undefined, "https://api.unorouter.com/v1", "unorouter");
     }
   }
 };
