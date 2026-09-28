@@ -43,11 +43,7 @@ function parseModelMetadata(model: SelectableModelItem) {
     model.pricing === "Free" ||
     model.pricing === "free";
 
-  const isRecommended =
-    Boolean(model.isRecommended) ||
-    idLower.includes("deepseek-v4") ||
-    idLower.includes("deepseek-chat") ||
-    idLower.includes("flash");
+  const isRecommended = Boolean(model.isRecommended);
   
   // 提取上下文长度 (例如 1049k, 1000k, 128k)
   let contextBadge = "";
@@ -204,7 +200,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`group h-9 pl-3 pr-2.5 rounded-xl border bg-background/90 hover:bg-muted/80 backdrop-blur-md transition-all duration-200 flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 select-none ${
+        className={`group h-8.5 sm:h-9 pl-2 sm:pl-3 pr-2 sm:pr-2.5 rounded-xl border bg-background/90 hover:bg-muted/80 backdrop-blur-md transition-all duration-200 flex items-center gap-1.5 sm:gap-2 text-xs font-medium text-foreground cursor-pointer shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 select-none min-w-0 max-w-[130px] xs:max-w-[160px] sm:max-w-none shrink ${
           isOpen
             ? "border-primary/60 ring-2 ring-primary/20 bg-muted/90"
             : "border-border/80 hover:border-border"
@@ -214,26 +210,26 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
         {/* 左侧状态/供应商图标 */}
         <div className="flex items-center justify-center shrink-0">
           {isDetecting ? (
-            <div className="size-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <div className="size-3 sm:size-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           ) : activeMeta.isFree ? (
-            <Zap className="size-3.5 text-emerald-500" />
+            <Zap className="size-3 sm:size-3.5 text-emerald-500 shrink-0" />
           ) : (
-            <Bot className="size-3.5 text-primary" />
+            <Bot className="size-3 sm:size-3.5 text-primary shrink-0" />
           )}
         </div>
 
         {/* 模型名称及特征标 */}
-        <div className="flex items-center gap-1.5 max-w-[120px] sm:max-w-[170px] md:max-w-[210px] truncate">
-          <span className="truncate font-semibold text-[12px] tracking-tight">
+        <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 max-w-[70px] xs:max-w-[95px] sm:max-w-[170px] md:max-w-[210px] truncate">
+          <span className="truncate font-semibold text-[11px] sm:text-[12px] tracking-tight">
             {activeMeta.cleanName}
           </span>
           {activeMeta.isFree && (
-            <span className="shrink-0 text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-semibold border border-emerald-500/20">
+            <span className="shrink-0 text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-semibold border border-emerald-500/20">
               FREE
             </span>
           )}
           {activeMeta.contextBadge && !activeMeta.isFree && (
-            <span className="shrink-0 text-[10px] px-1 py-0.2 rounded bg-muted text-muted-foreground font-mono">
+            <span className="shrink-0 text-[9px] sm:text-[10px] px-1 py-0.2 rounded bg-muted text-muted-foreground font-mono hidden sm:inline-flex">
               {activeMeta.contextBadge}
             </span>
           )}
@@ -241,7 +237,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 
         {/* 下拉微动画箭头 */}
         <ChevronDown
-          className={`size-3.5 text-muted-foreground transition-transform duration-200 shrink-0 ${
+          className={`size-3 sm:size-3.5 text-muted-foreground transition-transform duration-200 shrink-0 ${
             isOpen ? "rotate-180 text-primary" : "opacity-70 group-hover:opacity-100"
           }`}
         />
@@ -424,12 +420,27 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                 );
               })
             ) : (
-              <div className="py-8 text-center px-4">
-                <Bot className="size-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs font-medium text-foreground">未找到匹配的模型</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  请尝试更换搜索词或点击下方进入 API 设置
-                </p>
+              <div className="py-6 text-center px-4 space-y-3">
+                <div>
+                  <Bot className="size-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-xs font-medium text-foreground">未在列表中找到该模型</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    支持直接输入任意 OpenAI 兼容模型 ID 使用
+                  </p>
+                </div>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectModel(searchQuery.trim());
+                      setIsOpen(false);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Cpu className="size-3.5" />
+                    <span>使用模型: <strong>{searchQuery.trim()}</strong></span>
+                  </button>
+                )}
               </div>
             )}
           </div>

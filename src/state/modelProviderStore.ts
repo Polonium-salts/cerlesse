@@ -12,6 +12,13 @@ interface ModelStoreState {
   customApiBaseUrl: string;
 }
 
+function sanitizeStoredModel(model: string): string {
+  if (!model || typeof model !== "string") {
+    return "";
+  }
+  return model.trim();
+}
+
 function getStoredSettings(): { customApiKey: string; customApiBaseUrl: string; selectedModel: string } {
   try {
     const raw = localStorage.getItem("ai_search_settings");
@@ -20,14 +27,14 @@ function getStoredSettings(): { customApiKey: string; customApiBaseUrl: string; 
       return {
         customApiKey: parsed.customApiKey || "",
         customApiBaseUrl: parsed.customApiBaseUrl || "",
-        selectedModel: parsed.selectedModel || ""
+        selectedModel: sanitizeStoredModel(parsed.selectedModel || "")
       };
     }
   } catch {}
   return {
     customApiKey: "",
     customApiBaseUrl: "",
-    selectedModel: localStorage.getItem("cerlesse_selected_model") || ""
+    selectedModel: sanitizeStoredModel(localStorage.getItem("cerlesse_selected_model") || "")
   };
 }
 

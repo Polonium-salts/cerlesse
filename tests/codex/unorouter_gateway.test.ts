@@ -20,7 +20,7 @@ test("resolveGateway detects UnoRouter when UNOROUTER_API_KEY is present", () =>
   assert.equal(result.provider, "unorouter");
   assert.equal(result.baseUrl, "https://api.unorouter.com/v1");
   assert.equal(result.apiKey, TEST_UNO_KEY);
-  assert.equal(result.defaultModel, "deepseek/deepseek-v4-flash");
+  assert.equal(result.defaultModel, "deepseek/deepseek-chat");
 });
 
 test("resolveGateway falls back to OpenRouter when UNOROUTER_API_KEY is absent but OPENROUTER_API_KEY is set", () => {
@@ -67,12 +67,12 @@ test("resolveModelProvider returns full status for UnoRouter", async () => {
   assert.equal(status.provider, "unorouter");
   assert.equal(status.ready, true);
   assert.equal(status.hasUnoRouterKey, true);
-  assert.equal(status.defaultModel, "deepseek/deepseek-v4-flash");
-  assert.ok(status.models.some((m) => m.id === "deepseek/deepseek-v4-flash"));
+  assert.equal(status.defaultModel, "deepseek/deepseek-chat");
+  assert.ok(status.models.some((m) => m.id === "deepseek/deepseek-chat"));
 
   const config = getAiApiConfig({ UNOROUTER_API_KEY: TEST_UNO_KEY });
   assert.equal(config.apiBaseUrl, "https://api.unorouter.com");
-  assert.equal(config.model, "deepseek/deepseek-v4-flash");
+  assert.equal(config.model, "deepseek/deepseek-chat");
   assert.equal(config.hasApiKey, true);
 
   const client = getAiApiClient({ UNOROUTER_API_KEY: TEST_UNO_KEY });

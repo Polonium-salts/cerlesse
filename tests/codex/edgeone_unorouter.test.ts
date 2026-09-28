@@ -24,9 +24,9 @@ describe("EdgeOne Cloud Functions UnoRouter Integration", () => {
       const parsed = ModelProviderStatusSchema.parse(body);
       assert.equal(parsed.provider, "unorouter");
       assert.equal(parsed.ready, true);
-      assert.ok(parsed.models.length >= 3);
-      assert.ok(parsed.models.some((m) => m.id === "deepseek/deepseek-v4-flash"));
-      assert.equal(parsed.defaultModel, "deepseek/deepseek-v4-flash");
+      assert.ok(parsed.models.length >= 1);
+      assert.ok(parsed.models.some((m) => m.id === "deepseek/deepseek-chat"));
+      assert.equal(parsed.defaultModel, "deepseek/deepseek-chat");
     } catch (err: any) {
       console.error("Test 1 error body:", JSON.stringify(body, null, 2));
       throw err;
@@ -56,8 +56,8 @@ describe("EdgeOne Cloud Functions UnoRouter Integration", () => {
     const body = await response.json();
     assert.equal(body.success, true);
     assert.equal(body.provider, "unorouter");
-    assert.ok(body.models.length >= 3);
-    assert.ok(body.models.some((m: any) => m.id === "deepseek/deepseek-v4-flash"));
+    assert.ok(body.models.length >= 1);
+    assert.ok(body.models.some((m: any) => m.id.includes("deepseek")));
   });
 
   it("EdgeOne /api/models/detect works when user selects UnoRouter preset without apiKey yet", async () => {
@@ -81,7 +81,7 @@ describe("EdgeOne Cloud Functions UnoRouter Integration", () => {
     const body = await response.json();
     assert.equal(body.success, true);
     assert.equal(body.provider, "unorouter");
-    assert.ok(body.models.length >= 3);
-    assert.ok(body.models.some((m: any) => m.id === "deepseek/deepseek-v4-flash"));
+    assert.ok(body.models.length >= 1);
+    assert.ok(body.models.some((m: any) => m.id.includes("deepseek")));
   });
 });

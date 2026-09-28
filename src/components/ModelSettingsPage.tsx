@@ -99,7 +99,7 @@ export function ModelSettingsPage({
       badge: "238+ 模型 / 117+ 免费",
       url: "https://api.unorouter.com/v1",
       site: "https://unorouter.com",
-      defaultModel: "deepseek/deepseek-v4-flash",
+      defaultModel: "deepseek/deepseek-chat",
       desc: "一个 API Key 打通 238+ 模型，支持自动故障转移与模型真实性校验。"
     },
     {

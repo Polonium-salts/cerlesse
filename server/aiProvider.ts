@@ -13,7 +13,7 @@ export * from "./gateway.js";
 
 // 规范默认地址与模型：以 UnoRouter 网关为核心
 export const DEFAULT_AI_API_BASE_URL = "https://api.unorouter.com";
-export const DEFAULT_AI_MODEL = "deepseek/deepseek-v4-flash";
+export const DEFAULT_AI_MODEL = "deepseek/deepseek-chat";
 
 export interface AiApiConfig {
   apiBaseUrl: string;
@@ -128,7 +128,7 @@ export function sanitizeModelForBaseUrl(model: string, baseUrl: string): string 
   const baseLower = (baseUrl || "").toLowerCase();
 
   if (baseLower.includes("api.openai.com")) {
-    if (trimmed !== DEFAULT_AI_MODEL && (trimmed.includes("/") || trimmed.includes("deepseek"))) {
+    if (trimmed.includes("/") || trimmed.includes("deepseek")) {
       return "gpt-4o-mini";
     }
   }
@@ -146,7 +146,7 @@ export function getAiApiConfig(env?: Record<string, string | undefined>): AiApiC
   const configuredBase = source.AI_API_BASE_URL?.trim() || defaultBase;
   const normalizedBase = normalizeBaseUrl(configuredBase);
   const rawModel = source.AI_MODEL?.trim() || defaultModel;
-  const configuredModel = sanitizeModelForBaseUrl(rawModel, normalizedBase);
+  const configuredModel = source.AI_MODEL ? sanitizeModelForBaseUrl(rawModel, normalizedBase) : defaultModel;
 
   return {
     apiBaseUrl: normalizedBase,
@@ -231,81 +231,24 @@ export function resolveModelProvider(env?: Record<string, string | undefined>): 
     providerType = "custom";
   }
 
-  let models: ModelInfo[] = [];
-  if (providerType === "unorouter") {
-    models = [
-      {
-        id: "deepseek/deepseek-v4-flash",
-        name: "DeepSeek V4 Flash",
-        description: "UnoRouter 免费/快速调度模型",
-        contextLength: "1,000k",
-        pricing: "Free / Standard",
-        isRecommended: true
-      },
-      {
-        id: "deepseek/deepseek-chat",
-        name: "DeepSeek V3 (通用研报)",
-        description: "UnoRouter 托管 DeepSeek-V3",
-        contextLength: "64k",
-        pricing: "低费率",
-        isRecommended: true
-      },
-      {
-        id: "deepseek/deepseek-reasoner",
-        name: "DeepSeek R1 (深度思考)",
-        description: "UnoRouter 托管 DeepSeek-R1 强化学习模型",
-        contextLength: "64k",
-        pricing: "低费率",
-        isRecommended: true
-      },
-      {
-        id: "meta-llama/llama-3.3-70b-instruct",
-        name: "Llama 3.3 70B Instruct",
-        description: "Meta 高性能开源大模型",
-        contextLength: "128k",
-        pricing: "Pay-as-you-go"
-      },
-      {
-        id: "google/gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        description: "Google 轻量级多模态高速模型",
-        contextLength: "1,000k",
-        pricing: "Pay-as-you-go"
-      },
-      {
-        id: "openai/gpt-4o-mini",
-        name: "GPT-4o Mini",
-        description: "OpenAI 轻量级高性能模型",
-        contextLength: "128k",
-        pricing: "Pay-as-you-go"
-      }
-    ];
-    if (!models.some((m) => m.id === config.model)) {
-      models.unshift({
-        id: config.model,
-        name: config.model,
-        description: `UnoRouter 自定义模型 (${config.model})`,
-        contextLength: "128k",
-        pricing: "Gateway",
-        isRecommended: true
-      });
+  // 杜绝静态硬编码第三方模型列表；以当前环境配置或默认 AI_MODEL 为准
+  const activeModelId = config.model || (providerType === "unorouter" ? DEFAULT_AI_MODEL : "gpt-4o-mini");
+  const models: ModelInfo[] = [
+    {
+      id: activeModelId,
+      name: activeModelId,
+      description: `已配置模型 (${activeModelId})`,
+      contextLength: "128k",
+      pricing: providerType === "unorouter" ? "低费率" : "按量计费",
+      isRecommended: true
     }
-  } else if (providerType === "openai") {
-    models = [
-      { id: "gpt-4o-mini", name: "GPT-4o Mini", description: "OpenAI 高性价比模型", contextLength: "128k", pricing: "按量计费", isRecommended: true },
-      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false }
-    ];
-  } else {
-    models = [
-      { id: config.model, name: config.model, description: `自定义 OpenAI-compatible 模型 (${config.model})`, contextLength: "128k", pricing: "Custom", isRecommended: true }
-    ];
-  }
+  ];
 
   return {
     provider: providerType,
     ready: true,
     models,
-    defaultModel: config.model || models[0]?.id,
+    defaultModel: activeModelId,
     hasApiKey: true,
     hasUnoRouterKey: unoRouterReady,
     isAiApiDisabled: false
@@ -452,7 +395,7 @@ export async function detectAndFetchModels(params: {
   // 1. 启发式识别 Provider 类型与规范 Base URL
   let providerType: ModelProviderType = "unorouter";
   let providerName = "UnoRouter 聚合网关";
-  let defaultModel = "deepseek/deepseek-v4-flash";
+  let defaultModel = "deepseek/deepseek-chat";
 
   const keyLower = rawKey.toLowerCase();
   const baseLower = rawBase.toLowerCase();
@@ -461,7 +404,7 @@ export async function detectAndFetchModels(params: {
     providerType = "deepseek";
     providerName = "DeepSeek 官方 API";
     rawBase = rawBase || "https://api.deepseek.com/v1";
-    defaultModel = "deepseek-v4-flash";
+    defaultModel = "deepseek-chat";
   } else if (keyLower.startsWith("sk-or-") || baseLower.includes("openrouter.ai") || params.provider === "openrouter") {
     providerType = "openrouter";
     providerName = "OpenRouter 聚合网关";
@@ -481,7 +424,7 @@ export async function detectAndFetchModels(params: {
     providerType = "unorouter";
     providerName = "UnoRouter 聚合网关";
     rawBase = rawBase || "https://api.unorouter.com/v1";
-    defaultModel = "deepseek/deepseek-v4-flash";
+    defaultModel = "deepseek/deepseek-chat";
   }
 
   // 规范化 Base URL
@@ -525,7 +468,7 @@ export async function detectAndFetchModels(params: {
           const models: ModelInfo[] = rawList.map((item: any) => {
             const id = String(item.id || item.name || "");
             const name = String(item.name || item.id || "");
-            const isRec = id.includes("deepseek-v4") || id.includes("deepseek-chat") || id.includes("deepseek-reasoner") || id.includes("free");
+            const isRec = id.includes("deepseek-chat") || id.includes("deepseek-reasoner") || id.includes("free");
             return {
               id,
               name,
@@ -545,20 +488,6 @@ export async function detectAndFetchModels(params: {
 
           const activeDefault = models.some((m) => m.id === defaultModel) ? defaultModel : models[0]?.id;
 
-          if (providerType === "unorouter") {
-            const hasV4 = models.some((m) => m.id === "deepseek/deepseek-v4-flash" || m.id === "deepseek-v4-flash");
-            if (hasV4 && !models.some((m) => m.id === "deepseek/deepseek-v4-flash")) {
-              models.unshift({
-                id: "deepseek/deepseek-v4-flash",
-                name: "DeepSeek V4 Flash (UnoRouter)",
-                description: "UnoRouter 免费/快速调度模型",
-                contextLength: "1,000k",
-                pricing: "Free / Standard",
-                isRecommended: true
-              });
-            }
-          }
-
           return {
             success: true,
             provider: providerType,
@@ -577,40 +506,19 @@ export async function detectAndFetchModels(params: {
     }
   }
 
-  // 3. 降级回退：加载 UnoRouter 标准预设模型库
-  let fallbackModels: ModelInfo[] = [];
-  if (providerType === "unorouter") {
-    fallbackModels = [
-      { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (推荐)", description: "UnoRouter 高速推理模型，支持代码与通用研报", contextLength: "1,000k", pricing: "免费/低费率", isRecommended: true },
-      { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (通用研报)", description: "UnoRouter 托管 DeepSeek-V3", contextLength: "64k", pricing: "低费率", isRecommended: true },
-      { id: "deepseek/deepseek-reasoner", name: "DeepSeek R1 (深度思考)", description: "UnoRouter 托管 DeepSeek-R1 强化学习模型", contextLength: "64k", pricing: "低费率", isRecommended: true },
-      { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", description: "Meta 高性能开源大模型", contextLength: "128k", pricing: "按量计费", isRecommended: false },
-      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Google 轻量级多模态高速模型", contextLength: "1,000k", pricing: "按量计费", isRecommended: false },
-      { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", description: "OpenAI 轻量级高性能模型", contextLength: "128k", pricing: "按量计费", isRecommended: false },
-      { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", description: "Anthropic 极速模型", contextLength: "200k", pricing: "按量计费", isRecommended: false }
-    ];
-  } else if (providerType === "deepseek") {
-    fallbackModels = [
-      { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", description: "DeepSeek 官方超高速推理模型", contextLength: "1,000k", pricing: "按量计费", isRecommended: true },
-      { id: "deepseek-chat", name: "DeepSeek V3", description: "DeepSeek 通用大语言模型", contextLength: "64k", pricing: "低费率", isRecommended: true },
-      { id: "deepseek-reasoner", name: "DeepSeek R1", description: "DeepSeek 推理大语言模型", contextLength: "64k", pricing: "低费率", isRecommended: true }
-    ];
-  } else if (providerType === "openrouter") {
-    fallbackModels = [
-      { id: "openrouter/free", name: "OpenRouter Free Router", description: "OpenRouter 自动调度免费模型池", contextLength: "128k", pricing: "Free", isRecommended: true },
-      { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", description: "Meta 高性能开源大模型", contextLength: "128k", pricing: "Pay-as-you-go", isRecommended: false }
-    ];
-  } else if (providerType === "openai") {
-    fallbackModels = [
-      { id: "gpt-4o-mini", name: "GPT-4o Mini (推荐)", description: "OpenAI 高性价比模型", contextLength: "128k", pricing: "按量计费", isRecommended: true },
-      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false }
-    ];
-  } else {
-    fallbackModels = [
-      { id: "gpt-4o-mini", name: "GPT-4o Mini (推荐)", description: "OpenAI 高性价比模型", contextLength: "128k", pricing: "按量计费", isRecommended: true },
-      { id: "gpt-4o", name: "GPT-4o", description: "OpenAI 旗舰全模态模型", contextLength: "128k", pricing: "按量计费", isRecommended: false }
-    ];
-  }
+  // 3. 降级回退：不再内置硬编码静态模型列表，未探测到远程模型时仅保留当前默认配置模型
+  const fallbackModels: ModelInfo[] = defaultModel
+    ? [
+        {
+          id: defaultModel,
+          name: defaultModel,
+          description: `${providerName} 默认模型 (${defaultModel})`,
+          contextLength: "128k",
+          pricing: "标准",
+          isRecommended: true
+        }
+      ]
+    : [];
 
   return {
     success: true,
@@ -620,7 +528,9 @@ export async function detectAndFetchModels(params: {
     models: fallbackModels,
     defaultModel: fallbackModels[0]?.id || defaultModel,
     source: "preset_catalog",
-    message: `已自动配置 ${providerName}，加载 ${fallbackModels.length} 个推荐模型`
+    message: fallbackModels.length > 0
+      ? `已连接 ${providerName}，当前模型为 ${defaultModel}`
+      : `已连接 ${providerName}`
   };
 }
 

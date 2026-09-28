@@ -40,7 +40,7 @@ describe("Sources Widget & Extension Verification", () => {
       comparisonTable: [],
       mindMap: { id: "root", label: "test" },
       followUpQuestions: [],
-      modelUsed: "deepseek-v4-flash",
+      modelUsed: "deepseek-chat",
       executionTimeMs: 10
     };
 

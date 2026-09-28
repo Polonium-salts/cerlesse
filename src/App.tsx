@@ -93,7 +93,10 @@ export default function App() {
       const savedRaw = localStorage.getItem("ai_search_settings");
       if (!savedRaw) return DEFAULT_SETTINGS;
       const parsed = JSON.parse(savedRaw);
-      if (!parsed.selectedModel || typeof parsed.selectedModel !== "string") {
+      if (
+        !parsed.selectedModel ||
+        typeof parsed.selectedModel !== "string"
+      ) {
         parsed.selectedModel = DEFAULT_SETTINGS.selectedModel;
       }
       return { ...DEFAULT_SETTINGS, ...parsed };
@@ -796,7 +799,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-200">
+    <div className="min-h-screen min-h-dvh flex flex-col bg-background text-foreground transition-colors duration-200 overflow-x-hidden">
       {/* iOS App Header */}
       <Header
         darkMode={darkMode}
@@ -895,14 +898,14 @@ export default function App() {
       <main className="flex-1 flex flex-col w-full">
         {/* HOMEPAGE VIEW: Clean Minimal Spotlight Search */}
         {isHomeView && (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 py-16 sm:py-24">
+          <div className="flex-1 flex flex-col items-center justify-center px-3 sm:px-4 py-8 sm:py-24 w-full max-w-full overflow-x-hidden">
             {/* iOS Center Brand Logo */}
-            <div className="mb-8 flex flex-col items-center select-none">
+            <div className="mb-6 sm:mb-8 flex flex-col items-center select-none w-full max-w-full px-2">
               <GoogleLogo size="xl" showBadge={true} badgeText="Agent" />
             </div>
 
             {/* iOS Spotlight Search Bar */}
-            <div className="w-full">
+            <div className="w-full max-w-2xl px-1 sm:px-2">
               <SearchBar
                 onSearch={(q, deep) => executeSearch(q, deep)}
                 isLoading={isLoading}

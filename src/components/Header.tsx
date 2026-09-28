@@ -111,13 +111,13 @@ export const Header: React.FC<HeaderProps> = ({
       <div
         className={`${
           isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"
-        } mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-2.5 sm:gap-4 transition-all duration-200`}
+        } mx-auto px-2.5 sm:px-6 lg:px-8 xl:px-10 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4 transition-all duration-200`}
       >
         {/* Left: Brand Logo & Inline Search */}
-        <div className="flex items-center gap-4 flex-1 max-w-3xl">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-3xl">
           <div
             onClick={onReset}
-            className="cursor-pointer shrink-0 transition-transform hover:scale-105 active:scale-95"
+            className="cursor-pointer shrink-0 transition-transform hover:scale-105 active:scale-95 flex items-center"
             title="返回首页"
           >
             <GoogleLogo size="sm" badgeText="Agent" />
@@ -136,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right: 重构后的现代化模型选择面板、API 快捷探查与主题切换 */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
           {/* 1. 现代化重构的模型选择面板 */}
           <ModelSelectorDropdown
             currentModelId={currentModel}
@@ -148,12 +148,12 @@ export const Header: React.FC<HeaderProps> = ({
           />
 
           {/* 快速 API 密钥填入与自动拉取模型弹层 */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <Button
               variant="outline"
               size="icon"
               onClick={() => setIsQuickConfigOpen((v) => !v)}
-              className={`h-9 w-9 rounded-xl transition-all cursor-pointer shadow-xs ${
+              className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl transition-all cursor-pointer shadow-xs shrink-0 ${
                 isQuickConfigOpen || customApiKey ? "border-primary/40 text-primary bg-primary/5" : "border-border/80"
               }`}
               title="填入 API Key 自动加载对应服务与可用模型"
@@ -235,7 +235,7 @@ export const Header: React.FC<HeaderProps> = ({
             variant="outline"
             size="icon"
             onClick={onToggleDarkMode}
-            className="h-9 w-9 rounded-xl border-border/80 hover:bg-muted/70 transition-all cursor-pointer shadow-xs"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl border-border/80 hover:bg-muted/70 transition-all cursor-pointer shadow-xs shrink-0"
             title={
               darkMode
                 ? "当前：深色模式 (点击切换为浅色模式)"

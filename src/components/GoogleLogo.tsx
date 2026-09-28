@@ -45,49 +45,55 @@ export const GoogleLogo: React.FC<GoogleLogoProps> = ({
   // 2. 非中秋节日常期间：加载标准 Cerlesse 品牌 Logo
   const iconSizeClasses = {
     sm: "w-7 h-7 rounded-lg",
-    md: "w-9 h-9 rounded-lg",
-    lg: "w-12 h-12 rounded-xl",
-    xl: "w-16 h-16 sm:w-20 sm:h-20 rounded-xl"
+    md: "w-8 h-8 sm:w-9 sm:h-9 rounded-lg",
+    lg: "w-10 h-10 sm:w-12 sm:h-12 rounded-xl",
+    xl: "w-14 h-14 sm:w-20 sm:h-20 rounded-xl"
   };
 
   const textClasses = {
-    sm: "text-lg font-medium tracking-tight",
-    md: "text-xl sm:text-2xl font-medium tracking-tight",
-    lg: "text-3xl sm:text-4xl font-medium tracking-tight",
-    xl: "text-4xl sm:text-5xl font-medium tracking-tight"
+    sm: "text-base sm:text-lg font-medium tracking-tight",
+    md: "text-lg sm:text-2xl font-medium tracking-tight",
+    lg: "text-2xl sm:text-4xl font-medium tracking-tight",
+    xl: "text-3xl sm:text-5xl font-medium tracking-tight"
   };
 
   const badgeTextClasses = {
-    sm: "text-xs",
+    sm: "text-[10px] sm:text-xs",
     md: "text-xs",
     lg: "text-xs",
-    xl: "text-sm"
+    xl: "text-xs sm:text-sm"
   };
 
   const defaultBadge = badgeText || "Agent";
 
   return (
-    <div className={`inline-flex items-center gap-3 select-none ${className}`}>
+    <div
+      className={`select-none ${
+        size === "xl"
+          ? "inline-flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-4 text-center sm:text-left"
+          : "inline-flex items-center gap-2 sm:gap-3"
+      } ${className}`}
+    >
       <div
         className={`flex items-center justify-center overflow-hidden border border-border bg-card shrink-0 shadow-2xs ${iconSizeClasses[size]}`}
       >
         <img
           src="/favicon.png"
           alt="Cerlesse"
-          className="w-full h-full object-contain p-0.5"
+          className="w-full h-full object-contain p-0.5 shrink-0"
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).src = "/logo.png";
           }}
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className={`flex items-center gap-2 ${size === "xl" ? "justify-center sm:justify-start" : ""}`}>
         <span className={`text-foreground tracking-tight font-medium ${textClasses[size]}`}>
           Cerlesse
         </span>
 
         {showBadge && (
-          <Badge variant="secondary" className={`self-center ${badgeTextClasses[size]}`}>
+          <Badge variant="secondary" className={`self-center shrink-0 whitespace-nowrap ${badgeTextClasses[size]}`}>
             {defaultBadge}
           </Badge>
         )}

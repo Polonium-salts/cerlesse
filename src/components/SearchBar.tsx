@@ -18,6 +18,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [deepSearch, setDeepSearch] = useState(true);
+  const [isNarrow, setIsNarrow] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 640;
+  });
+
+  useEffect(() => {
+    const handleResize = () => setIsNarrow(window.innerWidth < 640);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -52,9 +62,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={deepSearch ? "在 Cerlesse 中向 AI 智能体提问..." : "快速搜索网页与链接..."}
+          placeholder={deepSearch ? (isNarrow ? "向 AI 智能体提问..." : "在 Cerlesse 中向 AI 智能体提问...") : "快速搜索网页与链接..."}
           disabled={isLoading}
-          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none truncate"
         />
 
         {query && !isLoading && (
@@ -126,12 +136,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           onChange={(e) => setQuery(e.target.value)}
           placeholder={
             deepSearch
-              ? "向 Codex 智能体提问技术架构、深度对比、代码诊断或综合研报..."
-              : "检索网页链接、官方网站与即时资讯..."
+              ? (isNarrow ? "向 Codex 智能体提问..." : "向 Codex 智能体提问技术架构、深度对比...")
+              : (isNarrow ? "搜索网页或网址..." : "检索网页链接、官方网站与即时资讯...")
           }
           disabled={isLoading}
           autoFocus
-          className="w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+          className="min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50 truncate"
         />
 
         {query && !isLoading && (
@@ -151,18 +161,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           type="submit"
           size="lg"
           disabled={!query.trim() || isLoading}
-          className={`rounded-full px-3.5 sm:px-6 shrink-0 transition-all text-xs sm:text-sm ${
+          className={`rounded-full px-3 sm:px-5 shrink-0 whitespace-nowrap transition-all text-xs sm:text-sm h-9 sm:h-11 ${
             deepSearch ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs" : ""
           }`}
         >
           {isLoading ? (
             <>
-              <Loader2 className="animate-spin" />
+              <Loader2 className="animate-spin size-3.5 sm:size-4" />
               <span>搜索中</span>
             </>
           ) : (
             <>
-              <span>{deepSearch ? "AI 研报" : "搜索"}</span>
+              <span className="whitespace-nowrap">{deepSearch ? "AI 研报" : "搜索"}</span>
               <CornerDownLeft className="opacity-60 size-3.5 sm:size-4 hidden sm:inline" />
             </>
           )}

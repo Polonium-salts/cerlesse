@@ -30,46 +30,50 @@ export const MidAutumnTextTemplateLogo: React.FC<MidAutumnLogoProps> = ({
   // 尺寸与排版参数配置
   const config = {
     sm: {
-      height: "h-10",
-      graphicWidth: 64,
-      graphicHeight: 40,
-      textSize: "text-xl",
+      height: "h-9 sm:h-10",
+      graphicWidth: 50,
+      graphicHeight: 34,
+      textSize: "text-lg sm:text-xl",
       tagText: "text-[10px] px-1.5 py-0.5",
-      sealSize: 15,
-      brandOffset: "gap-2"
+      sealSize: 14,
+      brandOffset: "gap-1.5 sm:gap-2"
     },
     md: {
-      height: "h-14",
-      graphicWidth: 90,
-      graphicHeight: 56,
-      textSize: "text-2xl sm:text-3xl",
-      tagText: "text-xs px-2 py-0.5",
-      sealSize: 18,
-      brandOffset: "gap-3"
+      height: "h-12 sm:h-14",
+      graphicWidth: 76,
+      graphicHeight: 48,
+      textSize: "text-xl sm:text-3xl",
+      tagText: "text-[11px] sm:text-xs px-2 py-0.5",
+      sealSize: 16,
+      brandOffset: "gap-2 sm:gap-3"
     },
     lg: {
-      height: "h-20",
-      graphicWidth: 130,
-      graphicHeight: 80,
-      textSize: "text-3xl sm:text-4xl",
+      height: "h-16 sm:h-20",
+      graphicWidth: 110,
+      graphicHeight: 70,
+      textSize: "text-2xl sm:text-4xl",
       tagText: "text-xs px-2.5 py-1",
-      sealSize: 22,
-      brandOffset: "gap-4"
+      sealSize: 20,
+      brandOffset: "gap-2.5 sm:gap-4"
     },
     xl: {
-      height: "h-28 sm:h-36",
+      height: "h-auto sm:h-36",
       graphicWidth: 190,
       graphicHeight: 120,
-      textSize: "text-4xl sm:text-6xl",
-      tagText: "text-xs sm:text-sm px-3 py-1",
-      sealSize: 28,
-      brandOffset: "gap-5"
+      textSize: "text-3xl sm:text-5xl md:text-6xl",
+      tagText: "text-xs sm:text-sm px-2.5 sm:px-3 py-0.5 sm:py-1",
+      sealSize: 24,
+      brandOffset: "gap-2 sm:gap-5"
     }
   }[size];
 
   return (
     <div
-      className={`relative inline-flex items-center select-none group transition-all duration-300 ${config.height} ${className}`}
+      className={`relative select-none group transition-all duration-300 ${
+        isXLarge
+          ? "flex flex-col sm:flex-row items-center justify-center text-center sm:text-left gap-3 sm:gap-6 max-w-full"
+          : `inline-flex items-center ${config.height}`
+      } ${className}`}
     >
       {/* 
         ==================================================================
@@ -77,14 +81,18 @@ export const MidAutumnTextTemplateLogo: React.FC<MidAutumnLogoProps> = ({
         ==================================================================
       */}
       <div
-        className="relative shrink-0 flex items-center justify-center transition-transform duration-500 group-hover:scale-105"
-        style={{ width: config.graphicWidth, height: config.graphicHeight }}
+        className={`relative shrink-0 flex items-center justify-center transition-transform duration-500 group-hover:scale-105 ${
+          isXLarge
+            ? "w-32 h-20 sm:w-44 sm:h-28 md:w-[190px] md:h-[120px]"
+            : ""
+        }`}
+        style={isXLarge ? undefined : { width: config.graphicWidth, height: config.graphicHeight }}
       >
         <svg
-          viewBox="0 0 200 130"
+          viewBox="-6 -10 212 150"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          className="w-full h-full overflow-visible filter drop-shadow-[0_4px_12px_rgba(217,119,6,0.3)]"
+          className="w-full h-full overflow-visible filter drop-shadow-[0_2px_8px_rgba(217,119,6,0.25)]"
         >
           <defs>
             {/* 1. 金满月渐变 */}
@@ -390,8 +398,16 @@ export const MidAutumnTextTemplateLogo: React.FC<MidAutumnLogoProps> = ({
         品牌文本与中秋节日排版区
         ==================================================================
       */}
-      <div className={`relative z-10 flex flex-col justify-center text-left ${config.brandOffset}`}>
-        <div className="flex items-center gap-2">
+      <div
+        className={`relative z-10 flex flex-col justify-center ${
+          isXLarge ? "items-center sm:items-start text-center sm:text-left" : "text-left"
+        } ${config.brandOffset}`}
+      >
+        <div
+          className={`flex flex-wrap items-center ${
+            isXLarge ? "justify-center sm:justify-start" : ""
+          } gap-1.5 sm:gap-2`}
+        >
           {/* 烫金书法风格品牌主标题 */}
           <span
             className={`font-serif font-extrabold tracking-tight bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 dark:from-amber-300 dark:via-yellow-100 dark:to-amber-400 bg-clip-text text-transparent drop-shadow-[0_1px_3px_rgba(0,0,0,0.1)] ${config.textSize}`}
@@ -400,14 +416,14 @@ export const MidAutumnTextTemplateLogo: React.FC<MidAutumnLogoProps> = ({
           </span>
 
           {/* 右侧：中秋朱红古风印章 + 节日特供胶囊标 */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {/* 古风朱红中秋雕刻印章 */}
             <div
-              className="inline-flex items-center justify-center rounded-[3px] bg-gradient-to-br from-red-600 to-red-800 text-amber-100 border border-amber-300/60 shadow-xs font-serif font-bold transition-transform group-hover:scale-105"
+              className="inline-flex items-center justify-center shrink-0 rounded-[3px] bg-gradient-to-br from-red-600 to-red-800 text-amber-100 border border-amber-300/60 shadow-xs font-serif font-bold transition-transform group-hover:scale-105"
               style={{
                 width: config.sealSize,
                 height: config.sealSize,
-                fontSize: size === "sm" ? 9 : size === "md" ? 11 : size === "lg" ? 13 : 15
+                fontSize: size === "sm" ? 9 : size === "md" ? 11 : size === "lg" ? 12 : 14
               }}
               title="中秋节传统印章"
             >
@@ -416,17 +432,19 @@ export const MidAutumnTextTemplateLogo: React.FC<MidAutumnLogoProps> = ({
 
             {/* 节日特供微型徽标 */}
             <div
-              className={`inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 text-amber-800 dark:text-amber-200 font-medium shadow-2xs font-serif ${config.tagText}`}
+              className={`inline-flex items-center gap-1 shrink-0 whitespace-nowrap rounded-full border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 text-amber-800 dark:text-amber-200 font-medium shadow-2xs font-serif ${config.tagText} ${
+                size === "sm" ? "hidden xs:inline-flex" : ""
+              }`}
             >
-              <span>🥮</span>
-              <span>中秋</span>
+              <span className="shrink-0">🥮</span>
+              <span className="shrink-0 whitespace-nowrap">中秋</span>
             </div>
           </div>
         </div>
 
         {/* 首页大 Banner 专属：中秋诗意排版副标 */}
         {showSubtitle && isLarge && (
-          <div className="flex items-center gap-2 mt-1 text-xs sm:text-sm text-amber-700/90 dark:text-amber-300/90 font-serif tracking-widest pl-0.5">
+          <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 mt-1.5 text-xs sm:text-sm text-amber-700/90 dark:text-amber-300/90 font-serif tracking-widest pl-0.5 shrink-0 whitespace-nowrap">
             <span className="text-amber-500 text-[10px]">✦</span>
             <span>月满中秋 · 智搜千里</span>
             {isXLarge && <span className="hidden sm:inline">· 阖家团圆</span>}

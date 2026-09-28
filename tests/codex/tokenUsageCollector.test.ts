@@ -12,7 +12,7 @@ describe("TokenUsageCollector Suite", () => {
     const collector = new TokenUsageCollector();
     const call = collector.recordCall({
       id: "call_1",
-      model: "deepseek/deepseek-v4-flash",
+      model: "deepseek/deepseek-chat",
       promptTokens: 100,
       completionTokens: 50,
       costUsd: 0.00015,

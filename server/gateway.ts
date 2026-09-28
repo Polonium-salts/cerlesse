@@ -30,7 +30,7 @@ export const GATEWAY_REGISTRY: Record<Exclude<GatewayProvider, "none">, GatewayC
     name: "UnoRouter",
     baseUrl: "https://api.unorouter.com/v1",
     envKeys: ["UNOROUTER_API_KEY", "UNOROUTER_KEY"],
-    defaultModel: "deepseek/deepseek-v4-flash",
+    defaultModel: "deepseek/deepseek-chat",
     pricingEndpoint: "https://api.unorouter.com/api/pricing"
   },
   openrouter: {
@@ -123,7 +123,7 @@ export function resolveGateway(
 }
 
 /**
- * 获取网关可用免费/精选模型列表
+ * 获取网关可用模型列表（优先动态探测，不硬编码内置第三方模型列表）
  */
 export async function loadGatewayModels(
   gateway: ResolvedGateway
@@ -132,57 +132,50 @@ export async function loadGatewayModels(
     return [];
   }
 
-  if (gateway.provider === "unorouter") {
+  // 尝试从网关的 /models 接口动态拉取真实可用模型
+  if (gateway.apiKey && gateway.baseUrl) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${gateway.baseUrl}/models`, {
+        headers: {
+          Authorization: `Bearer ${gateway.apiKey}`,
+          "User-Agent": "Cerlesse-Gateway-Detector/1.0"
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const body = await res.json();
+        const rawList = Array.isArray(body?.data) ? body.data : Array.isArray(body) ? body : [];
+        if (rawList.length > 0) {
+          return rawList.map((item: any) => ({
+            id: String(item.id || item.name || ""),
+            name: String(item.name || item.id || ""),
+            description: item.description || `网关可用模型 (${item.id})`,
+            contextLength: item.context_length ? `${Math.round(item.context_length / 1000)}k` : "128k",
+            pricing: item.pricing?.prompt ? `$${item.pricing.prompt}/M` : undefined,
+            isRecommended: item.id === gateway.defaultModel
+          }));
+        }
+      }
+    } catch {
+      // 忽略探测异常
+    }
+  }
+
+  // 不再内置硬编码第三方模型列表，仅返回当前网关默认模型
+  if (gateway.defaultModel) {
     return [
       {
-        id: "deepseek/deepseek-v4-flash",
-        name: "DeepSeek V4 Flash (UnoRouter)",
-        description: "UnoRouter 免费/快速调度模型",
-        contextLength: "1,000k",
-        pricing: "Free / Pay-as-you-go",
-        isRecommended: true
-      },
-      {
-        id: "deepseek/deepseek-chat",
-        name: "DeepSeek V3 (UnoRouter)",
-        description: "UnoRouter 托管通用大语言模型",
-        contextLength: "64k",
-        pricing: "低费率",
-        isRecommended: true
-      },
-      {
-        id: "deepseek/deepseek-reasoner",
-        name: "DeepSeek R1 (UnoRouter)",
-        description: "UnoRouter 深度推理模型",
-        contextLength: "64k",
-        pricing: "低费率",
-        isRecommended: true
-      },
-      {
-        id: "meta-llama/llama-3.3-70b-instruct",
-        name: "Llama 3.3 70B Instruct",
-        description: "Meta 开源前沿大模型",
+        id: gateway.defaultModel,
+        name: gateway.defaultModel,
+        description: `${gateway.name || "网关"} 默认模型 (${gateway.defaultModel})`,
         contextLength: "128k",
-        pricing: "Pay-as-you-go"
-      },
-      {
-        id: "google/gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        description: "Google 轻量级多模态高速模型",
-        contextLength: "1,000k",
-        pricing: "Pay-as-you-go"
+        isRecommended: true
       }
     ];
   }
 
-  return [
-    {
-      id: "openrouter/free",
-      name: "OpenRouter Free Router",
-      description: "OpenRouter 自动调度免费模型池",
-      contextLength: "128k",
-      pricing: "Free",
-      isRecommended: true
-    }
-  ];
+  return [];
 }

@@ -55,7 +55,6 @@ function normalizeModelForTarget(model: string, apiBaseUrl: string): string {
   const trimmed = (model || "").trim();
   const baseLower = (apiBaseUrl || "").toLowerCase();
   if (baseLower.includes("unorouter.com")) {
-    if (trimmed === "deepseek/deepseek-v4-flash") return "deepseek-v4-flash";
     if (trimmed === "deepseek/deepseek-chat") return "deepseek-v3";
     if (trimmed === "deepseek/deepseek-reasoner") return "deepseek-r1";
     if (trimmed.startsWith("deepseek/")) return trimmed.replace(/^deepseek\//, "");
@@ -407,7 +406,7 @@ export async function runCodexAgent(
         }
       } else if (errorMsg.includes("invalid_request_error") || errorMsg.includes("model_not_found")) {
         // 通用降级至预设的默认模型
-        fallbackModel = config.defaultModel || "deepseek-flash";
+        fallbackModel = config.defaultModel || options.model || "";
       }
 
       if (fallbackModel && fallbackModel !== (options.model || config.defaultModel)) {

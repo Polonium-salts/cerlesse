@@ -42,14 +42,14 @@ test("translateText maps the structured payload and preserves the endpoint shape
       text: "apple",
       sourceLang: "en",
       targetLang: "zh",
-      model: "deepseek/deepseek-v4-flash",
+      model: "deepseek/deepseek-chat",
       env: { AI_API_KEY: VALID_KEY, AI_API_BASE_URL: "https://api.unorouter.com/v1" }
     });
 
     assert.equal(calls, 1);
     assert.equal(requestedUrl, "https://api.unorouter.com/v1/chat/completions");
     assert.equal(authorizationHeader, `Bearer ${VALID_KEY}`);
-    assert.equal(requestedBody.model, "deepseek/deepseek-v4-flash");
+    assert.equal(requestedBody.model, "deepseek/deepseek-chat");
     assert.ok(Array.isArray(requestedBody.messages));
 
     assert.equal(result.text, "苹果");
