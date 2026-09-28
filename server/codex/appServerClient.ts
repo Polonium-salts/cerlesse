@@ -51,6 +51,18 @@ export interface CodexRunResult {
   selection: ReturnType<typeof selectWidgetsByEvidence>;
 }
 
+function normalizeModelForTarget(model: string, apiBaseUrl: string): string {
+  const trimmed = (model || "").trim();
+  const baseLower = (apiBaseUrl || "").toLowerCase();
+  if (baseLower.includes("unorouter.com")) {
+    if (trimmed === "deepseek/deepseek-v4-flash") return "deepseek-v4-flash";
+    if (trimmed === "deepseek/deepseek-chat") return "deepseek-v3";
+    if (trimmed === "deepseek/deepseek-reasoner") return "deepseek-r1";
+    if (trimmed.startsWith("deepseek/")) return trimmed.replace(/^deepseek\//, "");
+  }
+  return trimmed;
+}
+
 /**
  * 格式化 MCP 工具为 OpenAI / Codex Function Tools 规范
  */
@@ -343,9 +355,11 @@ export async function runCodexAgent(
   let finished = false;
 
   if (llmClient) {
+    const rawTargetModel = options.model || config.defaultModel;
+    const targetModel = normalizeModelForTarget(rawTargetModel, aiApiConfig.apiBaseUrl);
     let agent = llmClient.agent
       .system(config.systemPrompt)
-      .model(options.model || config.defaultModel)
+      .model(targetModel)
       .temperature(config.temperature)
       .maxToolIterations(config.maxIterations)
       .addMiddleware(middleware);

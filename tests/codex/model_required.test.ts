@@ -60,6 +60,14 @@ test("provider failures map to stable error codes and HTTP statuses", () => {
     assert.equal(mapped.status, httpStatus);
   }
 
+  // HTTP 400 with upstream JSON containing API Key not found
+  const rawJsonError = '{"error":{"message":"API Key not found. Please pass a valid API key. (request id: 123)","type":"bad_response_status_code","param":"","code":"bad_response_status_code"}}';
+  const mapped400 = toLlmProviderError(new APIError(400, rawJsonError, false));
+  assert.equal(mapped400.code, "invalid_api_key");
+  assert.equal(mapped400.status, 401);
+  assert.ok(mapped400.message.includes("API Key not found. Please pass a valid API key"));
+  assert.ok(!mapped400.message.includes('{"error"'));
+
   const abort = new Error("aborted");
   abort.name = "AbortError";
   assert.equal(toLlmProviderError(abort).code, "provider_timeout");
