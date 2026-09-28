@@ -1,13 +1,6 @@
-import { PagesFunction, jsonResponse, errorResponse } from "./types.js";
-import { translateText } from "../../server/translationAgent.js";
+import { PagesFunction, jsonResponse, errorResponse, cleanParam, getEffectiveEnv } from "./types.js";
+import { executeTranslation } from "../../server/services/translationService.js";
 import { LlmProviderError } from "../../server/aiProvider.js";
-
-function cleanParam(val?: any): string | undefined {
-  if (!val || typeof val !== "string") return undefined;
-  const trimmed = val.trim();
-  if (trimmed === "" || trimmed === "undefined" || trimmed === "null") return undefined;
-  return trimmed;
-}
 
 export const onRequest: PagesFunction = async (context) => {
   if (context.request.method === "OPTIONS") {
@@ -27,12 +20,13 @@ export const onRequest: PagesFunction = async (context) => {
       return errorResponse("缺少待翻译文本", 400);
     }
 
-    const result = await translateText({
+    const env = getEffectiveEnv(context.env);
+    const result = await executeTranslation({
       text: text.trim(),
       sourceLang: cleanParam(sourceLang),
       targetLang: cleanParam(targetLang),
       model: cleanParam(model),
-      env: context.env
+      env
     });
 
     return jsonResponse(result);
@@ -45,4 +39,3 @@ export const onRequest: PagesFunction = async (context) => {
     return errorResponse(error instanceof Error ? error.message : "翻译请求处理失败", 500);
   }
 };
-

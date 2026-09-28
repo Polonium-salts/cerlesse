@@ -1,11 +1,6 @@
 import { PagesFunction, jsonResponse } from "./types.js";
+import { getSystemHealth } from "../../server/services/healthService.js";
 
 export const onRequest: PagesFunction = async () => {
-  return jsonResponse({
-    status: "ok",
-    timestamp: Date.now(),
-    platform: "EdgeOne Cloud Functions",
-    nodeVersion: typeof process !== "undefined" ? process.version : "edge"
-  });
+  return jsonResponse(getSystemHealth("Tencent Cloud EdgeOne Pages"));
 };
-

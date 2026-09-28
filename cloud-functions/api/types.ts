@@ -19,19 +19,10 @@ export type PagesFunction<
   Data = any
 > = (context: EventContext<Env, P, Data>) => Response | Promise<Response>;
 
-export function jsonResponse(data: any, init?: ResponseInit): Response {
-  return new Response(JSON.stringify(data), {
-    status: init?.status ?? 200,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, x-custom-api-key, x-custom-base-url, x-custom-provider",
-      ...(init?.headers || {})
-    }
-  });
-}
-
-export function errorResponse(message: string, status = 500): Response {
-  return jsonResponse({ error: message }, { status });
-}
+export {
+  cleanParam,
+  extractAuthHeaders,
+  getEffectiveEnv,
+  jsonResponse,
+  errorResponse
+} from "../../server/utils/http.js";

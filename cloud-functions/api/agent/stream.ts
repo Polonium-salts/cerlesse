@@ -1,13 +1,13 @@
-import { PagesFunction, errorResponse } from "../types.js";
-import { runCodexAgent, CodexEventBridge } from "../../../server/codex/index.js";
+import {
+  PagesFunction,
+  errorResponse,
+  cleanParam,
+  extractAuthHeaders,
+  getEffectiveEnv
+} from "../types.js";
+import { executeAgentRun } from "../../../server/services/agentService.js";
+import { CodexEventBridge } from "../../../server/codex/index.js";
 import { respondAgentError } from "../../../server/aiProvider.js";
-
-function cleanParam(val?: any): string | undefined {
-  if (!val || typeof val !== "string") return undefined;
-  const trimmed = val.trim();
-  if (trimmed === "" || trimmed === "undefined" || trimmed === "null") return undefined;
-  return trimmed;
-}
 
 export const onRequest: PagesFunction = async (context) => {
   if (context.request.method === "OPTIONS") {
@@ -23,12 +23,9 @@ export const onRequest: PagesFunction = async (context) => {
   let query: string | undefined;
   let model: string | undefined;
   let customSearxngUrl: string | undefined;
-  let apiKey: string | undefined;
-  let apiBaseUrl: string | undefined;
-
-  const reqHeaders = context.request.headers;
-  apiKey = cleanParam(reqHeaders.get("x-custom-api-key")) || cleanParam(reqHeaders.get("authorization")?.replace(/^Bearer\s+/i, ""));
-  apiBaseUrl = cleanParam(reqHeaders.get("x-custom-base-url"));
+  const { apiKey: headerApiKey, apiBaseUrl: headerApiBaseUrl } = extractAuthHeaders(context.request);
+  let apiKey: string | undefined = headerApiKey;
+  let apiBaseUrl: string | undefined = headerApiBaseUrl;
 
   if (context.request.method === "POST") {
     try {
@@ -93,12 +90,10 @@ export const onRequest: PagesFunction = async (context) => {
         }
       });
 
-      const effectiveEnv = {
-        ...(typeof process !== "undefined" ? process.env : {}),
-        ...(context.env || {})
-      } as Record<string, string | undefined>;
+      const effectiveEnv = getEffectiveEnv(context.env);
 
-      const result = await runCodexAgent(query!.trim(), {
+      const result = await executeAgentRun({
+        query: query!.trim(),
         model,
         customSearxngUrl,
         apiKey,
@@ -128,8 +123,8 @@ export const onRequest: PagesFunction = async (context) => {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": "*"
+      "Access-Control-Allow-Origin": "*",
+      "X-Accel-Buffering": "no"
     }
   });
 };
-

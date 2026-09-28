@@ -1,5 +1,5 @@
-import { PagesFunction, jsonResponse, errorResponse } from "../types.js";
-import { solveLayoutTool } from "../../../server/tools/layoutTool.js";
+import { PagesFunction, jsonResponse, errorResponse, cleanParam } from "../types.js";
+import { executeLayoutSolve } from "../../../server/services/layoutService.js";
 
 /**
  * EdgeOne Cloud Functions: 确定性装箱排版计算
@@ -13,9 +13,9 @@ export const onRequest: PagesFunction = async (context) => {
   try {
     if (context.request.method === "GET") {
       const url = new URL(context.request.url);
-      const widgetsParam = url.searchParams.get("widgets");
-      const targetIds = widgetsParam ? widgetsParam.split(",") : ["ai_answer", "related_links", "takeaways"];
-      const result = solveLayoutTool({ widgetIds: targetIds });
+      const widgetsParam = cleanParam(url.searchParams.get("widgets"));
+      const targetIds = widgetsParam ? widgetsParam.split(",") : ["related_links", "takeaways"];
+      const result = executeLayoutSolve({ widgetIds: targetIds });
       return jsonResponse(result);
     }
 
@@ -27,23 +27,10 @@ export const onRequest: PagesFunction = async (context) => {
     }
 
     const { widgetIds, widgetPlan } = body || {};
-    let targetIds: string[] = [];
-
-    if (Array.isArray(widgetIds)) {
-      targetIds = widgetIds;
-    } else if (widgetPlan?.selectedWidgets) {
-      targetIds = widgetPlan.selectedWidgets.map((w: any) => w.type || w.id);
-    } else if (widgetPlan?.widgetOrder) {
-      targetIds = widgetPlan.widgetOrder;
-    } else {
-      targetIds = ["ai_answer", "related_links", "takeaways"];
-    }
-
-    const result = solveLayoutTool({ widgetIds: targetIds });
+    const result = executeLayoutSolve({ widgetIds, widgetPlan });
     return jsonResponse(result);
   } catch (error: any) {
     console.error("Edge widget layout solve error:", error);
     return errorResponse(error.message || "小组件排版服务异常", 500);
   }
 };
-

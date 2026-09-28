@@ -2,28 +2,16 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { runCodexAgent, CodexEventBridge } from "./server/codex/index.js";
-import {
-  getAiApiConfig,
-  getProviderStatus,
-  loadAvailableModels,
-  resolveModelProvider,
-  detectAndFetchModels,
-  pingModel,
-  respondAgentError,
-  LlmProviderError
-} from "./server/aiProvider.js";
-import { SUPPORTED_LANGUAGES } from "./server/language.js";
-import { translateText } from "./server/translationAgent.js";
+import { CodexEventBridge } from "./server/codex/index.js";
+import { respondAgentError, resolveModelProvider } from "./server/aiProvider.js";
+import { cleanParam, extractAuthHeaders } from "./server/utils/http.js";
+import { getSystemHealth, getAgentHealth, getWidgetsHealth } from "./server/services/healthService.js";
+import { getSystemConfig, detectModels } from "./server/services/modelsService.js";
 import { executeWebSearch } from "./server/services/searchService.js";
-import { solveLayoutTool } from "./server/tools/layoutTool.js";
-import { searchSearxngImages } from "./server/searxng.js";
-import {
-  initializeWidgetExtensions,
-  getWidgetRegistryHealth,
-  extensionRegistry,
-  getExtensionCatalog
-} from "./src/widgets/registry/index.js";
+import { executeImageSearch } from "./server/services/imagesService.js";
+import { executeTranslation } from "./server/services/translationService.js";
+import { executeLayoutSolve } from "./server/services/layoutService.js";
+import { executeAgentRun } from "./server/services/agentService.js";
 
 dotenv.config({ path: [".env.local", ".env"] });
 
@@ -31,76 +19,33 @@ const app = express();
 const PORT = 3000;
 app.use(express.json());
 
+// 基础健康探测
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: Date.now() });
+  res.json(getSystemHealth("Node.js Server"));
 });
 
+// Agent 模型与提供商健康探测
 app.get("/api/agent/health", async (_req, res) => {
-  const status = resolveModelProvider(process.env);
-  if (!status.ready) {
-    return res.status(503).json({ ok: false, reason: status.reason, provider: status.provider });
-  }
-  try {
-    const ping = await pingModel(status);
-    if (ping.ok) {
-      return res.json({ ok: true, provider: status.provider, latencyMs: ping.latencyMs });
-    }
-    return res.status(502).json({ ok: false, provider: status.provider, reason: ping.error || "provider_unreachable" });
-  } catch (_e) {
-    return res.status(502).json({ ok: false, provider: status.provider, reason: "provider_unreachable" });
-  }
+  const { status, body } = await getAgentHealth(process.env);
+  res.status(status).json(body);
 });
 
+// 小组件注册表健康探测
 app.get("/api/widgets/health", (_req, res) => {
-  try {
-    initializeWidgetExtensions();
-    const health = getWidgetRegistryHealth();
-    const catalog = getExtensionCatalog();
-    const registeredIds = extensionRegistry.getAll().map((ext) => ext.manifest.id);
-    const catalogIds = catalog.map((entry) => entry.id);
-    const missingInRegistry = catalogIds.filter((id) => !registeredIds.includes(id));
-    const isHealthy = health.initialized && registeredIds.length > 0 &&
-      missingInRegistry.length === 0 && extensionRegistry.has("related_links");
-
-    res.json({
-      status: isHealthy ? "healthy" : "unhealthy",
-      timestamp: Date.now(),
-      health,
-      registeredCount: registeredIds.length,
-      catalogCount: catalogIds.length,
-      missingInRegistry,
-      registeredWidgets: registeredIds,
-      relatedLinksCheck: {
-        registeredInRegistry: extensionRegistry.has("related_links"),
-        inCatalog: catalogIds.includes("related_links")
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "unhealthy",
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
+  const { status, body } = getWidgetsHealth();
+  res.status(status).json(body);
 });
 
 // 单一来源转述模型提供商状态，配合搜索与多语言配置
 app.get("/api/config", async (_req, res) => {
-  const env = process.env;
-  const status = resolveModelProvider(env);
-  res.json({
-    ...status,
-    hasCustomSearxngUrl: Boolean(env.SEARXNG_URL && env.SEARXNG_URL.trim()),
-    supportedLanguages: SUPPORTED_LANGUAGES
-  });
+  res.json(getSystemConfig(process.env));
 });
 
 // 根据 API Key / Base URL 自动探测上游提供商与动态加载可用模型
 app.all("/api/models/detect", async (req, res) => {
   try {
-    const apiKey = (req.headers["x-custom-api-key"] as string) || req.body?.apiKey || (req.query?.apiKey as string);
-    const apiBaseUrl = (req.headers["x-custom-base-url"] as string) || req.body?.apiBaseUrl || (req.query?.apiBaseUrl as string);
-    const provider = req.body?.provider || (req.query?.provider as string);
-    const result = await detectAndFetchModels({
+    const { apiKey, apiBaseUrl, provider } = extractAuthHeaders(req);
+    const result = await detectModels({
       apiKey,
       apiBaseUrl,
       provider,
@@ -115,15 +60,16 @@ app.all("/api/models/detect", async (req, res) => {
   }
 });
 
+// 单一 Codex Agent 执行入口
 const handleAgentRun = async (req: express.Request, res: express.Response) => {
   try {
     const { query, model, customSearxngUrl } = req.body || {};
     if (typeof query !== "string" || !query.trim()) {
       return res.status(400).json({ error: "缺少搜索关键词" });
     }
-    const apiKey = (req.headers["x-custom-api-key"] as string) || req.body?.apiKey;
-    const apiBaseUrl = (req.headers["x-custom-base-url"] as string) || req.body?.apiBaseUrl;
-    const result = await runCodexAgent(query.trim(), {
+    const { apiKey, apiBaseUrl } = extractAuthHeaders(req);
+    const result = await executeAgentRun({
+      query: query.trim(),
       model: cleanParam(model),
       customSearxngUrl: cleanParam(customSearxngUrl),
       apiKey: cleanParam(apiKey),
@@ -138,18 +84,19 @@ const handleAgentRun = async (req: express.Request, res: express.Response) => {
 
 app.post("/api/agent", handleAgentRun);
 app.post(["/api/agent/run", "/api/agent/synthesize"], handleAgentRun);
-app.post("/api/planner", (_req, res) => res.status(410).json({ error: "规划由搜索 Agent 完成。" }));
-app.post("/api/intent", (_req, res) => res.status(410).json({ error: "意图分析由搜索 Agent 完成。" }));
+app.post("/api/planner", (_req, res) => res.status(410).json({ error: "规划由 Codex 搜索 Agent 完成。" }));
+app.post("/api/intent", (_req, res) => res.status(410).json({ error: "意图分析由 Codex 搜索 Agent 完成。" }));
 app.post("/api/cards/forge", (_req, res) => res.status(503).json({ error: "AI 卡片生成 API 已暂时移除。" }));
 
+// Codex Agent SSE 流式接口
 app.get("/api/agent/stream", async (req, res) => {
   const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
   if (!query) return res.status(400).json({ error: "缺少搜索关键词" });
 
   const model = cleanParam(req.query.model);
   const customSearxngUrl = cleanParam(req.query.searxngUrl);
-  const apiKey = (req.headers["x-custom-api-key"] as string) || (req.query.apiKey as string);
-  const apiBaseUrl = (req.headers["x-custom-base-url"] as string) || (req.query.apiBaseUrl as string);
+  const { apiKey, apiBaseUrl } = extractAuthHeaders(req);
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -179,7 +126,8 @@ app.get("/api/agent/stream", async (req, res) => {
       }
     });
 
-    const result = await runCodexAgent(query, {
+    const result = await executeAgentRun({
+      query,
       model,
       customSearxngUrl,
       apiKey: cleanParam(apiKey),
@@ -196,7 +144,7 @@ app.get("/api/agent/stream", async (req, res) => {
   }
 });
 
-// Independent web search does not use an AI provider.
+// 纯 Web 独立检索
 app.get("/api/search", async (req, res) => {
   try {
     const q = req.query.q as string;
@@ -218,33 +166,34 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
-// Independent image search does not use an AI provider.
+// 纯图片独立检索
 app.get("/api/images", async (req, res) => {
   try {
     const q = req.query.q as string;
     if (!q || q.trim() === "") return res.status(400).json({ error: "缺少搜索关键词" });
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 36, 1), 72);
-    const images = await searchSearxngImages(q.trim(), {
+    const result = await executeImageSearch(q, {
       customUrl: cleanParam(req.query.customUrl),
       language: cleanParam(req.query.lang),
       limit,
       page
     });
-    res.json({ query: q.trim(), images, page, total: images.length });
+    res.json(result);
   } catch (error) {
     console.error("Images search error:", error);
     res.status(500).json({ error: error instanceof Error ? error.message : "图片检索失败" });
   }
 });
 
+// 多语言翻译服务
 app.post("/api/translate", async (req, res) => {
   try {
     const { text, sourceLang, targetLang, model } = req.body || {};
     if (typeof text !== "string" || !text.trim()) {
       return res.status(400).json({ error: "缺少待翻译文本" });
     }
-    const result = await translateText({
+    const result = await executeTranslation({
       text: text.trim(),
       sourceLang: cleanParam(sourceLang),
       targetLang: cleanParam(targetLang),
@@ -257,16 +206,11 @@ app.post("/api/translate", async (req, res) => {
   }
 });
 
-// Deterministic layout calculations remain available.
+// 确定性装箱排版求解
 app.post(["/api/layout/plan", "/api/agent/layout"], (req, res) => {
   try {
     const { widgetIds, widgetPlan } = req.body || {};
-    const targetIds = Array.isArray(widgetIds)
-      ? widgetIds
-      : widgetPlan?.selectedWidgets
-        ? widgetPlan.selectedWidgets.map((widget: any) => widget.type || widget.id)
-        : widgetPlan?.widgetOrder || [];
-    res.json(solveLayoutTool({ widgetIds: targetIds }));
+    res.json(executeLayoutSolve({ widgetIds, widgetPlan }));
   } catch (error) {
     console.error("Layout solve error:", error);
     res.status(500).json({ error: error instanceof Error ? error.message : "装箱排版求解异常" });
@@ -277,18 +221,12 @@ app.get("/api/layout/plan", (req, res) => {
   try {
     const widgetsParam = cleanParam(req.query.widgets);
     const widgetIds = widgetsParam ? widgetsParam.split(",") : ["related_links", "takeaways"];
-    res.json(solveLayoutTool({ widgetIds }));
+    res.json(executeLayoutSolve({ widgetIds }));
   } catch (error) {
     console.error("Layout solve error:", error);
     res.status(500).json({ error: error instanceof Error ? error.message : "装箱排版求解异常" });
   }
 });
-
-function cleanParam(value?: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return !trimmed || trimmed === "undefined" || trimmed === "null" ? undefined : trimmed;
-}
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

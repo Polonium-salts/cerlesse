@@ -333,23 +333,32 @@ export function toLlmProviderError(error: unknown): LlmProviderError {
 
   if (error instanceof APIError) {
     const status = error.statusCode;
-    const code = status === 401
+    let extractedMessage = error.message;
+    try {
+      const parsed = JSON.parse(extractedMessage);
+      if (parsed?.error?.message) extractedMessage = parsed.error.message;
+    } catch {}
+
+    const isApiKeyError = status === 401 || /api[\s_-]?key.*(?:not found|invalid|missing|please pass)/i.test(extractedMessage);
+    const code = isApiKeyError
       ? "invalid_api_key"
       : status === 403
         ? "access_denied"
         : status === 429
           ? "rate_limited"
           : "provider_error";
-    const message = status === 401
-      ? `AI API Key 无效或未获授权（${error.message}）。`
+    const httpStatus = isApiKeyError
+      ? 401
+      : status === 403 || status === 429
+        ? status
+        : 502;
+    const message = isApiKeyError
+      ? `AI API Key 无效或未获授权（${extractedMessage}）。`
       : status === 403
-        ? `AI API 拒绝访问（${error.message}）。`
+        ? `AI API 拒绝访问（${extractedMessage}）。`
         : status === 429
-          ? `AI API 请求触发限流（${error.message}）。`
-          : `AI API 请求失败（HTTP ${status}：${error.message}）。`;
-    const httpStatus = status === 401 || status === 403 || status === 429
-      ? status
-      : 502;
+          ? `AI API 请求触发限流（${extractedMessage}）。`
+          : `AI API 请求失败（HTTP ${status}：${extractedMessage}）。`;
     return new LlmProviderError(message, code, httpStatus);
   }
 

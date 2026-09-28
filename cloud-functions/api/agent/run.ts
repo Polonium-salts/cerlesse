@@ -1,13 +1,13 @@
-import { PagesFunction, jsonResponse, errorResponse } from "../types.js";
-import { runCodexAgent } from "../../../server/codex/index.js";
+import {
+  PagesFunction,
+  jsonResponse,
+  errorResponse,
+  cleanParam,
+  extractAuthHeaders,
+  getEffectiveEnv
+} from "../types.js";
+import { executeAgentRun } from "../../../server/services/agentService.js";
 import { respondAgentError } from "../../../server/aiProvider.js";
-
-function cleanParam(val?: any): string | undefined {
-  if (!val || typeof val !== "string") return undefined;
-  const trimmed = val.trim();
-  if (trimmed === "" || trimmed === "undefined" || trimmed === "null") return undefined;
-  return trimmed;
-}
 
 export const onRequest: PagesFunction = async (context) => {
   if (context.request.method === "OPTIONS") {
@@ -27,26 +27,17 @@ export const onRequest: PagesFunction = async (context) => {
       return errorResponse("缺少搜索关键词", 400);
     }
 
-    const reqHeaders = context.request.headers;
-    const apiKey =
-      cleanParam(reqHeaders.get("x-custom-api-key")) ||
-      cleanParam(reqHeaders.get("authorization")?.replace(/^Bearer\s+/i, "")) ||
-      cleanParam(bodyApiKey);
+    const { apiKey, apiBaseUrl } = extractAuthHeaders(context.request);
+    const effectiveApiKey = cleanParam(bodyApiKey) || apiKey;
+    const effectiveApiBaseUrl = cleanParam(bodyApiBaseUrl) || apiBaseUrl;
+    const effectiveEnv = getEffectiveEnv(context.env);
 
-    const apiBaseUrl =
-      cleanParam(reqHeaders.get("x-custom-base-url")) ||
-      cleanParam(bodyApiBaseUrl);
-
-    const effectiveEnv = {
-      ...(typeof process !== "undefined" ? process.env : {}),
-      ...(context.env || {})
-    } as Record<string, string | undefined>;
-
-    const result = await runCodexAgent(query.trim(), {
+    const result = await executeAgentRun({
+      query: query.trim(),
       model: cleanParam(model),
       customSearxngUrl: cleanParam(customSearxngUrl),
-      apiKey,
-      apiBaseUrl,
+      apiKey: effectiveApiKey,
+      apiBaseUrl: effectiveApiBaseUrl,
       env: effectiveEnv
     });
 
@@ -56,4 +47,3 @@ export const onRequest: PagesFunction = async (context) => {
     return errorResponse(message, status);
   }
 };
-

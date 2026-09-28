@@ -1,13 +1,13 @@
-import { PagesFunction, jsonResponse, errorResponse } from "./types.js";
-import { runCodexAgent } from "../../server/codex/index.js";
-import { LlmProviderError } from "../../server/aiProvider.js";
-
-function cleanParam(val?: any): string | undefined {
-  if (!val || typeof val !== "string") return undefined;
-  const trimmed = val.trim();
-  if (trimmed === "" || trimmed === "undefined" || trimmed === "null") return undefined;
-  return trimmed;
-}
+import {
+  PagesFunction,
+  jsonResponse,
+  errorResponse,
+  cleanParam,
+  extractAuthHeaders,
+  getEffectiveEnv
+} from "./types.js";
+import { executeAgentRun } from "../../server/services/agentService.js";
+import { respondAgentError } from "../../server/aiProvider.js";
 
 export const onRequest: PagesFunction = async (context) => {
   if (context.request.method === "OPTIONS") {
@@ -27,20 +27,23 @@ export const onRequest: PagesFunction = async (context) => {
       return errorResponse("缺少搜索关键词", 400);
     }
 
-    const result = await runCodexAgent(query.trim(), {
+    const { apiKey, apiBaseUrl } = extractAuthHeaders(context.request);
+    const effectiveApiKey = cleanParam(body?.apiKey) || apiKey;
+    const effectiveApiBaseUrl = cleanParam(body?.apiBaseUrl) || apiBaseUrl;
+    const env = getEffectiveEnv(context.env);
+
+    const result = await executeAgentRun({
+      query: query.trim(),
       model: cleanParam(model),
       customSearxngUrl: cleanParam(customSearxngUrl),
-      env: context.env
+      apiKey: effectiveApiKey,
+      apiBaseUrl: effectiveApiBaseUrl,
+      env
     });
 
     return jsonResponse(result.legacySynthesis);
   } catch (error) {
-    if (error instanceof LlmProviderError) {
-      console.warn("Edge agent provider error:", error.message);
-      return errorResponse(error.message, error.status || 502);
-    }
-    console.error("Edge agent error:", error);
-    return errorResponse(error instanceof Error ? error.message : "执行 Codex Agent 失败", 500);
+    const { status, message } = respondAgentError(error);
+    return errorResponse(message, status);
   }
 };
-

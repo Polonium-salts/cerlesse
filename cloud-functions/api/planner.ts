@@ -1,30 +1,9 @@
-import { PagesFunction, jsonResponse, errorResponse } from "./types.js";
-import { getWidgetCatalogTool } from "../../server/tools/widgetTool.js";
-import { solveLayoutTool } from "../../server/tools/layoutTool.js";
+import { PagesFunction, jsonResponse } from "./types.js";
 
 export const onRequest: PagesFunction = async (context) => {
   if (context.request.method === "OPTIONS") {
     return jsonResponse({ ok: true });
   }
 
-  try {
-    const catalog = getWidgetCatalogTool();
-    const defaultWidgetIds = ["ai_answer", "related_links", "takeaways"];
-    const layout = solveLayoutTool({ widgetIds: defaultWidgetIds });
-
-    return jsonResponse({
-      intent: "general_knowledge",
-      catalog,
-      selectedWidgets: defaultWidgetIds.map((id) => ({
-        id,
-        type: id,
-        title: id,
-        reason: "Default layout widget"
-      })),
-      layout
-    });
-  } catch (error: any) {
-    return errorResponse(error.message || "小组件规划服务异常", 500);
-  }
+  return jsonResponse({ error: "规划由 Codex 搜索 Agent 统一完成。" }, { status: 410 });
 };
-
