@@ -290,6 +290,32 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
       if (results.length >= 20) break;
     }
 
+    if (results.length === 0) {
+      const h2Global = html.matchAll(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>/gi);
+      for (const m of h2Global) {
+        const directUrl = decodeBingUrl(m[1]);
+        const title = sanitizeSnippet(m[2]);
+        if (directUrl.startsWith("http")) {
+          let hostname = "";
+          try {
+            hostname = new URL(directUrl).hostname;
+          } catch {
+            hostname = directUrl;
+          }
+          results.push({
+            id: `web-${Math.random().toString(36).substring(2, 9)}`,
+            title,
+            url: directUrl,
+            snippet: "",
+            engine: "Web Direct",
+            category: "general",
+            displayDomain: hostname
+          });
+        }
+        if (results.length >= 20) break;
+      }
+    }
+
     if (results.length === 0 && html.length > 500) {
       console.warn(`[searchDirectWeb] Bing HTML returned ${html.length} bytes but parsed 0 results for query: "${query}"`);
     }

@@ -488,15 +488,60 @@ const SPAM_TITLE_PATTERNS = /(免费下载|破解|注册码|优惠券|最低价|
  * 两者叠加能轻松挤进前排 —— 实测它曾把真正的官方文档挤出 Top1（P@1 掉到 0）。
  * 这类条目不是"相关度偏低"，而是**根本不是内容**，因此直接出局，不参与排序。
  */
-const SEARCH_ENDPOINT_PATTERNS: RegExp[] = [
-  /^https?:\/\/(www\.)?(google|bing|baidu|duckduckgo|yahoo|yandex|sogou|ecosia|brave|startpage|qwant|searx)\.[a-z.]+\//i,
-  /^https?:\/\/[^/]+\/(search|find|query)\/?\?/i,
-  /^https?:\/\/[^/]+\/\?(q|query|wd|keyword|search)=/i,
-  /^https?:\/\/(www\.)?github\.com\/(search|topics)\//i
-];
-
 export function isSearchEndpoint(url: string): boolean {
-  return SEARCH_ENDPOINT_PATTERNS.some((p) => p.test(url));
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    const pathname = u.pathname.toLowerCase();
+
+    // 根路径或主页文件且无显式搜索参数时，是官网首页入口，绝非搜索结果页
+    const isRoot = pathname === "" || pathname === "/" || pathname === "/index.html" || pathname === "/index.htm";
+    const hasSearchParam =
+      u.searchParams.has("q") ||
+      u.searchParams.has("query") ||
+      u.searchParams.has("wd") ||
+      u.searchParams.has("keyword") ||
+      u.searchParams.has("p") ||
+      u.searchParams.has("w");
+
+    // 知名搜索引擎
+    const isSearchEngineDomain =
+      /^(google|bing|baidu|duckduckgo|yahoo|yandex|sogou|ecosia|brave|startpage|qwant|searx)\.[a-z.]+$/.test(host) ||
+      /\.(google|bing|baidu)\.[a-z.]+$/.test(host);
+
+    if (isSearchEngineDomain) {
+      if (
+        pathname.startsWith("/search") ||
+        pathname.startsWith("/url") ||
+        pathname === "/s" ||
+        pathname.startsWith("/s/") ||
+        pathname.startsWith("/html") ||
+        (pathname.startsWith("/web") && hasSearchParam) ||
+        hasSearchParam
+      ) {
+        return true;
+      }
+      return false;
+    }
+
+    // 通用搜索结果页端点 /search?q=..., /find?keyword=...
+    if (/(search|find|query)\/?(\?|$)/i.test(pathname) && hasSearchParam) {
+      return true;
+    }
+
+    if (/\?(q|query|wd|keyword|search)=/i.test(u.search)) {
+      return true;
+    }
+
+    if (host === "github.com" && /^\/(search|topics)(\/|$)/i.test(pathname)) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function hostnameOf(url: string): string {
@@ -558,6 +603,10 @@ export function getUrlPathDepth(urlStr: string): number {
   try {
     const u = new URL(urlStr);
     const segments = u.pathname.split("/").filter(Boolean);
+    // 把主页默认文件视为根路径
+    if (segments.length === 1 && /^index\.(html?|php|aspx?)$/i.test(segments[0])) {
+      return 0;
+    }
     return segments.length;
   } catch {
     return 99;
@@ -617,9 +666,10 @@ export function detectStructuralOfficial(
 
   // 2. 官方主站/根页面（如 acme.com/ 或 acme.com/zh）
   if (isMainBrandMatch && depth === 0) {
+    const isNavigational = queryCanonicals.length <= 2;
     return {
       isOfficial: true,
-      score: hasOfficialKeywords ? 24 : 18,
+      score: hasOfficialKeywords ? 28 : (isNavigational ? 24 : 18),
       reason: "official_homepage_root"
     };
   }
@@ -1458,8 +1508,34 @@ export function rankAndFilterResultsWithReport(
     });
   }
 
+function isDirectRootHomepage(urlStr: string, queryCanonicals: string[]): boolean {
+  try {
+    const u = new URL(urlStr);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    const mainLabel = canonicalizeTerm(extractMainDomainLabel(host));
+    if (!mainLabel || !queryCanonicals.includes(mainLabel)) return false;
+    const parts = host.split(".");
+    // 直接是 mainLabel.tld 形式（如 google.com, google.com.tw），无其它三级子域（如 accounts., maps.）
+    const isDirectHost = parts[0] === mainLabel;
+    const depth = getUrlPathDepth(urlStr);
+    return isDirectHost && depth === 0;
+  } catch {
+    return false;
+  }
+}
+
   // 排序：相关度优先，其次多路共识，最后 URL 字典序保证完全可复现
   scored.sort((a, b) => {
+    // 导航意图下，品牌官方主站根主页优先于二级子系统（如 google.com 优先于 accounts.google.com）
+    const aIsRoot = isDirectRootHomepage(a.url, queryCanonicals);
+    const bIsRoot = isDirectRootHomepage(b.url, queryCanonicals);
+    if (aIsRoot !== bIsRoot && (a.isOfficial || b.isOfficial)) {
+      return aIsRoot ? -1 : 1;
+    }
+    // 截断前的原始得分优先（避免满分 100 造成的平局）
+    const aRaw = a.scoreBreakdown?.rawScore ?? a.score;
+    const bRaw = b.scoreBreakdown?.rawScore ?? b.score;
+    if (Math.abs(bRaw - aRaw) > 1e-4) return bRaw - aRaw;
     if (Math.abs(b.relevanceScore - a.relevanceScore) > 1e-6) return b.relevanceScore - a.relevanceScore;
     if (b.sourceHits !== a.sourceHits) return b.sourceHits - a.sourceHits;
     return a.url.localeCompare(b.url);

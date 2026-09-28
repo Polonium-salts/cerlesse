@@ -6,6 +6,7 @@ import {
   matchesSearchFilters,
   classifySourceType,
   normalizeUrlKey,
+  isSearchEndpoint,
   type CandidatePool
 } from "../../server/retrievalRanker.js";
 import { normalizeSearchFilters } from "../../server/searchFilters.js";
@@ -439,6 +440,56 @@ describe("通用结构化官网识别与动态配额验证", () => {
     const { results } = rankSearchPools([candidatePool], { query: "Acme 官网", limit: 5 });
     assert.ok(results.length > 0);
     assert.equal(results[0].url, "https://acme.org/");
+    assert.equal(results[0].isOfficial, true);
+  });
+
+  it("精确区分搜索引擎搜索结果页与主站首页，避免根域名被误当成搜索端点剔除", () => {
+    // 搜索结果页应被硬剔除
+    assert.equal(isSearchEndpoint("https://www.google.com/search?q=docker"), true);
+    assert.equal(isSearchEndpoint("https://www.bing.com/search?q=test"), true);
+    assert.equal(isSearchEndpoint("https://www.baidu.com/s?wd=test"), true);
+    assert.equal(isSearchEndpoint("https://duckduckgo.com/?q=test"), true);
+    assert.equal(isSearchEndpoint("https://github.com/search?q=test"), true);
+
+    // 主站根域名及主页绝不能被误判为搜索结果页
+    assert.equal(isSearchEndpoint("https://www.google.com/"), false);
+    assert.equal(isSearchEndpoint("https://google.com"), false);
+    assert.equal(isSearchEndpoint("https://www.google.com/?hl=zh-CN"), false);
+    assert.equal(isSearchEndpoint("https://www.google.com.tw/index.html"), false);
+    assert.equal(isSearchEndpoint("https://www.bing.com/"), false);
+    assert.equal(isSearchEndpoint("https://baidu.com/"), false);
+  });
+
+  it("搜索品牌词 google 时，google.com 根主页稳居 Rank #1 且被正确识别为官方", () => {
+    const candidatePool: CandidatePool = {
+      source: "web_search",
+      results: [
+        makeResult({
+          title: "Sign in - Google Accounts",
+          url: "https://accounts.google.com/",
+          snippet: "Sign in to access your Google Account, services, and preferences."
+        }),
+        makeResult({
+          title: "Google",
+          url: "https://www.google.com/",
+          snippet: "Search the world's information, including webpages, images, videos and more."
+        }),
+        makeResult({
+          title: "Google Maps",
+          url: "https://maps.google.com/",
+          snippet: "Find local businesses, view maps and get driving directions in Google Maps."
+        }),
+        makeResult({
+          title: "Google - Wikipedia",
+          url: "https://en.wikipedia.org/wiki/Google",
+          snippet: "Google LLC is an American multinational technology company focus on search..."
+        })
+      ]
+    };
+
+    const { results } = rankSearchPools([candidatePool], { query: "google", limit: 5 });
+    assert.ok(results.length > 0);
+    assert.equal(results[0].url, "https://www.google.com/");
     assert.equal(results[0].isOfficial, true);
   });
 });
