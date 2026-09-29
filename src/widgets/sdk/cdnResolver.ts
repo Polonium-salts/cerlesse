@@ -13,6 +13,7 @@
 import { WidgetModule, WidgetCategoryType, WidgetSchema, TileSchemaDescriptor } from "./types.js";
 import { resolveManifestIcon, FALLBACK_MANIFEST_ICON } from "../manifests/icons.js";
 import { TileWidth } from "../../lib/tileLayoutEngine.js";
+import { sanitizeManifest } from "../manifests/index.js";
 
 export interface RemoteWidgetManifest {
   $schema?: string;
@@ -211,21 +212,9 @@ export async function fetchRemoteWidgetManifest(inputUrl: string): Promise<{
     throw new Error(`加载小组件清单失败 (HTTP ${res.status}): ${parsedCdn.manifestUrl}`);
   }
 
-  const manifest = await res.json() as RemoteWidgetManifest;
-
-  // 基础规格校验
-  if (!manifest.id || !manifest.name) {
-    throw new Error("清单缺少必需字段 'id' 或 'name'");
-  }
-
-  if (!manifest.grid || typeof manifest.grid.width !== "number") {
-    // 兼容默认网格规格
-    manifest.grid = {
-      width: (manifest.grid?.width as TileWidth) || 50,
-      supportedWidths: manifest.grid?.supportedWidths || [25, 50, 75, 100],
-      ratio: manifest.grid?.ratio || "4:3"
-    };
-  }
+  const rawJson = await res.json();
+  const sanitized = sanitizeManifest(rawJson);
+  const manifest = sanitized as unknown as RemoteWidgetManifest;
 
   // 补全版本号
   if (!manifest.version) {

@@ -52,9 +52,9 @@ export const manifest: WidgetManifest = {
     defaultWidth: 50,
     minWidth: 25,
     maxWidth: 75,
-    preferredHeight: 280
-      height: "auto",
-},
+    preferredHeight: 280,
+    height: "auto"
+  },
   agent: {
     selectable: true,
     minConfidence: 0.8,

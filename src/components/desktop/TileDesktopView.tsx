@@ -3,7 +3,12 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Trash2,
   ArrowLeftRight,
-  GripVertical
+  GripVertical,
+  Sparkles,
+  Lock,
+  Unlock,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import {
   ResultWidgetKey,
@@ -13,6 +18,8 @@ import {
 } from "../../types.js";
 import {
   solveTileLayout,
+  packTiles,
+  type PackInput,
   TileWidth,
   TileLayoutInput,
   TILE_COLUMN_GAP_PX,
@@ -67,6 +74,10 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   const [userSides, setUserSides] = useState<Record<string, "left" | "right">>({});
   // 用户移除的小组件集合
   const [hiddenTileIds, setHiddenTileIds] = useState<Set<string>>(new Set());
+  // 锁定布局：锁定后 Agent 后续更新不改变磁贴位置和尺寸 (Section 4.9)
+  const [isLayoutLocked, setIsLayoutLocked] = useState<boolean>(false);
+  // 局部展开超长磁贴集合 (Section 4.2)
+  const [expandedTileIds, setExpandedTileIds] = useState<Set<string>>(new Set());
   // 容器物理宽度监听
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(1280);
@@ -187,12 +198,14 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, activeResult, widgetPlan]);
 
 
-  // 监听各个小组件实际内容高度，当内容变化时自动扩充磁贴高度以一次性显示全部内容
+  // 4.6 防抖动的高度测量：120ms 防抖 + requestAnimationFrame 合并 + 量化 rowSpan 迟滞过滤
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
 
     const ro = new ResizeObserver((entries) => {
-      let changed = false;
       const updates: Record<string, number> = {};
 
       for (const entry of entries) {
@@ -200,30 +213,39 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         const id = target.getAttribute("data-tile-measure-id");
         if (!id) continue;
 
-        // 获取组件内容的自然真实高度
+        // 获取组件内容的自然真实高度（含背面最大值）
         const scrollH = target.scrollHeight;
         const offsetH = target.offsetHeight;
         const naturalH = Math.ceil(Math.max(scrollH, offsetH));
 
         if (naturalH > 0 && naturalH < 2400) {
           updates[id] = naturalH;
-          changed = true;
         }
       }
 
-      if (changed) {
-        setContentHeights((prev) => {
-          let hasDiff = false;
-          const next = { ...prev };
-          for (const [id, h] of Object.entries(updates)) {
-            if (Math.abs((prev[id] || 0) - h) > 4) {
-              next[id] = h;
-              hasDiff = true;
+      if (Object.keys(updates).length === 0) return;
+
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = requestAnimationFrame(() => {
+          setContentHeights((prev) => {
+            let hasDiff = false;
+            const next = { ...prev };
+            for (const [id, h] of Object.entries(updates)) {
+              const oldH = prev[id] || 0;
+              // 迟滞：仅当量化后的 rowSpan 单位发生变化才触发重排
+              const oldRows = Math.ceil(oldH / TILE_ROW_UNIT_PX);
+              const newRows = Math.ceil(h / TILE_ROW_UNIT_PX);
+              if (oldRows !== newRows || Math.abs(oldH - h) >= TILE_ROW_UNIT_PX) {
+                next[id] = h;
+                hasDiff = true;
+              }
             }
-          }
-          return hasDiff ? next : prev;
+            return hasDiff ? next : prev;
+          });
         });
-      }
+      }, 120);
     });
 
     tileRefs.current.forEach((el, id) => {
@@ -232,7 +254,11 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       }
     });
 
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    };
   }, [activeKeys, activeResult]);
 
   // 2. 小组件排版 Agent 排版决策
@@ -457,71 +483,114 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     );
   };
 
-  // Muuri 磁贴项列表 (带拖拽手柄与卡片内容包装)
-  const muuriItems: MuuriWidgetItem[] = useMemo(() => {
-    const rawItems = muuriTileInputs.map((input) => ({
-      id: input.id,
-      size: input.size,
-      priority: input.priority,
-      node: (
-        <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-auto shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
-          {/* 拖拽排序把手 */}
-          {muuriDragEnabled && (
-            <div
-              className="muuri-drag-handle absolute top-2.5 left-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded-lg bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-foreground shadow-xs flex items-center justify-center"
-              title="按住拖拽调整小组件位置"
-            >
-              <GripVertical className="w-3.5 h-3.5" />
-            </div>
-          )}
+  // 4.9 一键整理：清除用户手动偏离，恢复确定性紧凑排版
+  const handleAutoRepack = () => {
+    setUserOverrides({});
+    setUserSides({});
+    setCustomMuuriOrder([]);
+    try {
+      localStorage.removeItem(USER_OVERRIDES_KEY);
+    } catch {}
+  };
 
-          {/* 75% 与 25% 互补磁贴左右排位切换把手 */}
-          {(input.size === 75 || input.size === 25) && (
+  const handleToggleLock = () => {
+    setIsLayoutLocked(prev => !prev);
+  };
+
+  // Muuri 磁贴项列表 (带拖拽手柄、展开收起与卡片内容包装)
+  const muuriItems: MuuriWidgetItem[] = useMemo(() => {
+    const rawItems = muuriTileInputs.map((input) => {
+      const isExpanded = expandedTileIds.has(input.id);
+      const measuredH = contentHeights[input.id] || 0;
+      const isOverflowing = measuredH > 4 * TILE_ROW_UNIT_PX;
+      const maxAllowedHeightPx = (isExpanded ? 6 : 4) * TILE_ROW_UNIT_PX;
+
+      return {
+        id: input.id,
+        size: input.size,
+        priority: input.priority,
+        node: (
+          <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-auto shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
+            {/* 拖拽排序把手 */}
+            {muuriDragEnabled && !isLayoutLocked && (
+              <div
+                className="muuri-drag-handle absolute top-2.5 left-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded-lg bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-foreground shadow-xs flex items-center justify-center"
+                title="按住拖拽调整小组件位置"
+              >
+                <GripVertical className="w-3.5 h-3.5" />
+              </div>
+            )}
+
+            {/* 展开/收起把手 (超过 4 个 row 单位即 480px 时提供) */}
+            {isOverflowing && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedTileIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(input.id)) next.delete(input.id);
+                    else next.add(input.id);
+                    return next;
+                  });
+                }}
+                title={isExpanded ? "收起磁贴" : "展开至 6 单位高度"}
+                className="absolute top-2.5 right-17 z-30 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-foreground rounded-xl shadow-xs"
+              >
+                {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              </Button>
+            )}
+
+            {/* 75% 与 25% 互补磁贴左右排位切换把手 */}
+            {(input.size === 75 || input.size === 25) && !isLayoutLocked && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleTileSide(input.id);
+                }}
+                title="将互补组件切换至左/右对调排列"
+                className="absolute top-2.5 right-9.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-primary rounded-xl shadow-xs"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+              </Button>
+            )}
+
+            {/* 磁贴卸载把手 */}
             <Button
               variant="ghost"
               size="icon-xs"
               onClick={(e) => {
                 e.stopPropagation();
-                handleToggleTileSide(input.id);
+                handleRemoveTile(input.id);
               }}
-              title="将互补组件切换至左/右对调排列"
-              className="absolute top-2.5 right-10 z-30 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-primary rounded-xl shadow-xs"
+              title="从桌面卸载此磁贴"
+              className="absolute top-2.5 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-destructive rounded-xl shadow-xs"
             >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </Button>
-          )}
 
-          {/* 磁贴卸载把手 */}
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleRemoveTile(input.id);
-            }}
-            title="从桌面卸载此磁贴"
-            className="absolute top-2.5 right-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-destructive rounded-xl shadow-xs"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-
-          {/* 磁贴视图内容：所有小组件按自然内容高度自适应缩放 */}
-          <div
-            ref={(el) => {
-              if (el) {
-                tileRefs.current.set(input.id, el);
-              } else {
-                tileRefs.current.delete(input.id);
-              }
-            }}
-            data-tile-measure-id={input.id}
-            className="w-full h-auto flex flex-col flex-none"
-          >
-            {renderTileContentById(input.id, input.size)}
+            {/* 磁贴视图内容：4.2 行高量化与内部滚动 */}
+            <div
+              ref={(el) => {
+                if (el) {
+                  tileRefs.current.set(input.id, el);
+                } else {
+                  tileRefs.current.delete(input.id);
+                }
+              }}
+              data-tile-measure-id={input.id}
+              style={{ maxHeight: `${maxAllowedHeightPx}px` }}
+              className={`w-full h-auto flex flex-col flex-none ${isOverflowing ? "overflow-y-auto overscroll-contain" : ""}`}
+            >
+              {renderTileContentById(input.id, input.size)}
+            </div>
           </div>
-        </div>
-      )
-    }));
+        )
+      };
+    });
 
     // 若存在用户拖拽产生的自定义顺序，优先遵循自定义顺序
     if (customMuuriOrder && customMuuriOrder.length > 0) {
@@ -535,16 +604,62 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     }
 
     return rawItems;
-  }, [muuriTileInputs, activeResult, customMuuriOrder, muuriDragEnabled, onNavigateTab, onExecuteSearch]);
+  }, [muuriTileInputs, activeResult, customMuuriOrder, muuriDragEnabled, isLayoutLocked, expandedTileIds, contentHeights, onNavigateTab, onExecuteSearch]);
 
   return (
     <div className="w-full">
+      {/* 4.9 布局控制栏：一键整理与锁定布局 */}
+      <div className="flex items-center justify-between mb-3 px-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 font-medium">
+          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500/80 animate-pulse" />
+          <span>12 栅格自适应磁贴桌面</span>
+          <span className="text-[11px] text-muted-foreground/60">
+            ({activeColumns} 列模式 · 行基准 {TILE_ROW_UNIT_PX}px)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={handleAutoRepack}
+            title="对当前磁贴集合重新调用确定性装箱器进行紧凑排版"
+            className="h-7 px-2.5 text-xs rounded-lg gap-1.5 hover:bg-accent/60 text-muted-foreground hover:text-foreground border border-border/50"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span>一键整理</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={handleToggleLock}
+            title={isLayoutLocked ? "解锁磁贴拖拽与重排" : "锁定当前磁贴布局与尺寸"}
+            className={`h-7 px-2.5 text-xs rounded-lg gap-1.5 border ${
+              isLayoutLocked
+                ? "bg-primary/10 text-primary border-primary/30"
+                : "text-muted-foreground hover:text-foreground border-border/50 hover:bg-accent/60"
+            }`}
+          >
+            {isLayoutLocked ? (
+              <>
+                <Lock className="w-3.5 h-3.5 text-primary" />
+                <span>已锁定布局</span>
+              </>
+            ) : (
+              <>
+                <Unlock className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>锁定布局</span>
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
       {/* 桌面磁贴网格主体 */}
       {layoutEngine === "muuri" ? (
         <MuuriWidgetGrid
           items={muuriItems}
           fillGaps={true}
-          dragEnabled={muuriDragEnabled}
+          dragEnabled={muuriDragEnabled && !isLayoutLocked}
           dragHandle=".muuri-drag-handle"
           dragSortAction={muuriDragAction}
           onOrderChange={handleMuuriOrderChange}

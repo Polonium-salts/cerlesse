@@ -6,8 +6,11 @@ import {
   applyRowTailPadding,
   TileLayoutInput,
   TileWidth,
-  normalizeTileWidth
+  normalizeTileWidth,
+  packTiles,
+  type PackInput
 } from "../../src/lib/tileLayoutEngine.js";
+import { sanitizeManifest } from "../../src/widgets/manifests/index.js";
 import { solveLayoutTool } from "../../server/tools/layoutTool.js";
 import { filterAndSanitizeWidgetTypes, isRenderableWidget } from "../../server/widgetPlanner.js";
 import type { LayoutIntent } from "../../src/types.js";
@@ -361,4 +364,141 @@ describe("Prompt 2: P0 Row-Tail Padding & WidgetPlanner Tests", () => {
     assert.ok(result.warnings[1].includes("unknown_random_gibberish"));
   });
 });
+
+describe("Deterministic Packing Engine (packTiles) & Spec Tests", () => {
+  it("packs matching row templates exactly to 12 colSpan (e.g. 50 + 50, 75 + 25, 25 + 25 + 50)", () => {
+    const inputs: PackInput[] = [
+      { id: "ans", priority: 100, defaultWidth: 50, supportedWidths: [25, 50, 75, 100], minRows: 1, maxRows: 4 },
+      { id: "compare", priority: 90, defaultWidth: 50, supportedWidths: [25, 50, 75, 100], minRows: 1, maxRows: 4 },
+      { id: "links", priority: 80, defaultWidth: 25, supportedWidths: [25, 50], minRows: 1, maxRows: 4 },
+      { id: "takeaway", priority: 70, defaultWidth: 25, supportedWidths: [25, 50], minRows: 1, maxRows: 4 },
+      { id: "weather", priority: 60, defaultWidth: 50, supportedWidths: [25, 50, 75], minRows: 1, maxRows: 4 }
+    ];
+
+    const result = packTiles(inputs, { cols: 12 });
+    assert.strictEqual(result.rows.length, 2);
+
+    // 行 1: 50 + 50 -> 6 + 6 = 12
+    const row1Sum = result.rows[0].tiles.reduce((acc, t) => acc + t.colSpan, 0);
+    assert.strictEqual(row1Sum, 12);
+
+    // 行 2: 25 + 25 + 50 -> 3 + 3 + 6 = 12
+    const row2Sum = result.rows[1].tiles.reduce((acc, t) => acc + t.colSpan, 0);
+    assert.strictEqual(row2Sum, 12);
+    assert.strictEqual(result.emptyCells, 0);
+  });
+
+  it("guarantees determinism: identical inputs produce identical packed layout", () => {
+    const inputs: PackInput[] = [
+      { id: "w1", priority: 95, defaultWidth: 75, supportedWidths: [50, 75, 100], minRows: 1, maxRows: 4 },
+      { id: "w2", priority: 85, defaultWidth: 25, supportedWidths: [25, 50], minRows: 1, maxRows: 4 },
+      { id: "w3", priority: 75, defaultWidth: 50, supportedWidths: [25, 50, 75], minRows: 1, maxRows: 4 },
+      { id: "w4", priority: 65, defaultWidth: 50, supportedWidths: [25, 50, 75], minRows: 1, maxRows: 4 }
+    ];
+
+    const run1 = packTiles(inputs, { cols: 12 });
+    const run2 = packTiles(inputs, { cols: 12 });
+    const run3 = packTiles(inputs, { cols: 12 });
+
+    assert.deepStrictEqual(run1, run2);
+    assert.deepStrictEqual(run2, run3);
+  });
+
+  it("handles responsive column mapping (12 cols desktop, 6 cols tablet, 1 col mobile)", () => {
+    const inputs: PackInput[] = [
+      { id: "hero", priority: 100, defaultWidth: 100, supportedWidths: [50, 75, 100], minRows: 1, maxRows: 4 },
+      { id: "sub1", priority: 90, defaultWidth: 50, supportedWidths: [25, 50], minRows: 1, maxRows: 4 },
+      { id: "sub2", priority: 80, defaultWidth: 50, supportedWidths: [25, 50], minRows: 1, maxRows: 4 }
+    ];
+
+    // 12 列模式
+    const res12 = packTiles(inputs, { cols: 12 });
+    assert.strictEqual(res12.rows[0].tiles[0].colSpan, 12);
+    assert.strictEqual(res12.rows[1].tiles[0].colSpan, 6);
+    assert.strictEqual(res12.rows[1].tiles[1].colSpan, 6);
+
+    // 6 列模式 (平板)
+    const res6 = packTiles(inputs, { cols: 6 });
+    for (const r of res6.rows) {
+      const sum = r.tiles.reduce((acc, t) => acc + t.colSpan, 0);
+      assert.strictEqual(sum, 6);
+    }
+
+    // 1 列模式 (手机端)
+    const res1 = packTiles(inputs, { cols: 1 });
+    assert.strictEqual(res1.rows.length, 3);
+    for (const r of res1.rows) {
+      assert.strictEqual(r.tiles.length, 1);
+      assert.strictEqual(r.tiles[0].colSpan, 1);
+    }
+  });
+
+  it("stretches tail row when supported to eliminate empty cells (尾行拉伸)", () => {
+    const inputs: PackInput[] = [
+      { id: "w1", priority: 90, defaultWidth: 75, supportedWidths: [75, 100], minRows: 1, maxRows: 4 }
+    ];
+
+    // 单个 75% 组件在支持 100% 时，末行应被拉伸到 100% (12 colSpan)
+    const res = packTiles(inputs, { cols: 12 });
+    assert.strictEqual(res.rows.length, 1);
+    assert.strictEqual(res.rows[0].tiles[0].colSpan, 12);
+    assert.strictEqual(res.rows[0].tiles[0].width, 100);
+    assert.strictEqual(res.emptyCells, 0);
+  });
+
+  it("preserves emptyCells when components cannot upgrade", () => {
+    const inputs: PackInput[] = [
+      { id: "locked", priority: 90, defaultWidth: 25, supportedWidths: [25], minRows: 1, maxRows: 4 }
+    ];
+
+    // 仅支持 25% 的单卡片无法补齐，记录 emptyCells: 9
+    const res = packTiles(inputs, { cols: 12 });
+    assert.strictEqual(res.rows.length, 1);
+    assert.strictEqual(res.rows[0].tiles[0].colSpan, 3);
+    assert.strictEqual(res.emptyCells, 9);
+  });
+
+  it("quantizes rowSpan and aligns tile heights equally within the same row", () => {
+    const inputs: PackInput[] = [
+      // ans 内容较长 (contentHeight: 320px -> ceil(320 / 120) = 3 单位)
+      { id: "ans", priority: 100, defaultWidth: 50, supportedWidths: [50], minRows: 1, maxRows: 4, contentHeightPx: 320 },
+      // links 内容较短 (contentHeight: 100px -> ceil(100 / 120) = 1 单位)
+      { id: "links", priority: 90, defaultWidth: 50, supportedWidths: [50], minRows: 1, maxRows: 4, contentHeightPx: 100 }
+    ];
+
+    const res = packTiles(inputs, { cols: 12, rowUnit: 120 });
+    assert.strictEqual(res.rows.length, 1);
+    // 同排统一取最大 rowSpan: 3
+    assert.strictEqual(res.rows[0].rowSpan, 3);
+    assert.strictEqual(res.rows[0].tiles[0].rowSpan, 3);
+    assert.strictEqual(res.rows[0].tiles[1].rowSpan, 3);
+  });
+
+  it("sanitizeManifest normalizes invalid widths, ratio, and clamps maxRows", () => {
+    const raw = {
+      id: "third_party_tool",
+      name: "第三方工具",
+      grid: {
+        width: 30 as any, // 非法，应归一化为 25
+        supportedWidths: [30 as any, 80 as any, 50], // 应过滤只保留 50 并补上 25
+        ratio: "invalid_ratio" as any, // 应回退为 4:3
+        maxRows: 10 // 超限，应夹紧为 <= 6
+      }
+    };
+
+    const sanitized = sanitizeManifest(raw);
+    assert.strictEqual(sanitized.grid.width, 25);
+    assert.ok(sanitized.grid.supportedWidths.includes(25));
+    assert.ok(sanitized.grid.supportedWidths.includes(50));
+    assert.ok(!sanitized.grid.supportedWidths.includes(30 as any));
+    assert.strictEqual(sanitized.grid.ratio, "4:3");
+    assert.strictEqual(sanitized.grid.maxRows, 6);
+  });
+
+  it("sanitizeManifest throws clear errors when id or name is missing", () => {
+    assert.throws(() => sanitizeManifest({}), /缺少必需的字符串字段 'id'/);
+    assert.throws(() => sanitizeManifest({ id: "test" }), /缺少必需的字符串字段 'name'/);
+  });
+});
+
 

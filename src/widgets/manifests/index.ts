@@ -42,6 +42,12 @@ export interface WidgetGridSpec {
   itemHeightPx?: number;
   /** 可选：除条目列表外的固定开销高度（px） */
   baseHeightPx?: number;
+  /** 最小占用行单位数（默认 1） */
+  minRows?: number;
+  /** 最大占用行单位数（默认 4） */
+  maxRows?: number;
+  /** 内容预算限制，按尺寸档位分配展示项数上限 */
+  contentBudget?: Record<string, { maxItems?: number }>;
 }
 
 /** 插件清单 (Widget Manifest) */
@@ -307,3 +313,69 @@ export function getWidgetLayoutMeta(id: string): WidgetLayoutMeta {
     preferredRoles: ["primary", "secondary"]
   };
 }
+
+/**
+ * 第三方与远程小组件清单夹紧与规范化校验 (Section 4.8)
+ * 1. grid.width 与 supportedWidths 严格限制在 [25, 50, 75, 100] 四档内，过滤非法项；缺失则退化为 [width]
+ * 2. ratio 不在白名单则安全回落 4:3
+ * 3. 强制附加 minRows (默认 1) 与 maxRows (默认 4)，若第三方声明了更大值夹紧到 <= 6
+ * 4. 校验失败给出明确报错
+ */
+export function sanitizeManifest(raw: unknown): WidgetManifest {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("[sanitizeManifest] 清单必须为合法的非空 JSON 对象");
+  }
+
+  const manifest = { ...(raw as any) };
+  if (!manifest.id || typeof manifest.id !== "string" || !manifest.id.trim()) {
+    throw new Error("[sanitizeManifest] 清单校验失败：缺少必需的字符串字段 'id'");
+  }
+  if (!manifest.name || typeof manifest.name !== "string" || !manifest.name.trim()) {
+    throw new Error(`[sanitizeManifest] 小组件 [${manifest.id}] 清单校验失败：缺少必需的字符串字段 'name'`);
+  }
+
+  const VALID_WIDTHS: TileWidth[] = [25, 50, 75, 100];
+  const grid = { ...(manifest.grid || {}) };
+
+  let width: TileWidth = 50;
+  if (VALID_WIDTHS.includes(grid.width)) {
+    width = grid.width;
+  } else if (typeof grid.width === "number") {
+    if (grid.width < 37.5) width = 25;
+    else if (grid.width < 62.5) width = 50;
+    else if (grid.width < 87.5) width = 75;
+    else width = 100;
+  }
+
+  let supportedWidths: TileWidth[] = [];
+  if (Array.isArray(grid.supportedWidths)) {
+    supportedWidths = grid.supportedWidths.filter((w: any) => VALID_WIDTHS.includes(w));
+  }
+  if (!supportedWidths.includes(width)) {
+    supportedWidths.unshift(width);
+  }
+  if (supportedWidths.length === 0) {
+    supportedWidths = [width];
+  }
+
+  const VALID_RATIOS: TileRatio[] = ["1:1", "4:3", "3:2", "16:9", "2:1", "3:1", "4:5"];
+  let ratio: TileRatio = "4:3";
+  if (VALID_RATIOS.includes(grid.ratio)) {
+    ratio = grid.ratio;
+  }
+
+  const minRows = Math.max(1, Math.min(Number(grid.minRows) || 1, 4));
+  const maxRows = Math.min(6, Math.max(minRows, Number(grid.maxRows) || 4));
+
+  manifest.grid = {
+    ...grid,
+    width,
+    supportedWidths,
+    ratio,
+    minRows,
+    maxRows
+  };
+
+  return manifest as WidgetManifest;
+}
+

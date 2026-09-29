@@ -1755,3 +1755,358 @@ export function clearDesktopState(): void {
     localStorage.removeItem(DESKTOP_STORAGE_KEY);
   } catch {}
 }
+
+// ==========================================
+// 6. 确定性装箱排版器 (Deterministic Tile Packing Engine)
+// 依据《Cerlesse 小组件排版优化：开发文档》4.2 & 4.3 规范设计
+// ==========================================
+
+export interface PackInput {
+  id: string;
+  priority: number;              // 越大越靠前
+  defaultWidth: TileWidth;
+  supportedWidths: TileWidth[];  // 必含 defaultWidth
+  minWidth?: TileWidth;
+  minRows: number;
+  maxRows: number;
+  contentHeightPx?: number;
+  ratio?: TileRatio;
+}
+
+export interface PackedTile {
+  id: string;
+  width: TileWidth;
+  colSpan: 3 | 6 | 9 | 12 | 1;
+  rowSpan: number;
+  expanded?: boolean;
+}
+
+export interface PackedRow {
+  tiles: PackedTile[];
+  rowSpan: number;
+}
+
+export interface PackResult {
+  rows: PackedRow[];
+  emptyCells: number;
+  dropped: string[];
+}
+
+export function colSpanForWidth(width: TileWidth, cols: 12 | 6 | 1): 3 | 6 | 9 | 12 | 1 {
+  if (cols === 1) return 1;
+  if (cols === 6) {
+    if (width === 25) return 3;
+    return 6;
+  }
+  if (width === 25) return 3;
+  if (width === 50) return 6;
+  if (width === 75) return 9;
+  return 12;
+}
+
+const ROW_TEMPLATES_12: TileWidth[][] = [
+  [25, 25, 50],
+  [50, 25, 25],
+  [25, 50, 25],
+  [50, 50],
+  [75, 25],
+  [25, 75],
+  [100],
+  [25, 25, 25, 25]
+];
+
+const ROW_TEMPLATES_6: TileWidth[][] = [
+  [25, 25],
+  [50],
+  [75],
+  [100]
+];
+
+function computeTileRowSpan(
+  input: PackInput,
+  chosenWidth: TileWidth,
+  rowUnit: number,
+  cols: 12 | 6 | 1,
+  expanded?: boolean
+): number {
+  const minRows = Math.max(1, input.minRows || 1);
+  const maxRows = Math.max(minRows, (input.maxRows || 4) + (expanded ? 2 : 0));
+
+  let targetHeightPx: number;
+  if (input.contentHeightPx && input.contentHeightPx > 0) {
+    targetHeightPx = input.contentHeightPx;
+  } else {
+    const ratioKey = input.ratio || "4:3";
+    const ratioVal = RATIO_VALUES[ratioKey] || 4 / 3;
+    const approxWidthPx = 1200 * (chosenWidth / 100);
+    targetHeightPx = approxWidthPx / ratioVal;
+  }
+
+  const span = Math.ceil(targetHeightPx / rowUnit);
+  return Math.max(minRows, Math.min(span, maxRows));
+}
+
+/**
+ * 确定性装箱器 (packTiles)
+ * 算法：
+ * 1. 按 priority 降序、同优先级保留输入顺序做稳定排序。
+ * 2. 逐行装箱求解：
+ *    - 快速路径：命中行模板且候选默认宽度匹配时直接采用。
+ *    - 枚举队列前 K=4 个候选在各自 supportedWidths 下的组合，求「总和恰好等于当前行容量 (12 或 6)」的子集。
+ *    - 多解时依据代价值选优：代价 = Σ|选定宽度 - defaultWidth| + 跳过高优先级候选惩罚。
+ *    - 无精确解时选取空位最小方案，并尝试把行末磁贴升到支持的最大档位。
+ * 3. 尾行拉伸：末行未填满时尝试升档拉伸。
+ * 4. 行高量化：同行磁贴统一取该行最大 rowSpan，上下平齐消除留白。
+ */
+export function packTiles(
+  inputs: PackInput[],
+  opts?: { cols?: 12 | 6 | 1; rowUnit?: number; maxRowsDefault?: number }
+): PackResult {
+  if (!inputs || inputs.length === 0) {
+    return { rows: [], emptyCells: 0, dropped: [] };
+  }
+
+  const cols = opts?.cols ?? 12;
+  const rowUnit = opts?.rowUnit ?? TILE_ROW_UNIT_PX;
+
+  const VALID_WIDTHS: TileWidth[] = [25, 50, 75, 100];
+  const normalizedInputs: PackInput[] = inputs.map(inp => {
+    let defW = inp.defaultWidth;
+    if (!VALID_WIDTHS.includes(defW)) {
+      defW = (defW < 37.5 ? 25 : defW < 62.5 ? 50 : defW < 87.5 ? 75 : 100) as TileWidth;
+    }
+    let supp = (inp.supportedWidths || []).filter(w => VALID_WIDTHS.includes(w));
+    if (!supp.includes(defW)) supp.unshift(defW);
+    if (supp.length === 0) supp = [defW];
+
+    const minRows = Math.max(1, inp.minRows ?? 1);
+    const maxRows = Math.max(minRows, inp.maxRows ?? 4);
+
+    return {
+      ...inp,
+      defaultWidth: defW,
+      supportedWidths: supp,
+      minRows,
+      maxRows
+    };
+  });
+
+  // 1. 稳定降序排序
+  const queue = [...normalizedInputs].sort((a, b) => b.priority - a.priority);
+
+  // 手机端 (cols = 1): 纵向逐个平铺
+  if (cols === 1) {
+    const rows: PackedRow[] = queue.map(inp => {
+      const rowSpan = computeTileRowSpan(inp, inp.defaultWidth, rowUnit, 1);
+      return {
+        tiles: [{
+          id: inp.id,
+          width: inp.defaultWidth,
+          colSpan: 1,
+          rowSpan
+        }],
+        rowSpan
+      };
+    });
+    return { rows, emptyCells: 0, dropped: [] };
+  }
+
+  // 桌面端 (cols = 12) 与平板端 (cols = 6)
+  const rows: PackedRow[] = [];
+  const targetColSpan = cols;
+  const templates = cols === 12 ? ROW_TEMPLATES_12 : ROW_TEMPLATES_6;
+
+  while (queue.length > 0) {
+    // 检查队首前几个候选是否直接用 defaultWidth 匹配预设行模板
+    let templateMatched = false;
+    for (const tmpl of templates) {
+      if (tmpl.length > queue.length) continue;
+      let match = true;
+      for (let i = 0; i < tmpl.length; i++) {
+        if (queue[i].defaultWidth !== tmpl[i]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        const selected = queue.splice(0, tmpl.length);
+        const packedTiles: PackedTile[] = selected.map((inp, idx) => {
+          const w = tmpl[idx];
+          const cs = colSpanForWidth(w, cols);
+          const rs = computeTileRowSpan(inp, w, rowUnit, cols);
+          return { id: inp.id, width: w, colSpan: cs, rowSpan: rs };
+        });
+        const maxRowSpan = Math.max(...packedTiles.map(t => t.rowSpan), 1);
+        packedTiles.forEach(t => { t.rowSpan = maxRowSpan; });
+        rows.push({ tiles: packedTiles, rowSpan: maxRowSpan });
+        templateMatched = true;
+        break;
+      }
+    }
+    if (templateMatched) continue;
+
+    // 动态组合枚举：取队首 K = 4 个候选
+    const K = Math.min(4, queue.length);
+    const candidatePool = queue.slice(0, K);
+
+    interface PlanCandidate {
+      indices: number[];
+      widths: TileWidth[];
+      colSpans: number[];
+      sumColSpan: number;
+      cost: number;
+    }
+
+    let exactSolutions: PlanCandidate[] = [];
+    let partialSolutions: PlanCandidate[] = [];
+
+    function searchCombinations(
+      currIdx: number,
+      chosenIndices: number[],
+      chosenWidths: TileWidth[],
+      currentSum: number
+    ) {
+      if (chosenIndices.length > 0) {
+        let cost = 0;
+        for (let i = 0; i < chosenIndices.length; i++) {
+          const c = candidatePool[chosenIndices[i]];
+          cost += Math.abs(chosenWidths[i] - c.defaultWidth);
+        }
+        const maxIdx = Math.max(...chosenIndices);
+        for (let i = 0; i < maxIdx; i++) {
+          if (!chosenIndices.includes(i)) {
+            cost += candidatePool[i].priority * 2;
+          }
+        }
+
+        const colSpans = chosenWidths.map(w => colSpanForWidth(w, cols));
+        const cand: PlanCandidate = {
+          indices: [...chosenIndices],
+          widths: [...chosenWidths],
+          colSpans,
+          sumColSpan: currentSum,
+          cost
+        };
+
+        if (currentSum === targetColSpan) {
+          exactSolutions.push(cand);
+        } else if (currentSum < targetColSpan) {
+          partialSolutions.push(cand);
+        }
+      }
+
+      if (currIdx >= candidatePool.length) return;
+
+      const item = candidatePool[currIdx];
+      for (const w of item.supportedWidths) {
+        const cs = colSpanForWidth(w, cols);
+        if (currentSum + cs <= targetColSpan) {
+          chosenIndices.push(currIdx);
+          chosenWidths.push(w);
+          searchCombinations(currIdx + 1, chosenIndices, chosenWidths, currentSum + cs);
+          chosenWidths.pop();
+          chosenIndices.pop();
+        }
+      }
+
+      searchCombinations(currIdx + 1, chosenIndices, chosenWidths, currentSum);
+    }
+
+    searchCombinations(0, [], [], 0);
+
+    let chosenPlan: PlanCandidate | null = null;
+
+    if (exactSolutions.length > 0) {
+      exactSolutions.sort((a, b) => a.cost - b.cost);
+      chosenPlan = exactSolutions[0];
+    } else if (partialSolutions.length > 0) {
+      for (const plan of partialSolutions) {
+        const lastIdx = plan.indices[plan.indices.length - 1];
+        const lastItem = candidatePool[lastIdx];
+        const currentSumExcludingLast = plan.sumColSpan - plan.colSpans[plan.colSpans.length - 1];
+        for (const w of lastItem.supportedWidths) {
+          const cs = colSpanForWidth(w, cols);
+          const newSum = currentSumExcludingLast + cs;
+          if (newSum <= targetColSpan && newSum > plan.sumColSpan) {
+            plan.widths[plan.widths.length - 1] = w;
+            plan.colSpans[plan.colSpans.length - 1] = cs;
+            plan.sumColSpan = newSum;
+          }
+        }
+        const gap = targetColSpan - plan.sumColSpan;
+        plan.cost += gap * 50;
+      }
+
+      partialSolutions.sort((a, b) => {
+        const gapA = targetColSpan - a.sumColSpan;
+        const gapB = targetColSpan - b.sumColSpan;
+        if (gapA !== gapB) return gapA - gapB;
+        return a.cost - b.cost;
+      });
+      chosenPlan = partialSolutions[0];
+    }
+
+    if (!chosenPlan || chosenPlan.indices.length === 0) {
+      const first = queue[0];
+      chosenPlan = {
+        indices: [0],
+        widths: [first.defaultWidth],
+        colSpans: [colSpanForWidth(first.defaultWidth, cols)],
+        sumColSpan: colSpanForWidth(first.defaultWidth, cols),
+        cost: 0
+      };
+    }
+
+    const chosenItems: PackInput[] = [];
+    const sortedIndices = [...chosenPlan.indices].sort((a, b) => b - a);
+    for (const idx of sortedIndices) {
+      chosenItems.unshift(queue.splice(idx, 1)[0]);
+    }
+
+    const packedTiles: PackedTile[] = chosenItems.map((inp, idx) => {
+      const w = chosenPlan!.widths[idx];
+      const cs = chosenPlan!.colSpans[idx];
+      const rs = computeTileRowSpan(inp, w, rowUnit, cols);
+      return { id: inp.id, width: w, colSpan: cs as any, rowSpan: rs };
+    });
+
+    const maxRowSpan = Math.max(...packedTiles.map(t => t.rowSpan), 1);
+    packedTiles.forEach(t => { t.rowSpan = maxRowSpan; });
+    rows.push({ tiles: packedTiles, rowSpan: maxRowSpan });
+  }
+
+  // 尾行拉伸处理
+  if (rows.length > 0) {
+    const lastRow = rows[rows.length - 1];
+    let rowSum = lastRow.tiles.reduce((acc, t) => acc + t.colSpan, 0);
+    if (rowSum < targetColSpan) {
+      const inputMap = new Map(inputs.map(i => [i.id, i]));
+      for (let i = lastRow.tiles.length - 1; i >= 0; i--) {
+        const tile = lastRow.tiles[i];
+        const inp = inputMap.get(tile.id);
+        if (!inp) continue;
+        const availableGap = targetColSpan - rowSum;
+        if (availableGap <= 0) break;
+        for (const w of inp.supportedWidths) {
+          const cs = colSpanForWidth(w, cols);
+          const diff = cs - tile.colSpan;
+          if (diff > 0 && diff <= availableGap) {
+            rowSum += diff;
+            tile.width = w;
+            tile.colSpan = cs as any;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  let emptyCells = 0;
+  for (const row of rows) {
+    const sum = row.tiles.reduce((acc, t) => acc + t.colSpan, 0);
+    emptyCells += Math.max(0, targetColSpan - sum);
+  }
+
+  return { rows, emptyCells, dropped: [] };
+}
+

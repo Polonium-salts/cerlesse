@@ -21,7 +21,7 @@ describe("Sources Widget & Extension Verification", () => {
     const mod = WidgetRegistry.get("sources");
     assert.ok(mod, "sources module should be found in WidgetRegistry");
     assert.equal(mod.id, "sources");
-    assert.equal(mod.name, "信源溯源存证");
+    assert.equal(mod.name, "信源存证与网站直达");
   });
 
   it("sources adapter transforms and validates search synthesis sources", () => {

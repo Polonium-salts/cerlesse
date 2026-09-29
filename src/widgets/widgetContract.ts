@@ -71,8 +71,8 @@ export const WIDGET_ACTIVATION_POLICY: WidgetActivationPolicy = {
  * 因此改为在**最终出口**无条件注入：保障可审计、可测试、且不依赖任何一处排序细节。
  */
 export const ALWAYS_ON_WIDGETS: ResultWidgetKey[] = [
-  "related_links",
   "ai_answer",
+  "related_links",
   "image_gallery",
   "token_usage"
 ];
@@ -85,7 +85,7 @@ export function isAlwaysOnWidget(key: string | ResultWidgetKey): boolean {
 
 /**
  * 把缺失的常驻组件注入清单，并对 sources / related_links 彻底去重，
- * 确保合并后的「信源存证与网站直达」小组件永远排在第 1 的位置。
+ * 确保速答置顶、权威入口紧随其后。
  */
 export function injectAlwaysOnWidgets(
   order: ResultWidgetKey[],
@@ -110,23 +110,14 @@ export function injectAlwaysOnWidgets(
 
   const result = [...deduped];
   for (const key of missing) {
-    if (key === "related_links") {
+    if (key === "ai_answer") {
       result.unshift(key);
-    } else if (key === "ai_answer") {
-      const anchor = result.indexOf("related_links");
+    } else if (key === "related_links") {
+      const anchor = result.indexOf("ai_answer");
       result.splice(anchor >= 0 ? anchor + 1 : 0, 0, key);
     } else {
       result.push(key);
     }
-  }
-
-  // 2. 保证 related_links (信源存证与网站直达) 永远排在第 1 位 (index 0)
-  const relatedLinksIdx = result.indexOf("related_links");
-  if (relatedLinksIdx > 0) {
-    result.splice(relatedLinksIdx, 1);
-    result.unshift("related_links");
-  } else if (relatedLinksIdx < 0) {
-    result.unshift("related_links");
   }
 
   return result;
