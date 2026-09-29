@@ -38,19 +38,32 @@
   "icon": "FileText",
   "grid": {
     "width": 25,
-    "supportedWidths": [25, 50, 75, 100],
+    "supportedWidths": [
+      25,
+      50,
+      75,
+      100
+    ],
     "ratio": "4:3",
     "ratioMode": "flexible",
     "itemHeightPx": 48,
     "baseHeightPx": 110,
-    "minWidth": 25
+    "minWidth": 25,
+    "height": "auto"
   },
   "layout": {
     "defaultWidth": 25,
     "minWidth": 25,
     "maxWidth": 50,
-    "preferredRoles": ["secondary", "supporting"],
-    "canPairWith": ["ai_answer", "image_gallery", "mindmap"]
+    "preferredRoles": [
+      "secondary",
+      "supporting"
+    ],
+    "canPairWith": [
+      "ai_answer",
+      "image_gallery",
+      "mindmap"
+    ]
   },
   "theme": {
     "accentColor": "#6366f1",

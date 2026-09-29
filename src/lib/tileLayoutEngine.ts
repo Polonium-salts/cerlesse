@@ -31,7 +31,8 @@
 import {
   MANIFEST_RATIOS,
   MANIFEST_RATIO_MODES,
-  MANIFEST_RATIOS_BY_BREAKPOINT
+  MANIFEST_RATIOS_BY_BREAKPOINT,
+  MANIFEST_BY_ID
 } from "../widgets/manifests/index.js";
 import type {
   LayoutRole,
@@ -470,6 +471,12 @@ export type TilePlacementOrder = "reading" | "anchor";
 export interface TileLayoutInput {
   id: string;
   size: TileWidth;
+  /** 支持的宽度档位子集（默认使用 Manifest 或 [25, 50, 75, 100]） */
+  supportedWidths?: TileWidth[];
+  /** 高度属性：根据内容自适应缩放（默认 "auto"）或指定数值 */
+  height?: number | "auto";
+  /** 是否为用户显式手动调整的固定尺寸（排版时不自动升降档） */
+  isUserOverridden?: boolean;
   /** 显式指定比例（自定义卡片等无法从 ID 推断的场景） */
   ratio?: TileRatio;
   /** 比例模式：strict 严格锁定高度，flexible 允许按内容自然长高 */
@@ -547,6 +554,8 @@ export interface TileLayoutOptions {
   focusWidgetId?: string;
   /** 完整排版意图（若提供，将优先以此为基准） */
   layoutIntent?: LayoutIntent;
+  /** 是否启用行尾补位后处理（默认开启） */
+  enableRowTailPadding?: boolean;
 }
 
 export interface SolvedTileItem {
@@ -596,6 +605,8 @@ export interface TileLayoutSolution {
   adjustedSpanCount: number;
   /** 装箱后仍如实留白的单元格数 */
   gapCount: number;
+  /** 行尾补位后仍如实留白的单元格数 (列跨度单元) */
+  emptyCells: number;
   /** 综合布局质量评分体系 */
   metrics: LayoutMetrics;
   /** 求解过程中的宽度与位置微调记录 */
@@ -664,6 +675,218 @@ export function spanForTargetHeight(
     }
   }
   return bestSpan;
+}
+
+export interface RowTailPaddingResult {
+  items: SolvedTileItem[];
+  emptyCells: number;
+  adjustments: LayoutAdjustment[];
+}
+
+/**
+ * 行尾补位后处理 (Row-Tail Padding Post-Processing)：
+ * 1. 某行 colSpan 之和 < 12 时，优先把该行最后一个磁贴升到其 supportedWidths 中能刚好填满的档位；
+ * 2. 若不能填满，尝试从后续行提前一个「能放入剩余空位」的磁贴；
+ * 3. 仍不能则保留空位，并在返回值里带出 emptyCells 计数。
+ */
+export function applyRowTailPadding(
+  items: SolvedTileItem[],
+  inputs: TileLayoutInput[],
+  totalColumns: number = 12,
+  columnWidthFn?: (span: number) => number,
+  cellPx?: number,
+  rowGapPx?: number
+): RowTailPaddingResult {
+  if (!items || items.length === 0) {
+    return { items: [], emptyCells: 0, adjustments: [] };
+  }
+
+  const colGap = TILE_COLUMN_GAP_PX;
+  const rowGap = rowGapPx ?? TILE_ROW_GAP_PX;
+  const columnWidthOf = columnWidthFn || ((span: number) => {
+    const c = cellPx ?? Math.max(24, (DEFAULT_CONTAINER_WIDTH_PX - (totalColumns - 1) * colGap) / totalColumns);
+    return span * c + (span - 1) * colGap;
+  });
+
+  const inputMap = new Map<string, TileLayoutInput>();
+  for (const inp of inputs) {
+    inputMap.set(inp.id, inp);
+  }
+
+  const getSupportedWidths = (id: string, currentSize: TileWidth): TileWidth[] => {
+    const inp = inputMap.get(id);
+    if (inp?.supportedWidths && inp.supportedWidths.length > 0) {
+      return inp.supportedWidths;
+    }
+    const manifestMeta = MANIFEST_BY_ID[id];
+    if (manifestMeta?.grid?.supportedWidths && manifestMeta.grid.supportedWidths.length > 0) {
+      return manifestMeta.grid.supportedWidths;
+    }
+    // 特殊固定组件保护：相关图片在清单中锁定为 75%
+    if (id === "image_gallery") {
+      return [75];
+    }
+    return [25, 50, 75, 100];
+  };
+
+  const adjustments: LayoutAdjustment[] = [];
+  const remaining = items.map(it => ({ ...it, gridStyle: { ...it.gridStyle } }));
+  const resultItems: SolvedTileItem[] = [];
+  let totalEmptyCells = 0;
+  let currentY = 0;
+
+  while (remaining.length > 0) {
+    let rowUsed = 0;
+    const rowItems: SolvedTileItem[] = [];
+
+    // 1. 尝试将队首元素及后续可放入本行的元素放入当前行
+    while (remaining.length > 0) {
+      const spaceLeft = totalColumns - rowUsed;
+      if (spaceLeft <= 0) break;
+
+      if (rowUsed === 0) {
+        const first = remaining.shift()!;
+        rowItems.push(first);
+        rowUsed += first.w;
+        continue;
+      }
+
+      let candidateIdx = -1;
+      for (let i = 0; i < remaining.length; i++) {
+        if (remaining[i].w <= spaceLeft) {
+          candidateIdx = i;
+          break;
+        }
+      }
+
+      if (candidateIdx !== -1) {
+        const [cand] = remaining.splice(candidateIdx, 1);
+        rowItems.push(cand);
+        rowUsed += cand.w;
+      } else {
+        break;
+      }
+    }
+
+    // 2. 检查当前行是否已填满 totalColumns
+    const spaceLeft = totalColumns - rowUsed;
+    if (spaceLeft > 0 && rowItems.length > 0) {
+      const lastItem = rowItems[rowItems.length - 1];
+      const supported = getSupportedWidths(lastItem.id, lastItem.size);
+      const targetSpan = lastItem.w + spaceLeft;
+      const targetWidth = widthForSpan(targetSpan, totalColumns);
+
+      // a) 优先把该行最后一个磁贴升到其 supportedWidths 中能刚好填满的档位
+      const isLocked = Boolean(inputMap.get(lastItem.id)?.isUserOverridden || inputMap.get(lastItem.id)?.fixedPosition);
+      const canUpgradeToFill =
+        !isLocked &&
+        spanOfTileWidth(targetWidth, totalColumns) === targetSpan &&
+        supported.includes(targetWidth);
+
+      if (canUpgradeToFill) {
+        const oldSize = lastItem.size;
+        lastItem.size = targetWidth;
+        lastItem.w = targetSpan;
+        lastItem.pixelWidth = columnWidthOf(targetSpan);
+        if (lastItem.ratio) {
+          lastItem.pixelHeight = Math.round(lastItem.pixelWidth / RATIO_VALUES[lastItem.ratio]);
+          lastItem.h = lastItem.pixelHeight;
+        }
+        adjustments.push({
+          widgetId: lastItem.id,
+          from: oldSize,
+          to: targetWidth,
+          reason: `Row-tail padding: upgraded from ${oldSize}% to ${targetWidth}% to fill row`
+        });
+        rowUsed = totalColumns;
+      } else {
+        // b) 若不能填满，尝试从后续行提前一个「能放入剩余空位」的磁贴
+        let pullCandidateIdx = -1;
+        for (let i = 0; i < remaining.length; i++) {
+          if (remaining[i].w <= spaceLeft) {
+            pullCandidateIdx = i;
+            break;
+          }
+        }
+
+        if (pullCandidateIdx !== -1) {
+          const [pulled] = remaining.splice(pullCandidateIdx, 1);
+          rowItems.push(pulled);
+          rowUsed += pulled.w;
+          adjustments.push({
+            widgetId: pulled.id,
+            reason: `Row-tail padding: pulled forward to fill remaining ${pulled.w} columns`
+          });
+
+          // 重新检查是否还能将新的末尾项升档填满
+          const remainingSpaceAfterPull = totalColumns - rowUsed;
+          if (remainingSpaceAfterPull > 0) {
+            const newLast = rowItems[rowItems.length - 1];
+            const newSupported = getSupportedWidths(newLast.id, newLast.size);
+            const newTargetSpan = newLast.w + remainingSpaceAfterPull;
+            const newTargetWidth = widthForSpan(newTargetSpan, totalColumns);
+            const isNewLastLocked = Boolean(inputMap.get(newLast.id)?.isUserOverridden || inputMap.get(newLast.id)?.fixedPosition);
+            if (
+              !isNewLastLocked &&
+              spanOfTileWidth(newTargetWidth, totalColumns) === newTargetSpan &&
+              newSupported.includes(newTargetWidth)
+            ) {
+              const oldSize = newLast.size;
+              newLast.size = newTargetWidth;
+              newLast.w = newTargetSpan;
+              newLast.pixelWidth = columnWidthOf(newTargetSpan);
+              if (newLast.ratio) {
+                newLast.pixelHeight = Math.round(newLast.pixelWidth / RATIO_VALUES[newLast.ratio]);
+                newLast.h = newLast.pixelHeight;
+              }
+              adjustments.push({
+                widgetId: newLast.id,
+                from: oldSize,
+                to: newTargetWidth,
+                reason: `Row-tail padding: upgraded from ${oldSize}% to ${newTargetWidth}% after pull`
+              });
+              rowUsed = totalColumns;
+            }
+          }
+        }
+      }
+    }
+
+    // c) 仍不能则保留空位，并在返回值里带出 emptyCells 计数
+    const finalRowSpaceLeft = totalColumns - rowUsed;
+    if (finalRowSpaceLeft > 0) {
+      totalEmptyCells += finalRowSpaceLeft;
+    }
+
+    // 重新排列该行磁贴的 x、y 坐标和 gridStyle
+    let curX = 0;
+    let maxRowHeight = 0;
+    for (const it of rowItems) {
+      it.x = curX;
+      it.y = currentY;
+      const rowStart = Math.round(currentY / TILE_ROW_UNIT_PX);
+      const coveredPx = it.pixelHeight + rowGap;
+      const rowSpan = Math.max(1, Math.ceil(coveredPx / TILE_ROW_UNIT_PX));
+      it.gridStyle = {
+        ...it.gridStyle,
+        gridColumn: `${curX + 1} / span ${it.w}`,
+        gridRow: `${rowStart + 1} / span ${rowSpan}`
+      };
+      curX += it.w;
+      if (it.pixelHeight > maxRowHeight) {
+        maxRowHeight = it.pixelHeight;
+      }
+      resultItems.push(it);
+    }
+
+    currentY += maxRowHeight + rowGap;
+  }
+
+  return {
+    items: resultItems,
+    emptyCells: totalEmptyCells,
+    adjustments
+  };
 }
 
 /**
@@ -769,6 +992,7 @@ export function solveTileLayout(
     fillRatio: 1,
     adjustedSpanCount: 0,
     gapCount: 0,
+    emptyCells: 0,
     metrics: emptyMetrics(),
     adjustments: []
   });
@@ -829,40 +1053,21 @@ export function solveTileLayout(
     const pixelWidth = columnWidthOf(span);
     const ratioHeightPx = pixelWidth / RATIO_VALUES[ratio];
     const effectiveRatioMode = input.ratioMode ?? resolveTileRatioMode(input.id);
-    // 规则：当 ratioMode === "strict" 时，高度严格等于 宽度 / ratio，超长内容内部滚动；
-    // 当 ratioMode === "flexible" 时，磁贴高度取比例基准与实测自然高度的较大者
+    // 规则：所有小组件的 height 属性都会根据内容自适应缩放 (height: "auto")
     let naturalHeight: number;
     if (effectiveRatioMode === "strict") {
       naturalHeight = ratioHeightPx;
+    } else if (input.contentHeightPx && input.contentHeightPx > 0) {
+      // 具备实测自然高度时直接以实测内容高度自适应缩放
+      naturalHeight = input.contentHeightPx;
+    } else if (input.estimatedHeightPx && input.estimatedHeightPx > 0) {
+      naturalHeight = input.estimatedHeightPx;
     } else if (input.id === "search_engine") {
-      // 搜索引擎小组件属于快捷入口控件，UI 结构紧凑（标题栏 + 药丸搜索框 + 引擎切换胶囊 + 底部跳转栏）
-      // 实际 UI 高度约 220~240px。必须以实测自然高度为准，绝不可做向下截断 (Math.min)，
-      // 保证后续紧随其后的小组件（如相关图片）与其实体边缘之间具有完整且标准的 rowGap 垂直间距！
-      const baseHeight = 230;
-      naturalHeight =
-        input.contentHeightPx && input.contentHeightPx > 0
-          ? Math.max(baseHeight, input.contentHeightPx)
-          : input.estimatedHeightPx && input.estimatedHeightPx > 0
-          ? Math.max(baseHeight, input.estimatedHeightPx)
-          : baseHeight;
+      naturalHeight = 230;
     } else if (input.id === "image_gallery") {
-      // 图片墙高度由图片网格与底部操作栏决定，不能被 75% 宽度的比例高度撑出空白。
-      const baseHeight = 260;
-      naturalHeight =
-        input.contentHeightPx && input.contentHeightPx > 0
-          ? Math.max(baseHeight, input.contentHeightPx)
-          : input.estimatedHeightPx && input.estimatedHeightPx > 0
-          ? Math.max(baseHeight, input.estimatedHeightPx)
-          : baseHeight;
+      naturalHeight = 260;
     } else {
-      const fallbackHeight =
-        input.estimatedHeightPx && input.estimatedHeightPx > 0
-          ? Math.max(ratioHeightPx, input.estimatedHeightPx)
-          : ratioHeightPx;
-      naturalHeight =
-        input.contentHeightPx && input.contentHeightPx > 0
-          ? Math.max(ratioHeightPx, input.contentHeightPx)
-          : fallbackHeight;
+      naturalHeight = ratioHeightPx;
     }
 
     // 同行等高平齐对齐：若同排提供了统一对齐高度 targetHeightPx，则延展至统一下沿。
@@ -1010,28 +1215,16 @@ export function solveTileLayout(
     let naturalHeight: number;
     if (effectiveRatioMode === "strict") {
       naturalHeight = ratioHeightPx;
+    } else if (t.contentHeightPx && t.contentHeightPx > 0) {
+      naturalHeight = t.contentHeightPx;
+    } else if (t.estimatedHeightPx && t.estimatedHeightPx > 0) {
+      naturalHeight = t.estimatedHeightPx;
     } else if (t.id === "search_engine") {
-      const baseHeight = 230;
-      naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
-        ? Math.max(baseHeight, t.contentHeightPx)
-        : t.estimatedHeightPx && t.estimatedHeightPx > 0
-        ? Math.max(baseHeight, t.estimatedHeightPx)
-        : baseHeight;
+      naturalHeight = 230;
     } else if (t.id === "image_gallery") {
-      const baseHeight = 260;
-      naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
-        ? Math.max(baseHeight, t.contentHeightPx)
-        : t.estimatedHeightPx && t.estimatedHeightPx > 0
-        ? Math.max(baseHeight, t.estimatedHeightPx)
-        : baseHeight;
+      naturalHeight = 260;
     } else {
-      const fallbackHeight =
-        t.estimatedHeightPx && t.estimatedHeightPx > 0
-          ? Math.max(ratioHeightPx, t.estimatedHeightPx)
-          : ratioHeightPx;
-      naturalHeight = t.contentHeightPx && t.contentHeightPx > 0
-        ? Math.max(ratioHeightPx, t.contentHeightPx)
-        : fallbackHeight;
+      naturalHeight = ratioHeightPx;
     }
     const pixelHeight = Math.round(naturalHeight);
 
@@ -1329,6 +1522,24 @@ export function solveTileLayout(
     });
   }
 
+  // 行尾补位后处理 (Row-Tail Padding Post-Processing)
+  let emptyCells = 0;
+  if (opts.enableRowTailPadding !== false && normalizedInputs.length > 1) {
+    const padded = applyRowTailPadding(solved, normalizedInputs, totalColumns, columnWidthOf, cell, rowGap);
+    solved.length = 0;
+    solved.push(...padded.items);
+    emptyCells = padded.emptyCells;
+    adjustments.push(...padded.adjustments);
+
+    columnHeights.fill(0);
+    for (const item of solved) {
+      const bottom = item.y + item.pixelHeight + rowGap;
+      for (let i = item.x; i < item.x + item.w && i < totalColumns; i++) {
+        columnHeights[i] = Math.max(columnHeights[i], bottom);
+      }
+    }
+  }
+
   // ==========================================
   // 4. 结果度量（用于向用户解释"不规则"到底不规则在哪）
   // ==========================================
@@ -1473,6 +1684,7 @@ export function solveTileLayout(
     fillRatio,
     adjustedSpanCount,
     gapCount,
+    emptyCells,
     metrics,
     adjustments
   };

@@ -2,10 +2,10 @@ import type { WidgetManifest } from "../../sdk/manifest.js";
 
 export const manifest: WidgetManifest = {
   id: "related_links",
-  name: "官网跳转 / 权威入口",
+  name: "信源存证与网站直达",
   version: "1.0.0",
   apiVersion: 1,
-  description: "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道",
+  description: "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道与已核验信源存证",
   category: "portal",
   tags: [
     "官方入口",
@@ -50,9 +50,10 @@ export const manifest: WidgetManifest = {
   layout: {
     defaultWidth: 50,
     minWidth: 25,
-    maxWidth: 75,
-    preferredHeight: 380
-  },
+    maxWidth: 50,
+    preferredHeight: 380,
+    height: "auto",
+},
   agent: {
     selectable: true,
     minConfidence: 0.6,

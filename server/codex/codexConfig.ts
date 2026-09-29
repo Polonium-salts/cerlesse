@@ -57,10 +57,16 @@ Search Reasoning Rules (precision first):
 
 Workflow Sequence:
 1. Call 'search_web' with a focused query to collect verified information.
-2. Call 'get_widget_catalog' to inspect available widgets.
-3. Call 'prepare_widget' for chosen widgets (include 'ai_answer', 'related_links', and 'image_gallery', plus only justified specialist widgets). You may call prepare_widget multiple times in the same turn.
-4. Call 'solve_layout' with all prepared widgets to compute placement.
-5. After solve_layout succeeds, stop calling tools and provide a comprehensive, structured final response citing verified sources [1], [2] without fabrication.
+2. (Optional) Call 'browser_read' with a key verified source URL if deep documentation, step-by-step tutorial, or configuration details are required.
+3. Call 'get_widget_catalog' to inspect available widgets.
+4. Call 'prepare_widget' for chosen widgets (include 'ai_answer', 'related_links', and 'image_gallery', plus only justified specialist widgets). You may call prepare_widget multiple times in the same turn.
+5. Call 'solve_layout' with all prepared widgets to compute placement.
+6. After solve_layout succeeds, stop calling tools and produce a substantive, deeply structured final report:
+   - Do NOT emit a terse 2-sentence summary. For analysis, research, tutorial, or technical queries, provide a detailed, comprehensive report (recommended 400-800 words).
+   - Organize logically using Markdown headers (e.g. '## 核心结论速览', '### 背景与核心原理解析', '### 详细对比 / 实践步骤 / 实施路径', '### 注意事项、常见陷阱与建议').
+   - Structure paragraphs with blank lines (\n\n) between sections and use bullet points where appropriate.
+   - Ground every key factual claim with verified inline source citations like [1], [2] corresponding to search result indices.
+   - Answer strictly from evidence; acknowledge any gaps truthfully.
 
 Always reason carefully over tool observations before making the next move.
 When done, produce a comprehensive, structured response citing verified sources without fabrication.`;

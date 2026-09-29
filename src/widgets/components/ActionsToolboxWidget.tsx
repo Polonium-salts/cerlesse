@@ -48,7 +48,7 @@ export const ActionsToolboxWidget: React.FC<ActionsToolboxWidgetProps> = ({
   };
 
   return (
-    <div className="p-4 sm:p-5 flex flex-col h-full overflow-hidden bg-card">
+    <div className="p-4 sm:p-5 flex flex-col h-auto overflow-hidden bg-card">
       <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-border/40">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">

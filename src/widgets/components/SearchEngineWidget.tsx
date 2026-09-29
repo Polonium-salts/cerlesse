@@ -169,7 +169,7 @@ export const SearchEngineWidget: React.FC<SearchEngineWidgetProps> = ({
           已就绪 · {currentEngine.name}
         </span>
       }
-      className="w-full h-full border-border/80 bg-card"
+      className="w-full h-auto border-border/80 bg-card"
       noPadding={true}
       contentClassName="p-3.5 sm:p-4 flex flex-col justify-between gap-2.5"
     >

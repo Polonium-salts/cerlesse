@@ -12,10 +12,12 @@ import {
 import { PreparedWidgetOutput } from "../tools/widgetTool.js";
 import { SolveLayoutOutput } from "../tools/layoutTool.js";
 import { resolveHitLevel } from "../services/searchService.js";
+import { filterAndSanitizeWidgetTypes } from "../widgetPlanner.js";
 import { WidgetSelectionSkillResult } from "./widgetSelectionSkill.js";
 import {
   extractAgentTakeaways as extractStableTakeaways,
-  stabilizeAgentAnswer as stabilizeStableAnswer
+  stabilizeAgentAnswer as stabilizeStableAnswer,
+  buildUnrenderedSectionsForTypes
 } from "./agentWidgetContent.js";
 
 // 回答稳定化 / 要点提取的唯一实现在 agentWidgetContent.ts（含单测），
@@ -236,13 +238,21 @@ export function buildSynthesisResultFromCodex(
   const actions = response.actions || [];
   const images = response.images || [];
 
-  const widgetOrder = (layout?.componentOrder || widgets.map(w => w.widgetId)) as ResultWidgetKey[];
-  const plannedItems = widgets.map(w => ({
-    type: w.widgetId as ResultWidgetKey,
-    priority: 80,
-    size: (w.defaultWidth || 50) as 25 | 50 | 75 | 100,
-    reason: `Selected dynamically by Codex Agent from tool results`
-  }));
+  const rawWidgetOrder = (layout?.componentOrder || widgets.map(w => w.widgetId)) as string[];
+  const { validTypes, filteredTypes } = filterAndSanitizeWidgetTypes(rawWidgetOrder, {
+    query,
+    intent: "research"
+  });
+
+  const widgetOrder = validTypes as ResultWidgetKey[];
+  const plannedItems = widgets
+    .filter(w => validTypes.includes(w.widgetId))
+    .map(w => ({
+      type: w.widgetId as ResultWidgetKey,
+      priority: 80,
+      size: (w.defaultWidth || 50) as 25 | 50 | 75 | 100,
+      reason: `Selected dynamically by Codex Agent from tool results`
+    }));
 
   const widgetPlan: WidgetPlan = {
     intent: "research",
@@ -296,10 +306,13 @@ export function buildSynthesisResultFromCodex(
     packingMethod: "semantic-css-grid"
   };
 
-  // 回答稳定化与要点提取都走 agentWidgetContent：模型作答过于简略或只回一句占位语时，
-  // 仍能得到有信源支撑的结构化答案与要点，避免 takeaways 卡片被前端网关整卡砍掉。
-  const stableAnswer = stabilizeStableAnswer(query, response.finalResponse, sources);
+  // 回答稳定化与要点提取：对无渲染模块的规划类型采用合并降级，并入 Markdown 小节
+  const unrenderedSections = buildUnrenderedSectionsForTypes(filteredTypes, query, sources);
+  const stableAnswer = stabilizeStableAnswer(query, response.finalResponse, sources, unrenderedSections);
   const takeaways = extractStableTakeaways(stableAnswer, sources);
+
+  const rawAnswerLen = (response.finalResponse || "").length;
+  console.log(`[PipelineMetrics][ParseAndMerge] rawLength=${rawAnswerLen}, mergedLength=${stableAnswer.length}, mergedSections=${unrenderedSections.length}, filteredTypes=${filteredTypes.join(",") || "none"}`);
 
   const hitLevel = extras.hitLevel ?? resolveHitLevel(sources.length);
   const executedQueries = (extras.subQueries || []).filter(Boolean);

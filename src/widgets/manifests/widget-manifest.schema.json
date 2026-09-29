@@ -109,6 +109,11 @@
           "default": "flexible",
           "description": "比例模式：strict 严格锁定高度为 宽度/ratio 并使用内部滚动；flexible 为比例作为高度下限、内容超出时自然长高（默认）"
         },
+        "height": {
+          "type": ["string", "number"],
+          "default": "auto",
+          "description": "小组件高度属性：'auto' 表示根据内容自适应缩放（默认），或指定数值（像素）"
+        },
         "ratioByBreakpoint": {
           "type": "object",
           "description": "响应式断点比例覆盖",

@@ -78,6 +78,12 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   const filteredResults = result?.filteredResults || [];
   const sourcesCount = filteredResults.length;
 
+  useEffect(() => {
+    if (summary && typeof console !== "undefined") {
+      console.log(`[PipelineMetrics][Render] summaryChars=${summary.length}, isClamped=${isMobile && !isExpanded && summary.length > 360}, isExpanded=${isExpanded}, isMobile=${isMobile}`);
+    }
+  }, [summary, isExpanded, isMobile]);
+
   // 将信源转换为 Markdown 可溯源引用的格式
   const citations: SourceCitation[] = useMemo(() => {
     return filteredResults.map((item, idx) => ({
@@ -107,6 +113,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
 
   return (
     <IOSWidget
+      id="ai_answer"
       title="AI 智能回答"
       icon={<Sparkles className="size-4 text-primary" />}
       ratioMode={ratioMode}
@@ -169,7 +176,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
           )}
         </div>
       }
-      className={`w-full h-full transition-all duration-300 ${
+      className={`w-full h-auto transition-all duration-300 ${
         isStreaming ? "border-primary/40 ring-1 ring-primary/15 shadow-sm" : "border-border/80"
       } bg-card`}
       contentClassName="p-3.5 sm:p-4 flex flex-col gap-3"
@@ -375,7 +382,7 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
           </Button>
         </div>
       }
-      className="w-full h-full border-border/80 bg-card"
+      className="w-full h-auto border-border/80 bg-card"
       contentClassName="p-4 sm:p-5 flex flex-col gap-4"
     >
       {/* 推理指标卡片 */}

@@ -43,6 +43,7 @@ export interface SolveLayoutOutput {
   totalRows: number;
   fillRatio: number;
   totalHeightPx: number;
+  emptyCells?: number;
   metrics: LayoutMetrics;
   adjustments: LayoutAdjustment[];
   replanCount: number;
@@ -131,10 +132,12 @@ export function solveLayoutTool(input: SolveLayoutInput): SolveLayoutOutput {
       const userPreferredSide = typeof userOverride === "object" ? userOverride?.preferredSide : undefined;
 
       let size: TileWidth = 50;
+      let isUserOverridden = false;
 
       if (userOverrideSize && [25, 50, 75, 100].includes(userOverrideSize)) {
         // 用户手动调整过的大小具有最高优先级，Agent 重新排版时不推翻
         size = userOverrideSize;
+        isUserOverridden = true;
       } else if (widthOverrides && widthOverrides[w.id]) {
         size = widthOverrides[w.id];
       } else if (w.widthPercent === 25 || w.widthPercent === 50 || w.widthPercent === 75 || w.widthPercent === 100) {
@@ -150,6 +153,7 @@ export function solveLayoutTool(input: SolveLayoutInput): SolveLayoutOutput {
       return {
         id: w.id,
         size,
+        isUserOverridden,
         preferredSide: userPreferredSide,
         role: w.role as any,
         isEmphasized: w.isEmphasized || w.id === focusWidgetId,
@@ -253,6 +257,7 @@ export function solveLayoutTool(input: SolveLayoutInput): SolveLayoutOutput {
     totalRows: bestSolution.totalRows,
     fillRatio: bestSolution.fillRatio,
     totalHeightPx: bestSolution.totalHeightPx,
+    emptyCells: bestSolution.emptyCells,
     metrics: bestSolution.metrics,
     adjustments: bestSolution.adjustments,
     replanCount

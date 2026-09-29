@@ -39,16 +39,27 @@
   "icon": "Coins",
   "grid": {
     "width": 25,
-    "supportedWidths": [25, 50],
+    "supportedWidths": [
+      25,
+      50
+    ],
     "ratio": "4:3",
-    "minWidth": 25
+    "minWidth": 25,
+    "height": "auto",
+    "ratioMode": "flexible"
   },
   "layout": {
     "defaultWidth": 25,
     "minWidth": 25,
     "maxWidth": 50,
-    "preferredRoles": ["utility", "supporting"],
-    "canPairWith": ["image_gallery", "weather"]
+    "preferredRoles": [
+      "utility",
+      "supporting"
+    ],
+    "canPairWith": [
+      "image_gallery",
+      "weather"
+    ]
   },
   "theme": {
     "accentColor": "#10b981",

@@ -29,7 +29,7 @@ import { WidgetRegistry } from "../../widgets/registry.js";
 import { WidgetRuntime } from "../../widgets/runtime.js";
 import { resolveDynamicCapabilityWidgets } from "../../lib/adaptiveLayout.js";
 import { evaluateWidgetApplicability } from "../../widgets/applicability.js";
-import { WIDGET_ACTIVATION_POLICY } from "../../widgets/widgetContract.js";
+import { WIDGET_ACTIVATION_POLICY, isAlwaysOnWidget } from "../../widgets/widgetContract.js";
 import { MuuriWidgetGrid, MuuriWidgetItem } from "./MuuriWidgetGrid.js";
 import { Button } from "../ui/button.js";
 
@@ -169,7 +169,21 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       const app = evaluateWidgetApplicability(k, activeResult?.query, activeResult);
       return app.applicable;
     });
-    return Array.from(new Set(visibleList));
+
+    // 将 sources 归一化为 related_links（信源存证与网站直达合并为一个组件，杜绝重复渲染）
+    const canonicalized = visibleList.map(k => (String(k) === "sources" ? "related_links" : k) as ResultWidgetKey);
+    const uniqueKeys = Array.from(new Set(canonicalized));
+
+    // 确保信源存证与网站直达 (related_links) 永远排在第 1 位
+    const targetIdx = uniqueKeys.indexOf("related_links");
+    if (targetIdx > 0) {
+      uniqueKeys.splice(targetIdx, 1);
+      uniqueKeys.unshift("related_links");
+    } else if (targetIdx < 0 && isAlwaysOnWidget("related_links")) {
+      uniqueKeys.unshift("related_links");
+    }
+
+    return uniqueKeys;
   }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, activeResult, widgetPlan]);
 
 
@@ -186,11 +200,12 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         const id = target.getAttribute("data-tile-measure-id");
         if (!id) continue;
 
-        // 获取组件内容的自然真实滚动高度，杜绝 offsetHeight/clientHeight 形成闭环拉伸
+        // 获取组件内容的自然真实高度
         const scrollH = target.scrollHeight;
-        const naturalH = Math.ceil(scrollH);
+        const offsetH = target.offsetHeight;
+        const naturalH = Math.ceil(Math.max(scrollH, offsetH));
 
-        if (naturalH > 0 && naturalH < 1800) {
+        if (naturalH > 0 && naturalH < 2400) {
           updates[id] = naturalH;
           changed = true;
         }
@@ -252,7 +267,20 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       const plannedSize = tileWidthFromPlannedSize(planned?.size);
       const agentSpanSize = tileWidthFromSpan(agentSpans[keyStr]);
       const moduleSize = module?.width;
-      const size: TileWidth = userOverriddenSize || agentSpanSize || plannedSize || moduleSize || 50;
+      let size: TileWidth = userOverriddenSize || agentSpanSize || plannedSize || moduleSize || 50;
+
+      // 信源存证与网站直达小组件 (related_links / sources) 严格横向占据 2 格 (50%)
+      if ((keyStr === "related_links" || keyStr === "sources") && !userOverriddenSize) {
+        size = 50;
+      }
+
+      // 优化方案 D.1: ai_answer 在长篇回答时自动升至 75% 档位，提供宽阔舒适的阅读与排版空间
+      if (keyStr === "ai_answer" && !userOverriddenSize && !agentSpans[keyStr]) {
+        const textLen = (activeResult?.summary || "").length;
+        if (textLen >= 600) {
+          size = 75;
+        }
+      }
 
       const measuredHeight = contentHeights[keyStr];
 
@@ -275,8 +303,9 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       inputs.push({
         id: keyStr,
         size,
+        height: module?.height ?? "auto",
         ratio: module?.ratio,
-        ratioMode: module?.ratioMode,
+        ratioMode: module?.ratioMode ?? "flexible",
         ratioByBreakpoint: module?.ratioByBreakpoint,
         preferredSide: userSides[keyStr],
         priority,
@@ -435,7 +464,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       size: input.size,
       priority: input.priority,
       node: (
-        <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-full shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
+        <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-auto shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
           {/* 拖拽排序把手 */}
           {muuriDragEnabled && (
             <div
@@ -476,7 +505,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
 
-          {/* 磁贴视图内容；图片墙按自然内容高度测量，避免 h-full/flex-1 形成高度闭环 */}
+          {/* 磁贴视图内容：所有小组件按自然内容高度自适应缩放 */}
           <div
             ref={(el) => {
               if (el) {
@@ -486,7 +515,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
               }
             }}
             data-tile-measure-id={input.id}
-            className={input.id === "image_gallery" ? "h-auto flex-none" : "h-full flex flex-col [&>*]:flex-1"}
+            className="w-full h-auto flex flex-col flex-none"
           >
             {renderTileContentById(input.id, input.size)}
           </div>
@@ -557,7 +586,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
                     minHeight: `${item.pixelHeight}px`,
                     alignSelf: "start"
                   }}
-                  className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl"
+                  className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-auto"
                 >
                   {/* 75% 与 25% 互补磁贴左右排位切换把手 */}
                   {(item.size === 75 || item.size === 25) && (
@@ -596,7 +625,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
                       }
                     }}
                     data-tile-measure-id={item.id}
-                    className={item.id === "image_gallery" ? "h-auto flex-none" : "h-full flex flex-col [&>*]:flex-1"}
+                    className="w-full h-auto flex flex-col flex-none"
                   >
                     {renderTileContentById(item.id, item.size)}
                   </div>

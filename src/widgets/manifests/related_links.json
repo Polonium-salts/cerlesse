@@ -1,9 +1,9 @@
 {
   "$schema": "./widget-manifest.schema.json",
   "id": "related_links",
-  "name": "官网跳转",
+  "name": "信源存证与网站直达",
   "version": "1.0.0",
-  "description": "官网跳转直达，包含网站名称、跳转按钮与简介",
+  "description": "基于全网交叉核验的信源存证、权威认证与官方网站快捷直达通道",
   "presence": "conditional",
   "category": "portal",
   "tags": [
@@ -41,7 +41,12 @@
   "icon": "ExternalLink",
   "grid": {
     "width": 50,
-    "supportedWidths": [25, 50, 75, 100],
+    "supportedWidths": [
+      25,
+      50,
+      75,
+      100
+    ],
     "ratio": "4:3",
     "ratioMode": "flexible",
     "itemHeightPx": 92,
@@ -50,14 +55,21 @@
       "tablet": "4:3",
       "mobile": "1:1"
     },
-    "minWidth": 25
+    "minWidth": 25,
+    "height": "auto"
   },
   "layout": {
     "defaultWidth": 50,
     "minWidth": 25,
-    "maxWidth": 100,
-    "preferredRoles": ["secondary", "supporting"],
-    "canPairWith": ["search_engine", "ai_answer"]
+    "maxWidth": 50,
+    "preferredRoles": [
+      "secondary",
+      "supporting"
+    ],
+    "canPairWith": [
+      "search_engine",
+      "ai_answer"
+    ]
   },
   "theme": {
     "accentColor": "#0ea5e9",

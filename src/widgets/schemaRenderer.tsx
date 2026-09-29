@@ -367,6 +367,7 @@ export const WidgetSchemaRenderer: React.FC<SchemaRendererProps> = ({ schema, co
       title={schema.name}
       subtitle={schema.description}
       size={context.size}
+      height={schema.height ?? "auto"}
       onResize={context.onResize}
     >
       <div className="space-y-3.5 p-1">

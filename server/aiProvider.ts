@@ -153,8 +153,7 @@ export function getAiApiConfig(env?: Record<string, string | undefined>): AiApiC
   const defaultBase =
     source.LLM_BASE_URL?.trim() ||
     source.UNOROUTER_BASE_URL?.trim() ||
-    gateway.baseUrl ||
-    (source.AI_API_KEY && !source.UNOROUTER_API_KEY && !source.LLM_API_KEY ? "https://api.openai.com" : DEFAULT_AI_API_BASE_URL);
+    (source.AI_API_KEY && !source.UNOROUTER_API_KEY && !source.LLM_API_KEY ? "https://api.openai.com" : (gateway.baseUrl || DEFAULT_AI_API_BASE_URL));
   const defaultModel = source.LLM_MODEL?.trim() || source.AI_MODEL?.trim() || gateway.defaultModel || DEFAULT_AI_MODEL;
 
   const configuredBase = source.AI_API_BASE_URL?.trim() || source.LLM_BASE_URL?.trim() || source.UNOROUTER_BASE_URL?.trim() || defaultBase;

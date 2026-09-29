@@ -18,7 +18,7 @@ export const ComparisonWidget: React.FC<ComparisonWidgetProps> = ({
 
   if (!table || table.length === 0) {
     return (
-      <div className="p-5 flex flex-col items-center justify-center text-center h-full min-h-[160px] text-muted-foreground">
+      <div className="p-5 flex flex-col items-center justify-center text-center h-auto min-h-[160px] text-muted-foreground">
         <ArrowRightLeft className="w-8 h-8 mb-2 opacity-40 text-primary" />
         <p className="text-sm font-medium">当前查询未生成实体对比矩阵</p>
         <p className="text-xs text-muted-foreground/70 mt-1">可在搜索词中输入“A 和 B 的区别 / 对比”触发专项评测</p>
@@ -27,7 +27,7 @@ export const ComparisonWidget: React.FC<ComparisonWidgetProps> = ({
   }
 
   return (
-    <div className="p-4 sm:p-5 flex flex-col h-full overflow-hidden bg-card">
+    <div className="p-4 sm:p-5 flex flex-col h-auto overflow-hidden bg-card">
       <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-border/40">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500">

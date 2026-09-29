@@ -43,6 +43,7 @@ export type WidgetSizeCategory =
 export interface WidgetGridDimensions {
   w: number; // 占用栅格列数 (e.g. 3, 6, 9, 12 in 12-col grid)
   h: number; // 占用栅格行数 (e.g. 2, 3, 4)
+  height?: number | "auto"; // 高度属性：根据内容自适应缩放（默认 'auto'）
   minW?: number;
   maxW?: number;
   minH?: number;
@@ -64,6 +65,7 @@ export interface StandardWidget<T = unknown> {
   type: WidgetType | string;
   priority: number; // 0 - 100
   size?: WidgetSizeCategory;
+  height?: number | "auto"; // 高度属性：根据内容自适应缩放（默认 'auto'）
   customDimensions?: Partial<WidgetGridDimensions>;
   data?: T;
   layout?: WidgetLayoutRect;

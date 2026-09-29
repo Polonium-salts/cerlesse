@@ -530,7 +530,7 @@ export function buildSearchObservation(
 ): SearchObservation {
   const plan = options.plan ?? planSearchQueries(query);
   const maxResults = Math.max(1, options.maxResults ?? 6);
-  const snippetChars = Math.max(40, options.snippetChars ?? 240);
+  const snippetChars = Math.max(40, options.snippetChars ?? 420);
   const assessment = assessEvidence(results, plan);
 
   const all = (results || []).filter((item) => item && item.url && item.title);

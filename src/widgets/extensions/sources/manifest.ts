@@ -2,11 +2,11 @@ import type { WidgetManifest } from "../../sdk/manifest.js";
 
 export const manifest: WidgetManifest = {
   id: "sources",
-  name: "信源溯源存证",
+  name: "信源存证与网站直达",
   version: "1.0.0",
   apiVersion: 1,
   presence: "resident",
-  description: "基于全网交叉核验的信源存证、权威度认证、来源域名与原始引用可追溯链路",
+  description: "基于全网交叉核验的信源存证、权威认证与官方网站快捷直达通道",
   category: "synthesis",
   tags: [
     "信源溯源",
@@ -43,9 +43,10 @@ export const manifest: WidgetManifest = {
   layout: {
     defaultWidth: 50,
     minWidth: 25,
-    maxWidth: 100,
-    preferredHeight: 480
-  },
+    maxWidth: 50,
+    preferredHeight: 480,
+    height: "auto",
+},
   agent: {
     selectable: true,
     minConfidence: 0.5,

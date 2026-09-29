@@ -134,7 +134,7 @@ export const TakeawaysWidget: React.FC<TakeawaysWidgetProps> = ({
           </Button>
         </div>
       }
-      className="w-full h-full border-border/80 bg-card"
+      className="w-full h-auto border-border/80 bg-card"
       contentClassName="flex flex-col gap-3"
     >
       {items.length === 0 ? (

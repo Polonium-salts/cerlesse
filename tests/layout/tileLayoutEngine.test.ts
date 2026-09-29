@@ -1,8 +1,15 @@
 import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { solveTileLayout, TileLayoutInput, TileWidth, normalizeTileWidth } from "../../src/lib/tileLayoutEngine.js";
+import {
+  solveTileLayout,
+  applyRowTailPadding,
+  TileLayoutInput,
+  TileWidth,
+  normalizeTileWidth
+} from "../../src/lib/tileLayoutEngine.js";
 import { solveLayoutTool } from "../../server/tools/layoutTool.js";
+import { filterAndSanitizeWidgetTypes, isRenderableWidget } from "../../server/widgetPlanner.js";
 import type { LayoutIntent } from "../../src/types.js";
 
 describe("TileLayoutEngine & solve_layout Architecture Tests", () => {
@@ -241,3 +248,117 @@ describe("Ratio Drift Root Causes & Solutions Tests", () => {
     assert.ok(measuredSolution.items[0].pixelHeight > baseSolution.items[0].pixelHeight);
   });
 });
+
+describe("Prompt 2: P0 Row-Tail Padding & WidgetPlanner Tests", () => {
+  it("Test 1: handles [75, 50] with row-tail padding (filling to 12 or recording emptyCells)", () => {
+    // 场景 A: 两个组件均允许 100% (默认情况)
+    const inputsA: TileLayoutInput[] = [
+      { id: "comparison", size: 75, supportedWidths: [75, 100] },
+      { id: "takeaways", size: 50, supportedWidths: [50, 100] }
+    ];
+    const solutionA = solveTileLayout(inputsA, 12);
+    assert.strictEqual(solutionA.items.length, 2);
+    // 第一行: 75% 升档到 100% (colSpan 12)
+    assert.strictEqual(solutionA.items[0].w, 12);
+    // 第二行: 50% 升档到 100% (colSpan 12)
+    assert.strictEqual(solutionA.items[1].w, 12);
+    assert.strictEqual(solutionA.emptyCells, 0);
+
+    // 场景 B: 第二个组件严格不允许 100% (例如只支持 [50])
+    const inputsB: TileLayoutInput[] = [
+      { id: "comparison", size: 75, supportedWidths: [75, 100] },
+      { id: "takeaways", size: 50, supportedWidths: [50] }
+    ];
+    const solutionB = solveTileLayout(inputsB, 12);
+    assert.strictEqual(solutionB.items[0].w, 12);
+    assert.strictEqual(solutionB.items[1].w, 6);
+    // 第二行未能填满，明确记录留白的 6 个单元格
+    assert.strictEqual(solutionB.emptyCells, 6);
+  });
+
+  it("Test 2: handles [25, 75, 50] with row-tail padding (filling to 12 or recording emptyCells)", () => {
+    const inputs: TileLayoutInput[] = [
+      { id: "quick_facts", size: 25, supportedWidths: [25, 50] },
+      { id: "image_gallery", size: 75, supportedWidths: [75] },
+      { id: "takeaways", size: 50, supportedWidths: [50, 100] }
+    ];
+    const solution = solveTileLayout(inputs, 12);
+    assert.strictEqual(solution.items.length, 3);
+    // 第一行: 25% + 75% 恰好等于 100% (3 + 9 = 12)
+    assert.strictEqual(solution.items[0].w + solution.items[1].w, 12);
+    // 第二行: 50% 升档到 100% (colSpan 12)
+    assert.strictEqual(solution.items[2].w, 12);
+    assert.strictEqual(solution.emptyCells, 0);
+  });
+
+  it("Test 3: handles [50, 25, 25, 25] with row-tail padding (filling to 12 or recording emptyCells)", () => {
+    // 场景 A: 最后一个 25% 支持升至 100%
+    const inputsA: TileLayoutInput[] = [
+      { id: "sources", size: 50, supportedWidths: [50] },
+      { id: "tag_a", size: 25, supportedWidths: [25] },
+      { id: "tag_b", size: 25, supportedWidths: [25] },
+      { id: "tag_c", size: 25, supportedWidths: [25, 50, 75, 100] }
+    ];
+    const solutionA = solveTileLayout(inputsA, 12);
+    assert.strictEqual(solutionA.items.length, 4);
+    // 第一行: 50% + 25% + 25% = 100% (6 + 3 + 3 = 12)
+    const row1Sum = solutionA.items[0].w + solutionA.items[1].w + solutionA.items[2].w;
+    assert.strictEqual(row1Sum, 12);
+    // 第二行: tag_c 升至 100% (12)
+    assert.strictEqual(solutionA.items[3].w, 12);
+    assert.strictEqual(solutionA.emptyCells, 0);
+
+    // 场景 B: 最后一个 25% 仅支持 25%，无法填满，带出 emptyCells 计数
+    const inputsB: TileLayoutInput[] = [
+      { id: "sources", size: 50, supportedWidths: [50] },
+      { id: "tag_a", size: 25, supportedWidths: [25] },
+      { id: "tag_b", size: 25, supportedWidths: [25] },
+      { id: "tag_c", size: 25, supportedWidths: [25] }
+    ];
+    const solutionB = solveTileLayout(inputsB, 12);
+    assert.strictEqual(solutionB.items[3].w, 3);
+    assert.strictEqual(solutionB.emptyCells, 9);
+  });
+
+  it("Test 4: pulls subsequent tile forward when last tile cannot upgrade", () => {
+    // [50, 75, 25]：第一行放 50% 后余 6 列，75% 塞不下，50% 无法升档；
+    // 从后一行提前 25%（3列），随后 25% 升档至 50% 刚好填满 12 列
+    const inputs: TileLayoutInput[] = [
+      { id: "fixed_50", size: 50, supportedWidths: [50], isEmphasized: true },
+      { id: "wide_75", size: 75, supportedWidths: [75, 100] },
+      { id: "flexible_25", size: 25, supportedWidths: [25, 50] }
+    ];
+    const solution = solveTileLayout(inputs, 12);
+    assert.strictEqual(solution.items.length, 3);
+    // 第一行由 fixed_50 与提前上来的 flexible_25 (升至50) 拼成 12 列
+    assert.strictEqual(solution.items[0].id, "fixed_50");
+    assert.strictEqual(solution.items[1].id, "flexible_25");
+    assert.strictEqual(solution.items[0].w + solution.items[1].w, 12);
+    // 第二行留下 wide_75 升至 100%
+    assert.strictEqual(solution.items[2].id, "wide_75");
+    assert.strictEqual(solution.items[2].w, 12);
+  });
+
+  it("Test 5: widgetPlanner filters unregistered types and downgrades strong-intent types to ai_answer with warning", () => {
+    const rawCandidates = [
+      "unregistered_deep_overview", // 强相关未注册组件，应降级为 ai_answer
+      "sources",                    // 正常注册组件，应保留
+      "unknown_random_gibberish"    // 非强相关未注册组件，应直接过滤
+    ];
+
+    const result = filterAndSanitizeWidgetTypes(rawCandidates, {
+      query: "深度解释量子计算的原理",
+      intent: "concept_explanation"
+    });
+
+    assert.ok(result.validTypes.includes("sources"));
+    assert.ok(result.validTypes.includes("ai_answer"));
+    assert.ok(!result.validTypes.includes("unknown_random_gibberish"));
+    assert.ok(result.downgradedToAiAnswer);
+    assert.strictEqual(result.filteredTypes.length, 2);
+    assert.ok(result.warnings.length >= 2);
+    assert.ok(result.warnings[0].includes("unregistered_deep_overview"));
+    assert.ok(result.warnings[1].includes("unknown_random_gibberish"));
+  });
+});
+

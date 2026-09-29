@@ -4,20 +4,42 @@
   "version": "1.0.0",
   "description": "结构化错误现象分析、根因诊断、分步修复指令与交互式核验",
   "category": "action",
-  "tags": ["排错", "故障", "诊断", "报错", "修复", "troubleshooting", "debug", "error", "避坑"],
+  "tags": [
+    "排错",
+    "故障",
+    "诊断",
+    "报错",
+    "修复",
+    "troubleshooting",
+    "debug",
+    "error",
+    "避坑"
+  ],
   "icon": "AlertTriangle",
   "grid": {
     "width": 75,
-    "supportedWidths": [50, 75, 100],
+    "supportedWidths": [
+      50,
+      75,
+      100
+    ],
     "ratio": "4:3",
-    "minWidth": 50
+    "minWidth": 50,
+    "height": "auto",
+    "ratioMode": "flexible"
   },
   "layout": {
     "defaultWidth": 75,
     "minWidth": 50,
     "maxWidth": 100,
-    "preferredRoles": ["hero", "primary"],
-    "canPairWith": ["actions_toolbox", "takeaways"]
+    "preferredRoles": [
+      "hero",
+      "primary"
+    ],
+    "canPairWith": [
+      "actions_toolbox",
+      "takeaways"
+    ]
   },
   "theme": {
     "accentColor": "#ef4444"
@@ -35,7 +57,20 @@
       "提供可分步执行的排查或修复指令"
     ],
     "selectionHeuristics": "当用户查询涉及报错、安装失败、程序崩溃或排错指令时最高优先级推荐；若仅为常规概念科普则降级",
-    "triggerKeywords": ["报错", "解决", "异常", "排错", "修复", "失败", "error", "failed", "bug", "crash", "崩溃", "无法启动"],
+    "triggerKeywords": [
+      "报错",
+      "解决",
+      "异常",
+      "排错",
+      "修复",
+      "失败",
+      "error",
+      "failed",
+      "bug",
+      "crash",
+      "崩溃",
+      "无法启动"
+    ],
     "antiPatterns": [
       "纯概念科普名词解释（无对应报错现象）",
       "正版软件客户端下载（无安装报错）"

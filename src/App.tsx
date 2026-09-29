@@ -209,8 +209,24 @@ export default function App() {
           activeResult.layoutStrategy.gridConfig.image_gallery.width = 75;
           activeResult.layoutStrategy.gridConfig.image_gallery.isAutoFilled = false;
         }
+        if (activeResult.layoutStrategy.gridConfig?.related_links) {
+          activeResult.layoutStrategy.gridConfig.related_links.colSpanLg = 6;
+          activeResult.layoutStrategy.gridConfig.related_links.width = 50;
+          activeResult.layoutStrategy.gridConfig.related_links.isAutoFilled = false;
+        }
+        if (activeResult.layoutStrategy.gridConfig?.sources) {
+          activeResult.layoutStrategy.gridConfig.sources.colSpanLg = 6;
+          activeResult.layoutStrategy.gridConfig.sources.width = 50;
+          activeResult.layoutStrategy.gridConfig.sources.isAutoFilled = false;
+        }
         if (activeResult.layoutStrategy.customWidgetSpans?.image_gallery) {
           activeResult.layoutStrategy.customWidgetSpans.image_gallery = 9;
+        }
+        if (activeResult.layoutStrategy.customWidgetSpans?.related_links) {
+          activeResult.layoutStrategy.customWidgetSpans.related_links = 6;
+        }
+        if (activeResult.layoutStrategy.customWidgetSpans?.sources) {
+          activeResult.layoutStrategy.customWidgetSpans.sources = 6;
         }
       }
       const rec = activeResult.layoutStrategy || computeAdaptiveLayoutFromQuery(activeResult.query, activeResult);
@@ -219,8 +235,24 @@ export default function App() {
         rec.gridConfig.image_gallery.width = 75;
         rec.gridConfig.image_gallery.isAutoFilled = false;
       }
+      if (rec.gridConfig?.related_links) {
+        rec.gridConfig.related_links.colSpanLg = 6;
+        rec.gridConfig.related_links.width = 50;
+        rec.gridConfig.related_links.isAutoFilled = false;
+      }
+      if (rec.gridConfig?.sources) {
+        rec.gridConfig.sources.colSpanLg = 6;
+        rec.gridConfig.sources.width = 50;
+        rec.gridConfig.sources.isAutoFilled = false;
+      }
       if (rec.customWidgetSpans?.image_gallery) {
         rec.customWidgetSpans.image_gallery = 9;
+      }
+      if (rec.customWidgetSpans?.related_links) {
+        rec.customWidgetSpans.related_links = 6;
+      }
+      if (rec.customWidgetSpans?.sources) {
+        rec.customWidgetSpans.sources = 6;
       }
       setLayoutPreset(rec.intentType);
       setCustomWidgetOrder(rec.componentOrder);
@@ -301,10 +333,26 @@ export default function App() {
       packing.gridConfig.image_gallery.width = 75;
       packing.gridConfig.image_gallery.isAutoFilled = false;
     }
+    if (packing.gridConfig.related_links) {
+      packing.gridConfig.related_links.colSpanLg = 6;
+      packing.gridConfig.related_links.width = 50;
+      packing.gridConfig.related_links.isAutoFilled = false;
+    }
+    if (packing.gridConfig.sources) {
+      packing.gridConfig.sources.colSpanLg = 6;
+      packing.gridConfig.sources.width = 50;
+      packing.gridConfig.sources.isAutoFilled = false;
+    }
 
     const finalCustomSpans = { ...(baseRec.customWidgetSpans || {}), ...customWidgetSpans };
     if (finalCustomSpans.image_gallery) {
       finalCustomSpans.image_gallery = 9;
+    }
+    if (finalCustomSpans.related_links) {
+      finalCustomSpans.related_links = 6;
+    }
+    if (finalCustomSpans.sources) {
+      finalCustomSpans.sources = 6;
     }
 
     // 用户尚未手动调过任何跨度时，布局数字直接沿用排版 Agent 的决策单：
@@ -851,22 +899,6 @@ export default function App() {
                   <Images className="size-3.5" />
                   <span>图片图库</span>
                 </TabsTrigger>
-                <TabsTrigger value="mindmap">
-                  <GitFork />
-                  思维导图
-                </TabsTrigger>
-                <TabsTrigger value="comparison">
-                  <Scale />
-                  对比矩阵
-                </TabsTrigger>
-                <TabsTrigger value="sources">
-                  <Database />
-                  已验证信源
-                </TabsTrigger>
-                <TabsTrigger value="reasoning">
-                  <Workflow />
-                  Agent 思考流
-                </TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -1083,29 +1115,6 @@ export default function App() {
                       query={activeResult.query || currentQuery}
                       onExecuteSearch={(q, deep) => executeSearch(q, deep)}
                       isWideCanvas={isWideCanvas}
-                    />
-                  </div>
-                )}
-
-                {/* 3. TAB: RELATED LINKS */}
-                {(activeTab === "mindmap" || activeTab === "comparison" || activeTab === "sources") && (
-                  <div className="w-full">
-                    <RelatedLinksWidget
-                      result={activeResult}
-                      query={activeResult.query}
-                      onExecuteSearch={(q, deep) => executeSearch(q, deep)}
-                    />
-                  </div>
-                )}
-
-                {/* 4. TAB: AGENT REASONING STREAM */}
-                {activeTab === "reasoning" && (
-                  <div className="w-full max-w-5xl mx-auto">
-                    <AgentProgressStream
-                      steps={activeResult.steps}
-                      query={activeResult.query}
-                      isComplete={true}
-                      executionTimeMs={activeResult.executionTimeMs}
                     />
                   </div>
                 )}

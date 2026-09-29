@@ -802,7 +802,7 @@ export const ImageGalleryBackWidget: React.FC<ImageGalleryWidgetProps> = ({
           {traced.length} 个来源
         </Badge>
       }
-      className="w-full h-full border-border/80 bg-card"
+      className="w-full h-auto border-border/80 bg-card"
     >
       {traced.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-1.5 p-6 text-center border border-dashed border-border rounded-xl">
@@ -815,7 +815,7 @@ export const ImageGalleryBackWidget: React.FC<ImageGalleryWidgetProps> = ({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col h-full gap-2">
+        <div className="flex flex-col h-auto gap-2">
           <ul className="flex-1 space-y-1.5 overflow-y-auto">
             {traced.map((img) => (
               <li key={img.id}>

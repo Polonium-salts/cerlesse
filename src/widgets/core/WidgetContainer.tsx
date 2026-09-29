@@ -6,6 +6,10 @@ export type WidgetPaddingMode = "none" | "compact" | "normal" | "spacious";
 export type WidgetSkeletonType = "card" | "list" | "text" | "chart";
 export type WidgetRatioMode = "flexible" | "strict";
 
+/** 默认单行高度单位（像素）与 4 档行高上限 */
+export const DEFAULT_ROW_UNIT_PX = 120;
+export const DEFAULT_MAX_CONTENT_HEIGHT_PX = 4 * DEFAULT_ROW_UNIT_PX; // 480px
+
 export interface WidgetContainerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   id?: string;
   widgetId?: string;
@@ -19,6 +23,8 @@ export interface WidgetContainerProps extends Omit<React.HTMLAttributes<HTMLDivE
   hideHeader?: boolean;
   noPadding?: boolean;
   padding?: WidgetPaddingMode;
+  /** 高度属性：根据内容自适应缩放（默认 "auto"）或指定具体数值/样式 */
+  height?: number | "auto" | string;
   ratioMode?: WidgetRatioMode;
   maxHeightPx?: number;
   className?: string;
@@ -55,6 +61,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
   hideHeader = false,
   noPadding = false,
   padding,
+  height = "auto",
   ratioMode = "flexible",
   maxHeightPx,
   className = "",
@@ -77,10 +84,21 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
     : padding || (isCompact ? "compact" : "normal");
 
   const hasHeader = !hideHeader && Boolean(title || icon || badge || actions);
+  const isAutoHeight = height === "auto" || !height;
   const containerStyle: React.CSSProperties = {
     ...style,
+    height: typeof height === "number" ? `${height}px` : (height || "auto"),
     ...(ratioMode === "strict" && maxHeightPx ? { maxHeight: `${maxHeightPx}px` } : {})
   };
+
+  const effectiveMaxHeight = maxHeightPx
+    ? `${maxHeightPx}px`
+    : (ratioMode === "strict" ? `${DEFAULT_MAX_CONTENT_HEIGHT_PX}px` : "none");
+
+  // 当为自适应高度时，将传入 className 中的 h-full 平滑替换为 h-auto，杜绝外部固定高度闭环
+  const sanitizedClassName = isAutoHeight
+    ? className.replace(/\bh-full\b/g, "h-auto")
+    : className;
 
   return (
     <div
@@ -88,9 +106,9 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
       data-widget-id={widgetId || id}
       onClick={onClick}
       style={containerStyle}
-      className={`relative flex flex-col h-full w-full rounded-2xl overflow-hidden bg-card text-card-foreground transition-all duration-200 ${
+      className={`relative flex flex-col ${isAutoHeight ? "h-auto" : "h-full"} w-full rounded-2xl overflow-hidden bg-card text-card-foreground transition-all duration-200 ${
         border ? "border border-border/60 shadow-xs" : ""
-      } ${ratioMode === "strict" ? "overflow-y-auto" : ""} ${surfaceClassName} ${className}`}
+      } ${ratioMode === "strict" ? "overflow-y-auto" : ""} ${surfaceClassName} ${sanitizedClassName}`}
       {...rest}
     >
       {hasHeader && (
@@ -128,9 +146,13 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
       )}
 
       <div
-        className={`${
-          ratioMode === "strict" ? "flex-1 min-h-0 overflow-y-auto" : "flex-1"
-        } ${
+        tabIndex={0}
+        role="region"
+        aria-label={typeof title === "string" ? `${title} 内容` : "小组件内容"}
+        style={{
+          maxHeight: effectiveMaxHeight
+        }}
+        className={`flex-1 min-h-0 ${ratioMode === "strict" ? "overflow-y-auto" : ""} focus:outline-hidden focus-visible:ring-1 focus-visible:ring-primary/40 scrollbar-thin scrollbar-thumb-border hover:scrollbar-thumb-muted-foreground/40 ${
           PADDING_CLASSES[effectivePadding]
         } ${contentClassName}`}
       >

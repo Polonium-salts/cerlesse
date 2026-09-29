@@ -300,7 +300,7 @@ export interface WidgetDefinition {
 export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   sources: {
     id: "sources",
-    label: "信源溯源存证",
+    label: "信源存证与网站直达",
     iconName: "ShieldCheck",
     width: 50,
     minWidth: 25,
@@ -309,8 +309,8 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
   },
   related_links: {
     id: "related_links",
-    label: "相关多链接跳转",
-    iconName: "Compass",
+    label: "信源存证与网站直达",
+    iconName: "ShieldCheck",
     width: 50,
     minWidth: 25,
     basePriority: 10,
@@ -1167,6 +1167,7 @@ export function calculateAdaptiveBinPacking(
 
   const getItemSpan = (key: ResultWidgetKey): number => {
     if (key === "image_gallery") return 9; // 严格固定为 9 格 (75%)
+    if (key === "related_links" || key === "sources") return 6; // 严格固定为 6 格 (50% / 2格)
     const custom = options.customSpans?.[key];
     return normalizeWidgetSpan(
       custom,

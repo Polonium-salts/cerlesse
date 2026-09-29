@@ -71,57 +71,70 @@ export const WIDGET_ACTIVATION_POLICY: WidgetActivationPolicy = {
  * 因此改为在**最终出口**无条件注入：保障可审计、可测试、且不依赖任何一处排序细节。
  */
 export const ALWAYS_ON_WIDGETS: ResultWidgetKey[] = [
-  "ai_answer",
   "related_links",
+  "ai_answer",
   "image_gallery",
   "token_usage"
 ];
 
 /** 判断某组件是否为常驻组件 */
 export function isAlwaysOnWidget(key: string | ResultWidgetKey): boolean {
-  return ALWAYS_ON_WIDGETS.some((k) => String(k) === String(key));
+  const normalizedKey = String(key) === "sources" ? "related_links" : String(key);
+  return ALWAYS_ON_WIDGETS.some((k) => String(k) === normalizedKey);
 }
 
 /**
- * 把缺失的常驻组件注入清单，**已存在的保持原位不动**。
- *
- * 插入位置刻意区分：
- *   · ai_answer     置顶 —— 速答是一次搜索的核心交付物；
- *   · related_links 紧跟其后 —— 读完结论立刻能拿到权威入口，这是"可核验"的最短路径；
- *   · image_gallery 追加在常驻核心组件之后 —— 有图展示图集，无图展示空态。
- *
- * 支持可选的 isApplicable 判决函数，确保即使是常驻组件候选也须通过适用性网关。
+ * 把缺失的常驻组件注入清单，并对 sources / related_links 彻底去重，
+ * 确保合并后的「信源存证与网站直达」小组件永远排在第 1 的位置。
  */
 export function injectAlwaysOnWidgets(
   order: ResultWidgetKey[],
   isApplicable?: (key: ResultWidgetKey) => boolean
 ): ResultWidgetKey[] {
-  const present = new Set(order.map(String));
+  // 1. 将 sources 归一化为 related_links，并严格去重
+  const deduped: ResultWidgetKey[] = [];
+  const seen = new Set<string>();
+  for (const k of order) {
+    const canonicalKey = (String(k) === "sources" ? "related_links" : k) as ResultWidgetKey;
+    if (!seen.has(String(canonicalKey))) {
+      seen.add(String(canonicalKey));
+      deduped.push(canonicalKey);
+    }
+  }
+
+  const present = new Set(deduped.map(String));
   const candidates = isApplicable
     ? ALWAYS_ON_WIDGETS.filter(isApplicable)
     : ALWAYS_ON_WIDGETS;
   const missing = candidates.filter((k) => !present.has(String(k)));
-  if (missing.length === 0) return [...order];
 
-  const result = [...order];
+  const result = [...deduped];
   for (const key of missing) {
-    if (key === "ai_answer") {
+    if (key === "related_links") {
       result.unshift(key);
-    } else if (key === "related_links") {
-      const anchor = result.indexOf("ai_answer");
+    } else if (key === "ai_answer") {
+      const anchor = result.indexOf("related_links");
       result.splice(anchor >= 0 ? anchor + 1 : 0, 0, key);
     } else {
       result.push(key);
     }
   }
+
+  // 2. 保证 related_links (信源存证与网站直达) 永远排在第 1 位 (index 0)
+  const relatedLinksIdx = result.indexOf("related_links");
+  if (relatedLinksIdx > 0) {
+    result.splice(relatedLinksIdx, 1);
+    result.unshift("related_links");
+  } else if (relatedLinksIdx < 0) {
+    result.unshift("related_links");
+  }
+
   return result;
 }
 
 /**
  * 常驻保障的完整实现：注入缺失的常驻组件，超出上限时**只裁非常驻组件**。
- *
- * ⚠️ 调用位置必须是所有截断（slice）之后。若放在截断之前，注入的结果会被下一次
- * 截断立刻切掉 —— 这正是"改了但没生效"最典型的成因。
+ * 同时确保「信源存证与网站直达」永远稳定排在第 1 位。
  */
 export function applyAlwaysOnGuarantee(
   order: ResultWidgetKey[],
@@ -142,6 +155,14 @@ export function applyAlwaysOnGuarantee(
     if (cutIndex < 0) break; // 已全部是常驻，无可再裁
     result.splice(cutIndex, 1);
   }
+
+  // 再次确保第 1 位始终为 related_links
+  const firstIdx = result.indexOf("related_links");
+  if (firstIdx > 0) {
+    result.splice(firstIdx, 1);
+    result.unshift("related_links");
+  }
+
   return result;
 }
 

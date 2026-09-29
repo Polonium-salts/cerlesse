@@ -30,6 +30,8 @@ export interface WidgetGridSpec {
   supportedWidths: TileWidth[];
   /** 网格宽高比：磁贴高度恒等于 宽度 ÷ ratio */
   ratio: TileRatio;
+  /** 高度属性：根据内容自适应缩放（默认 "auto"），或指定数值（像素） */
+  height?: number | "auto";
   /** 比例模式：strict（严格锁定比例高，溢出内部滚动）| flexible（比例为下限，内容多则自然长高） */
   ratioMode?: TileRatioMode;
   /** 响应式断点比例覆盖 */
@@ -48,6 +50,8 @@ export interface WidgetLayoutMeta {
   minWidth: TileWidth;
   maxWidth: TileWidth;
   preferredRoles: ("hero" | "primary" | "secondary" | "supporting" | "utility")[];
+  height?: number | "auto";
+  preferredHeight?: number;
   canPairWith?: string[];
   avoidPairWith?: string[];
 }
@@ -120,6 +124,16 @@ export const MANIFEST_RATIO_MODES: Record<string, TileRatioMode> = WIDGET_MANIFE
   if (manifest.grid.ratioMode) {
     acc[manifest.id] = manifest.grid.ratioMode;
   }
+  return acc;
+}, {});
+
+/**
+ * id → 高度属性（默认 "auto" 根据内容自适应缩放）
+ */
+export const MANIFEST_HEIGHTS: Record<string, number | "auto"> = WIDGET_MANIFESTS.reduce<
+  Record<string, number | "auto">
+>((acc, manifest) => {
+  acc[manifest.id] = manifest.grid.height ?? "auto";
   return acc;
 }, {});
 

@@ -45,16 +45,27 @@
   "icon": "Images",
   "grid": {
     "width": 75,
-    "supportedWidths": [75],
+    "supportedWidths": [
+      75
+    ],
     "ratio": "4:3",
-    "minWidth": 75
+    "minWidth": 75,
+    "height": "auto",
+    "ratioMode": "flexible"
   },
   "layout": {
     "defaultWidth": 75,
     "minWidth": 75,
     "maxWidth": 75,
-    "preferredRoles": ["primary", "secondary"],
-    "canPairWith": ["takeaways", "token_usage", "related_links"]
+    "preferredRoles": [
+      "primary",
+      "secondary"
+    ],
+    "canPairWith": [
+      "takeaways",
+      "token_usage",
+      "related_links"
+    ]
   },
   "theme": {
     "accentColor": "#ec4899",

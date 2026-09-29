@@ -42,16 +42,28 @@
   "icon": "Search",
   "grid": {
     "width": 50,
-    "supportedWidths": [50, 75, 100],
+    "supportedWidths": [
+      50,
+      75,
+      100
+    ],
     "ratio": "3:1",
-    "minWidth": 50
+    "minWidth": 50,
+    "height": "auto",
+    "ratioMode": "flexible"
   },
   "layout": {
     "defaultWidth": 50,
     "minWidth": 50,
     "maxWidth": 100,
-    "preferredRoles": ["utility", "supporting"],
-    "canPairWith": ["related_links", "actions_toolbox"]
+    "preferredRoles": [
+      "utility",
+      "supporting"
+    ],
+    "canPairWith": [
+      "related_links",
+      "actions_toolbox"
+    ]
   },
   "theme": {
     "accentColor": "#0078d4",

@@ -24,6 +24,8 @@ export interface IOSWidgetProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   noPadding?: boolean;
   padding?: WidgetPaddingMode;
+  /** 高度属性：根据内容自适应缩放（默认 "auto"）或指定具体数值/样式 */
+  height?: number | "auto" | string;
   ratioMode?: WidgetRatioMode;
   maxHeightPx?: number;
   isLoading?: boolean;
@@ -50,6 +52,7 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
   children,
   noPadding = false,
   padding,
+  height = "auto",
   ratioMode,
   maxHeightPx,
   isLoading,
@@ -73,6 +76,7 @@ export const IOSWidget: React.FC<IOSWidgetProps> = ({
       isCompact={size === 25}
       noPadding={noPadding}
       padding={padding}
+      height={height}
       ratioMode={ratioMode}
       maxHeightPx={maxHeightPx}
       className={className}

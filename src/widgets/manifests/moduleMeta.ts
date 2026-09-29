@@ -29,6 +29,7 @@ export type WidgetModuleMeta = Pick<
   | "icon"
   | "width"
   | "supportedWidths"
+  | "height"
   | "ratio"
   | "ratioMode"
   | "ratioByBreakpoint"
@@ -52,8 +53,9 @@ export function manifestToModuleMeta(manifest: WidgetManifest): WidgetModuleMeta
     // 宽度档位与比例规格的唯一事实来源就是清单的 grid 段
     width: manifest.grid.width,
     supportedWidths: manifest.grid.supportedWidths,
+    height: manifest.grid.height ?? "auto",
     ratio: manifest.grid.ratio,
-    ratioMode: manifest.grid.ratioMode,
+    ratioMode: manifest.grid.ratioMode ?? "flexible",
     ratioByBreakpoint: manifest.grid.ratioByBreakpoint,
     itemHeightPx: manifest.grid.itemHeightPx,
     baseHeightPx: manifest.grid.baseHeightPx,

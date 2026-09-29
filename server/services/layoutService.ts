@@ -1,4 +1,5 @@
 import { solveLayoutTool } from "../tools/layoutTool.js";
+import { filterAndSanitizeWidgetTypes } from "../widgetPlanner.js";
 
 export function executeLayoutSolve(params: {
   widgetIds?: string[];
@@ -17,5 +18,8 @@ export function executeLayoutSolve(params: {
     targetIds = ["related_links", "takeaways"];
   }
 
-  return solveLayoutTool({ widgetIds: targetIds });
+  // 严格过滤无 manifest 或渲染模块的类型
+  const { validTypes } = filterAndSanitizeWidgetTypes(targetIds);
+
+  return solveLayoutTool({ widgetIds: validTypes });
 }

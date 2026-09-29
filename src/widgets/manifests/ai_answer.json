@@ -41,16 +41,30 @@
   "icon": "Sparkles",
   "grid": {
     "width": 50,
-    "supportedWidths": [25, 50, 75, 100],
+    "supportedWidths": [
+      25,
+      50,
+      75,
+      100
+    ],
     "ratio": "4:3",
-    "minWidth": 25
+    "minWidth": 25,
+    "height": "auto",
+    "ratioMode": "flexible"
   },
   "layout": {
     "defaultWidth": 50,
     "minWidth": 25,
     "maxWidth": 100,
-    "preferredRoles": ["hero", "primary"],
-    "canPairWith": ["takeaways", "related_links", "image_gallery"]
+    "preferredRoles": [
+      "hero",
+      "primary"
+    ],
+    "canPairWith": [
+      "takeaways",
+      "related_links",
+      "image_gallery"
+    ]
   },
   "theme": {
     "accentColor": "#6366f1",

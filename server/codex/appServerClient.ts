@@ -259,7 +259,8 @@ export async function runCodexAgent(
       observation = {
         ...buildSearchObservation(plan.primary.query || query, result.results as SearchResult[], {
           plan,
-          maxResults: 6
+          maxResults: 8,
+          snippetChars: 420
         }),
         diagnostics: {
           candidateCount: result?.diagnostics?.candidateCount ?? result?.rawCount ?? result.results.length,
@@ -270,6 +271,11 @@ export async function runCodexAgent(
           failures: (result?.diagnostics?.failures ?? []).slice(0, 3)
         }
       };
+      if (process.env.NODE_ENV !== "test") {
+        const obsResults = (observation as any)?.results || [];
+        const totalSnippetLen = obsResults.reduce((acc: number, r: any) => acc + (r.snippet?.length || 0), 0);
+        console.info(`[CodexSearch] 检索到 ${result.results.length} 条信源，观察层注入 ${obsResults.length} 条高密度信源 (正文摘要总量: ${totalSnippetLen} 字符)`);
+      }
     } else if (toolName === "search_images" && Array.isArray(result?.images)) {
       imagesFound = [...imagesFound, ...result.images];
     } else if (toolName === "prepare_widget" && result?.success) {
@@ -279,7 +285,7 @@ export async function runCodexAgent(
       sessionManager.recordLayout(threadId, result as SolveLayoutOutput);
       observation = {
         ...result,
-        instruction: "组件布局计算完成。所有必要工具调用已就绪。请在此轮直接输出针对用户问题的完整、结构化最终回答并标注引用来源，不要再调用任何工具。"
+        instruction: "所有小组件与 12 栅格几何装箱已计算就绪。请在此轮直接输出针对用户问题的深度、结构化最终回答（包括核心结论、分节背景/机制/实操步骤/注意事项，详细阐述，使用空行分段并标注 [1], [2] 信源引用），不要再调用任何工具。"
       };
     } else if (toolName === "create_action" && result?.action) {
       actions.push(result.action as WidgetAction);
@@ -379,6 +385,9 @@ export async function runCodexAgent(
       }
       iteration = Math.max(modelCalls, 1);
       finished = true;
+      if (process.env.NODE_ENV !== "test") {
+        console.info(`[CodexAgent] 模型生成完毕: model=${modelUsed}, modelCalls=${modelCalls}, finalAnswerLen=${finalAnswer.length}字符, usage=(in:${result.usage?.input ?? 0}, out:${result.usage?.output ?? 0})`);
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       
@@ -786,6 +795,10 @@ export async function runCodexAgent(
   legacySynthesis.tokenUsageRecord = tokenRecord;
   if (tokenRecord.promptTokens > 0 || tokenRecord.completionTokens > 0) {
     legacySynthesis.tokenUsage = TokenUsageCollector.toLegacyStats(tokenRecord);
+  }
+
+  if (process.env.NODE_ENV !== "test") {
+    console.info(`[CodexSynthesis] 研报组装完成: query="${query}", 耗时=${durationMs}ms, 信源=${session.collectedSources.length}条, 回答正文=${legacySynthesis.summary?.length || 0}字符, 要点=${legacySynthesis.keyTakeaways?.length || 0}条, 组件=${legacySynthesis.widgetPlan?.widgets?.length || 0}个`);
   }
 
   return {

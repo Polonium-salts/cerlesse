@@ -4,20 +4,40 @@
   "version": "1.0.0",
   "description": "故障诊断、环境依赖检查与实操交互式核验避坑清单",
   "category": "action",
-  "tags": ["排查", "诊断", "核验", "清单", "checklist", "troubleshooting"],
+  "tags": [
+    "排查",
+    "诊断",
+    "核验",
+    "清单",
+    "checklist",
+    "troubleshooting"
+  ],
   "icon": "ShieldCheck",
   "grid": {
     "width": 75,
-    "supportedWidths": [50, 75, 100],
+    "supportedWidths": [
+      50,
+      75,
+      100
+    ],
     "ratio": "4:3",
-    "minWidth": 50
+    "minWidth": 50,
+    "height": "auto",
+    "ratioMode": "flexible"
   },
   "layout": {
     "defaultWidth": 75,
     "minWidth": 50,
     "maxWidth": 100,
-    "preferredRoles": ["primary", "secondary"],
-    "canPairWith": ["takeaways", "token_usage", "actions_toolbox"]
+    "preferredRoles": [
+      "primary",
+      "secondary"
+    ],
+    "canPairWith": [
+      "takeaways",
+      "token_usage",
+      "actions_toolbox"
+    ]
   },
   "theme": {
     "accentColor": "#10b981"

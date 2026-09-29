@@ -137,6 +137,8 @@ export interface WidgetSchema {
   name: string;
   version?: string;
   size: TileWidth;
+  /** 高度属性：根据内容自适应缩放（默认 'auto'）或指定数值 */
+  height?: number | "auto";
   layout: "card" | "dashboard" | "split" | "list" | "matrix";
   themeColor?: "blue" | "emerald" | "violet" | "amber" | "rose" | "zinc";
   iconName?: string;
@@ -255,6 +257,7 @@ export interface TileSchemaDescriptor {
   background?: string;
   accentColor?: string;
   liveBadge?: string | number;
+  height?: number | "auto";
   children: TileAtomNode[];
 }
 
@@ -295,6 +298,8 @@ export interface WidgetModule<TData = any> {
   // 历史清单里的 small/medium/large/wide/tall/full 名称会自动映射到最近的档位。
   width: TileWidth;
   supportedWidths?: TileWidth[];
+  /** 小组件高度属性：根据内容自适应缩放（默认 "auto"）或指定具体像素 */
+  height?: number | "auto";
   ratio?: TileRatio;
   ratioMode?: TileRatioMode;
   ratioByBreakpoint?: Partial<Record<Breakpoint, TileRatio>>;

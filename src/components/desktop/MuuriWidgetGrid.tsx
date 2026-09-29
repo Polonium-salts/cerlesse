@@ -180,7 +180,7 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
               boxSizing: "border-box"
             }}
           >
-            <div className="muuri-item-content w-full h-full relative">
+            <div className="muuri-item-content w-full h-auto relative">
               {item.node}
             </div>
           </div>

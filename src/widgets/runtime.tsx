@@ -365,16 +365,19 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
           </Button>
 
           <div
-            className="w-full h-full transition-transform duration-500 ease-out"
+            className="w-full grid transition-transform duration-500 ease-out"
             style={{
+              gridTemplateColumns: "1fr",
+              gridTemplateRows: "1fr",
               transformStyle: "preserve-3d",
               transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)"
             }}
           >
             {/* 正面卡片 */}
             <div 
-              className="w-full h-full"
+              className="w-full h-full min-w-0"
               style={{ 
+                gridArea: "1 / 1",
                 backfaceVisibility: "hidden", 
                 WebkitBackfaceVisibility: "hidden" 
               }}
@@ -382,10 +385,11 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
               {renderViewContent(frontContent)}
             </div>
 
-            {/* 背面卡片 */}
+            {/* 背面卡片（与正面同一 grid 单元叠放，保证容器高度自动取较大者） */}
             <div
-              className="w-full h-full absolute inset-0 rounded-xl overflow-hidden border border-border bg-card/95 backdrop-blur-xl shadow-sm"
+              className="w-full h-full min-w-0 rounded-xl overflow-hidden border border-border bg-card/95 backdrop-blur-xl shadow-sm"
               style={{
+                gridArea: "1 / 1",
                 backfaceVisibility: "hidden",
                 WebkitBackfaceVisibility: "hidden",
                 transform: "rotateY(180deg)"

@@ -238,7 +238,7 @@ export const TokenUsageWidget: React.FC<TokenUsageWidgetProps> = ({
         </div>
       }
     >
-      <div className="flex flex-col h-full justify-between gap-2 select-none">
+      <div className="flex flex-col h-auto justify-between gap-2 select-none">
         {/* 顶部三态导航切换标签 */}
         <div className="flex items-center justify-between p-0.5 bg-muted/50 rounded-lg text-[10.5px] font-medium border border-border/40">
           <button

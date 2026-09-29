@@ -27,6 +27,7 @@ export interface WidgetManifest {
     minWidth: 25 | 50 | 75 | 100;
     maxWidth: 25 | 50 | 75 | 100;
     preferredHeight?: number;
+    height?: number | "auto";
   };
   agent?: {
     selectable: boolean;

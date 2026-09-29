@@ -18,7 +18,7 @@ export const MindMapWidget: React.FC<MindMapWidgetProps> = ({
 
   if (!mindMap || !mindMap.children || mindMap.children.length === 0) {
     return (
-      <div className="p-5 flex flex-col items-center justify-center text-center h-full min-h-[160px] text-muted-foreground">
+      <div className="p-5 flex flex-col items-center justify-center text-center h-auto min-h-[160px] text-muted-foreground">
         <Workflow className="w-8 h-8 mb-2 opacity-40 text-purple-500" />
         <p className="text-sm font-medium">当前查询未生成知识架构导图</p>
       </div>
@@ -26,7 +26,7 @@ export const MindMapWidget: React.FC<MindMapWidgetProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-card">
+    <div className="flex flex-col h-auto overflow-hidden bg-card">
       <div className="p-3 sm:px-4 border-b border-border/40 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-500">
