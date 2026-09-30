@@ -1,7 +1,6 @@
 import React, { useState, useEffect, FormEvent } from "react";
-import { Search, X, Sparkles, ArrowRight, CornerDownLeft, Loader2 } from "lucide-react";
+import { X, ArrowRight, CornerDownLeft, Loader2 } from "lucide-react";
 import { Button } from "./ui/button.js";
-import { motion, AnimatePresence } from "motion/react";
 
 interface SearchBarProps {
   onSearch: (query: string, deep: boolean) => void;
@@ -17,7 +16,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   isHomeView = true
 }) => {
   const [query, setQuery] = useState(initialQuery);
-  const [deepSearch, setDeepSearch] = useState(true);
+  const [deepSearch] = useState(true);
   const [isNarrow, setIsNarrow] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth < 640;
@@ -50,19 +49,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             : "border-border focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/30"
         }`}
       >
-        <div className="relative mr-2 shrink-0 flex items-center">
-          {deepSearch ? (
-            <Sparkles className="size-4 text-primary animate-pulse" />
-          ) : (
-            <Search className="size-4 text-muted-foreground" />
-          )}
-        </div>
-
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={deepSearch ? (isNarrow ? "向 AI 智能体提问..." : "在 Cerlesse 中向 AI 智能体提问...") : "快速搜索网页与链接..."}
+          placeholder="cerlesse搜索"
           disabled={isLoading}
           className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none truncate"
         />
@@ -104,41 +95,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             : "border-border focus-within:ring-2 focus-within:ring-ring/30"
         }`}
       >
-        <div className="relative flex items-center shrink-0 ml-1">
-          <AnimatePresence mode="wait">
-            {deepSearch ? (
-              <motion.div
-                key="sparkles"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.2 }}
-              >
-                <Sparkles className="size-5 text-primary" />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="search"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.2 }}
-              >
-                <Search className="size-5 text-muted-foreground" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={
-            deepSearch
-              ? (isNarrow ? "向 Codex 智能体提问..." : "向 Codex 智能体提问技术架构、深度对比...")
-              : (isNarrow ? "搜索网页或网址..." : "检索网页链接、官方网站与即时资讯...")
-          }
+          placeholder="cerlesse搜索"
           disabled={isLoading}
           autoFocus
           className="min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50 truncate"
