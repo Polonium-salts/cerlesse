@@ -33,6 +33,7 @@ import {
 } from "../../lib/tileLayoutEngine.js";
 import { MANIFEST_MIN_WIDTHS, MANIFEST_ITEM_HEIGHTS } from "../../widgets/manifests/index.js";
 import { WidgetRegistry } from "../../widgets/registry.js";
+import { DEFAULT_ROW_UNIT_PX } from "../../widgets/core/WidgetContainer.js";
 import { WidgetRuntime } from "../../widgets/runtime.js";
 import { resolveDynamicCapabilityWidgets } from "../../lib/adaptiveLayout.js";
 import { evaluateWidgetApplicability } from "../../widgets/applicability.js";
@@ -249,7 +250,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     });
 
     tileRefs.current.forEach((el, id) => {
-      if (evaluateWidgetApplicability(id, activeResult?.query, activeResult).applicable) {
+      if (activeKeys.includes(id as any)) {
         ro.observe(el);
       }
     });
@@ -259,7 +260,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [activeKeys, activeResult]);
+  }, [activeKeys]);
 
   // 2. 小组件排版 Agent 排版决策
   const layoutDecision = strategy.layoutAgentDecision;
@@ -503,15 +504,17 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     const rawItems = muuriTileInputs.map((input) => {
       const isExpanded = expandedTileIds.has(input.id);
       const measuredH = contentHeights[input.id] || 0;
-      const isOverflowing = measuredH > 4 * TILE_ROW_UNIT_PX;
-      const maxAllowedHeightPx = (isExpanded ? 6 : 4) * TILE_ROW_UNIT_PX;
+      const defaultMaxHeightPx = 4 * DEFAULT_ROW_UNIT_PX; // 480px (4个基准行高单位)
+      const expandedMaxHeightPx = 6 * DEFAULT_ROW_UNIT_PX; // 720px (6个基准行高单位)
+      const isOverflowing = measuredH > defaultMaxHeightPx;
+      const maxAllowedHeightPx = isExpanded ? expandedMaxHeightPx : defaultMaxHeightPx;
 
       return {
         id: input.id,
         size: input.size,
         priority: input.priority,
         node: (
-          <div className="relative group flex flex-col min-w-0 transition-all rounded-2xl md:rounded-3xl h-auto shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
+          <div className="relative group flex flex-col min-w-0 transition-shadow transition-colors rounded-2xl md:rounded-3xl h-auto shadow-sm hover:shadow-md border border-border/40 bg-card overflow-hidden">
             {/* 拖拽排序把手 */}
             {muuriDragEnabled && !isLayoutLocked && (
               <div
@@ -583,7 +586,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
                 }
               }}
               data-tile-measure-id={input.id}
-              style={{ maxHeight: `${maxAllowedHeightPx}px` }}
+              style={isOverflowing ? { maxHeight: `${maxAllowedHeightPx}px` } : undefined}
               className={`w-full h-auto flex flex-col flex-none ${isOverflowing ? "overflow-y-auto overscroll-contain" : ""}`}
             >
               {renderTileContentById(input.id, input.size)}
@@ -615,7 +618,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500/80 animate-pulse" />
           <span>12 栅格自适应磁贴桌面</span>
           <span className="text-[11px] text-muted-foreground/60">
-            ({activeColumns} 列模式 · 行基准 {TILE_ROW_UNIT_PX}px)
+            ({activeColumns} 列模式)
           </span>
         </div>
         <div className="flex items-center gap-2">

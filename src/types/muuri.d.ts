@@ -70,8 +70,8 @@ declare module "muuri" {
     layout(instant?: boolean, callback?: (items: Item[]) => void): this;
     getItems(): Item[];
     refreshItems(items?: Item[] | HTMLElement[]): this;
-    reloadItems(): this;
     synchronize(): this;
+    sort(comparer: ((a: Item, b: Item) => number) | string | any[], options?: { layout?: boolean | "instant" | Function }): this;
     destroy(removeElements?: boolean): this;
     on(event: string, handler: Function): this;
     off(event: string, handler: Function): this;
