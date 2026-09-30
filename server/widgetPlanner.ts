@@ -1,4 +1,5 @@
 import { MANIFEST_BY_ID, WIDGET_MANIFESTS } from "../src/widgets/manifests/index.js";
+import { GENERATED_EXTENSION_CATALOG } from "../src/widgets/registry/generatedCatalog.js";
 import type {
   ResultWidgetKey,
   WidgetPlan,
@@ -10,10 +11,12 @@ import type { TileWidth } from "../src/lib/tileLayoutEngine.js";
 
 /**
  * 具有对应 Manifest 与渲染模块的白名单集合
+ * 涵盖静态清单与已通过校验的扩展小组件目录
  */
-export const RENDERABLE_WIDGET_IDS = new Set<string>(
-  WIDGET_MANIFESTS.map(m => m.id)
-);
+export const RENDERABLE_WIDGET_IDS = new Set<string>([
+  ...WIDGET_MANIFESTS.map(m => m.id),
+  ...GENERATED_EXTENSION_CATALOG.map(e => e.id)
+]);
 
 /**
  * 判断某个小组件类型是否具备合法 Manifest 与渲染实现
@@ -136,7 +139,8 @@ export function buildWidgetPlan(
 
   const plannedItems: WidgetPlannedItem[] = validTypes.map(type => {
     const meta = MANIFEST_BY_ID[type];
-    const defaultWidth = (meta?.grid?.width || 50) as TileWidth;
+    const catalogEntry = GENERATED_EXTENSION_CATALOG.find(e => e.id === type);
+    const defaultWidth = (meta?.grid?.width || catalogEntry?.layout?.defaultWidth || 50) as TileWidth;
     return {
       type: type as ResultWidgetKey,
       priority: type === "ai_answer" ? 100 : 80,

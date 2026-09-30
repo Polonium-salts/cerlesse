@@ -285,6 +285,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
 
       const planned = plannedMap.get(key);
       const module = resolveWidgetModule(keyStr);
+      if (!module) continue;
       const isEmphasized = key === agentFocusKey || key === strategy.layoutPlan?.featured;
       const priority = (planned?.priority ?? 50) + (isEmphasized ? 30 : 0);
 

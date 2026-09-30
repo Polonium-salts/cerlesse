@@ -320,34 +320,41 @@ export type WidgetSchemaNode =
 
 ## 六、小组件业务原型 (Archetypes) 与官方库
 
-### 1. 已实现并注册的官方小组件
+### 1. 已实现并注册的官方小组件库
 
-以下 3 款已具备完整的 `manifests/*.json` 清单与 `modules/*.tsx` 渲染模块，可被 Agent 编排上桌：
+系统中所有小组件已通过 **统一扩展 SDK (`src/widgets/extensions/`)** 与 **清单驱动架构 (`src/widgets/manifests/`)** 完整实现，每个小组件均具备独立的 `manifest.ts`、`adapter.ts`、`widget.tsx` 与类型契约，在启动期由 `scripts/widgets/generate.ts` 与 `generatedRegistry.ts` 静态注册并挂载到注册中心（Extension Registry）：
 
 | 组件 ID | 业务原型 | 核心标签 (Tags) | 默认宽度 (`grid.width`) | 核心功能与亮点 |
 | :--- | :--- | :--- | :--- | :--- |
-| `related_links` | `portal` | 官网导航, 官方入口, 多链接直达 | `25`（3 格窄栏） | 提炼官方网站及子频道，提供安全跳转卡片，默认置顶 |
-| `ai_answer` | `synthesis` | AI回答, 深度推理, 核心结论 | `50`（6 格半宽） | 结构化多源提炼、Markdown 高亮、智能追问拓展 |
-| `takeaways` | `synthesis` | 核心要点, 提炼速记 | `25`（3 格窄栏） | 结构化核心要点小清单，支持逐条勾选并本地记忆进度 |
+| `ai_answer` | `synthesis` | AI回答, 深度推理, 核心结论 | `100` / `50` | 结构化多源提炼、Markdown 高亮、长文自适应提升至 75% |
+| `sources` | `analysis` | 权威信源, 引文存证, 交叉校验 | `50`（6 格半宽） | 全网信源引文出处、域名权重、时间戳与存证溯源卡片 |
+| `related_links` | `portal` | 官网导航, 官方入口, 多链接直达 | `50` / `25` | 提炼官方网站及子频道，提供安全直达与导航推荐，默认常驻 |
+| `takeaways` | `synthesis` | 核心要点, 提炼速记 | `50` / `25` | 结构化核心要点速览清单，支持逐条勾选并本地存储记忆 |
+| `comparison` | `analysis` | 对比矩阵, 横向评测, 优劣分析 | `75`（9 格宽） | 多维横向对比矩阵、参数 PK 与多方案决策对比表格 |
+| `mindmap` | `synthesis` | 知识导图, 拓扑架构, 逻辑树 | `75`（9 格宽） | 层级知识树、系统拓扑与全景架构导图，支持全屏联动 |
+| `troubleshooting`| `action` | 排错诊断, 故障排查, 解决方案 | `75`（9 格宽） | 错误原因定位、修复步骤与排错解决方案 |
+| `verification_checklist` | `action` | 校验清单, 依赖检查, 前置条件 | `50`（6 格半宽） | 信源交叉核验清单与环境检查，支持交互勾选与验证存证 |
+| `actions_toolbox`| `action` | 快捷工具, CLI 命令, 操作执行 | `50`（6 格半宽） | 一键运行 CLI、命令复制、环境安装与实用工具链 |
+| `image_gallery` | `portal` | 图片矩阵, 视觉呈现, 视觉信源 | `75`（9 格宽） | 检索图片高清瀑布流、大图预览与视觉溯源 |
+| `search_engine` | `portal` | 跨引擎直达, 搜索引擎, 聚合搜索 | `25`（3 格窄栏） | 跨各大搜索引擎（Google/Bing/DuckDuckGo/Baidu）一键直达 |
+| `token_usage` | `analysis` | Token统计, 耗时监控, 成本分析 | `25`（3 格窄栏） | 检索与生成过程的实时 Token 消耗、延时指标与历史趋势统计 |
+| `weather` | `portal` | 实时天气, 气温预报, 空气质量 | `50`（6 格半宽） | 目标城市实时气象、逐小时趋势与多日预报 |
+| `translation` | `portal` | 文本翻译, 双语释义, 词典例句 | `50`（6 格半宽） | 多语言实时翻译、音标语法、例句与生词本存储 |
+| `code_playground`| `action` | 代码试验, 在线运行, 语法高亮 | `75`（9 格宽） | 代码片段在线演练、编辑与语法高亮 |
+| `software_info` | `portal` | 软件详情, 版本架构, 安装方式 | `50`（6 格半宽） | 软件/开源项目元信息、许可证、安装命令与版本矩阵 |
+| `repository` | `analysis` | 代码仓库, Star趋势, Commit动态 | `50`（6 格半宽） | GitHub 仓库实时统计、语言分布与贡献者概览 |
+| `download` | `portal` | 资源下载, 二进制包, 镜像地址 | `50`（6 格半宽） | 官方与镜像下载通道、哈希校验码与安装指引 |
+| `trend_chart` | `analysis` | 趋势走向, 热度指数, 历时变动 | `75`（9 格宽） | 时序数据可视化图表与关键转折点标注 |
+| `custom_cards` | `custom` | 业务卡片套件, Agent锻造 | `100` / `75` | Agent 运行时动态锻造的特定领域业务卡片（由 `cardForge` 生成） |
 
-> ⚠️ **注意**：`related_links` 与 `takeaways` 的默认宽度已在四档收敛中由旧的 4 格降至 **`25`（3 格窄栏）**。
+### 2. 规划层意图裁决与容错机制 (`server/widgetPlanner.ts`)
 
-### 2. 规划层类型（尚未实现渲染模块）
+`server/widgetPlanner.ts` 与前端 `TileDesktopView` 协同遵循以下健壮性规则：
 
-`server/widgetPlanner.ts` 的类型注册表还登记了下列规划类型——它们参与 Agent 的意图评分与装箱决策，
-但**当前没有对应的渲染模块**，因此不会实际出现在桌面上。若要启用，需按第七节补全清单与模块：
-
-| 规划类型 | 默认宽度 | 说明 |
-| :--- | :--- | :--- |
-| `official_portal` | `50` | 官网直达（规划层入口，实际渲染由 `related_links` 承担） |
-| `comparison` | `100` | 多维横向对比表格与指标 PK |
-| `mindmap` | `75` | 层级知识树、系统拓扑与架构导图 |
-| `sources` | `50` | 全网信源引文出处与存证溯源 |
-| `topic_digest` | `75` | 多维度深挖解读与延伸技术点 |
-| `analytics_trend` | `50` | 信源热度、时间趋势与情感分布统计 |
-| `actions_toolbox` | `50` | 一键运行 CLI、命令复制与代码片段 |
-| `verification_checklist` | `75` | 前置依赖检查与故障排查清单 |
-| `custom_cards` | `100` / `75` | Agent 动态锻造的业务卡片套件（由 `cardForge` 生成） |
+1. **统一白名单过滤 (`RENDERABLE_WIDGET_IDS`)**：自动将所有已注册官方小组件与扩展 Catalog 纳入合法白名单，杜绝未定义类型。
+2. **意图降级兜底**：若 Agent 提议的组件类型暂未注册，若其具有较强解答/摘要属性，自动优雅降级映射为 `ai_answer`，绝不输出空白桌面。
+3. **空模块剔除防幽灵磁贴**：前端渲染层在磁贴装箱前校验模块有效性，未注册模块直接跳过，防止占用网格空间形成白块。
+4. **统一适用性网关 (`Unified Applicability Gate`)**：`evaluateWidgetApplicability` 结合信源质量与意图类型对组件做前置放行与拦截（如纯文本搜索拦截无信源的图片或天气组件），避免无效组件渲染。
 
 ---
 
