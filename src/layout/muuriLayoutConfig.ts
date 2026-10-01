@@ -6,8 +6,8 @@ export interface MuuriCrossLayoutOptions {
 }
 
 /** Muuri's native fillGaps packing is the canonical cross-interleaving algorithm. */
-export function getMuuriCrossLayoutOptions(fillGaps = true): MuuriCrossLayoutOptions {
-  return { fillGaps, rounding: false };
+export function getMuuriCrossLayoutOptions(fillGaps = true, rounding = false): MuuriCrossLayoutOptions {
+  return { fillGaps, rounding };
 }
 
 /** Match the desktop's canonical spans while keeping tablet/mobile cards readable. */

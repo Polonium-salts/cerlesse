@@ -56,11 +56,32 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
   const prevContainerWidthRef = useRef<number>(0);
   // 记录子卡片尺寸，过滤无实质变化的亚像素抖动
   const itemDimensionsRef = useRef<WeakMap<HTMLElement, { w: number; h: number }>>(new WeakMap());
-  // 布局防抖计时器
+  // 布局防抖计时器与 rAF 句柄
   const layoutDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const prevItemsSigRef = useRef<string>("");
+
+  // 统一的重排通道：合并同一帧内的多次重排请求，统一使用平滑动画，决不用 layout(true) 强制打断动画导致抽搐
+  const scheduleLayout = useCallback((_reason?: string, instant = false) => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const grid = gridInstanceRef.current;
+      if (!grid || isDraggingRef.current) return;
+      try {
+        grid.refreshItems();
+        grid.layout(instant);
+      } catch (e) {
+        console.warn("Muuri layout execution notice:", e);
+      }
+    });
+  }, []);
 
   // 同步 React DOM 节点与 Muuri 内部 item 列表并触发布局
-  const syncAndLayout = useCallback((instant = false) => {
+  const syncAndLayout = useCallback(() => {
     const grid = gridInstanceRef.current;
     const container = containerRef.current;
     if (!grid || !container) return;
@@ -77,33 +98,50 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
       });
       if (itemsToRemove.length > 0) {
         grid.remove(itemsToRemove, { removeElements: false, layout: false });
+        if (roRef.current) {
+          itemsToRemove.forEach(item => {
+            const el = item.getElement();
+            if (el) roRef.current?.unobserve(el);
+          });
+        }
       }
 
-      // 2. 将 React 新增渲染的 DOM 节点交由 Muuri 托管
+      // 2. 将 React 新增渲染的 DOM 节点交由 Muuri 托管并加入 RO 监听
       const trackedElements = new Set(grid.getItems().map(it => it.getElement()).filter(Boolean));
       const elementsToAdd = domElements.filter(el => !trackedElements.has(el));
       if (elementsToAdd.length > 0) {
         grid.add(elementsToAdd, { layout: false });
+        if (roRef.current) {
+          elementsToAdd.forEach(el => {
+            roRef.current?.observe(el);
+            // 预置初始 border-box 尺寸，避免首次 RO 回调误报尺寸变化
+            itemDimensionsRef.current.set(el, {
+              w: Math.round(el.offsetWidth),
+              h: Math.round(el.offsetHeight)
+            });
+          });
+        }
       }
 
-      // 3. 按照 items 的当前 DOM 顺序排列内部索引
-      const orderMap = new Map<HTMLElement, number>();
-      domElements.forEach((el, index) => orderMap.set(el, index));
+      // 3. 按照 items 的确定 ID 序列排列内部索引（彻底避免受 DOM 查询次序扰动）
+      const itemIdOrder = new Map<string, number>();
+      items.forEach((item, index) => itemIdOrder.set(item.id, index));
       grid.sort((a, b) => {
         const elA = a.getElement();
         const elB = b.getElement();
-        const idxA = elA && orderMap.has(elA) ? (orderMap.get(elA) as number) : 9999;
-        const idxB = elB && orderMap.has(elB) ? (orderMap.get(elB) as number) : 9999;
+        const idA = elA?.getAttribute("data-muuri-id") || "";
+        const idB = elB?.getAttribute("data-muuri-id") || "";
+        const idxA = itemIdOrder.has(idA) ? (itemIdOrder.get(idA) as number) : 9999;
+        const idxB = itemIdOrder.has(idB) ? (itemIdOrder.get(idB) as number) : 9999;
         return idxA - idxB;
       }, { layout: false });
 
-      // 4. 刷新卡片外形尺寸并触发布局
-      grid.refreshItems();
-      grid.layout(instant);
+      // 4. 统一走 scheduleLayout 进行带平滑动画的排版
+      scheduleLayout("sync");
     } catch (e) {
       console.warn("Muuri layout sync error:", e);
     }
-  }, []);
+  }, [items, scheduleLayout]);
 
   // 初始化 Muuri 网格
   useEffect(() => {
@@ -132,7 +170,8 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
         layout: getMuuriCrossLayoutOptions(fillGaps),
         layoutDuration: 250,
         layoutEasing: "ease-out",
-        layoutOnResize: 100,
+        // 由外层 ResizeObserver 统一接管容器宽度监听，关闭 Muuri 自身内部重复的 window.resize 监听
+        layoutOnResize: false,
         dragRelease: {
           duration: 250,
           easing: "ease-out",
@@ -172,6 +211,10 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
       }
 
       return () => {
+        if (rafRef.current !== null) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
         grid.destroy();
         gridInstanceRef.current = null;
         isDraggingRef.current = false;
@@ -181,18 +224,18 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
     }
   }, [fillGaps, dragEnabled, dragHandle, dragSortAction]);
 
-  // 当 items 列表发生变化时，延迟一帧等 DOM 提交后同步并布局
+  // 当 items 列表发生真实增减或尺寸变化时，才调用增量同步
   useEffect(() => {
     if (!gridInstanceRef.current || !isReady) return;
-
-    const rafId = requestAnimationFrame(() => {
-      syncAndLayout(false);
-    });
-
-    return () => cancelAnimationFrame(rafId);
+    const currentSig = items.map(it => `${it.id}:${it.size}`).join(",");
+    if (currentSig === prevItemsSigRef.current) {
+      return; // 磁贴 ID 序列与栅格尺寸未改变，无需重新排版与触发动画
+    }
+    prevItemsSigRef.current = currentSig;
+    syncAndLayout();
   }, [items, isReady, syncAndLayout]);
 
-  // 监听容器宽度与卡片物理尺寸变化（防抖处理，杜绝无限回环抽搐）
+  // 监听容器宽度与卡片物理尺寸变化（仅在 isReady 时挂载一次，不随 items 频繁重建）
   useEffect(() => {
     if (!containerRef.current || !gridInstanceRef.current || typeof ResizeObserver === "undefined") return;
 
@@ -200,53 +243,52 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
       if (isDraggingRef.current || !gridInstanceRef.current) return;
 
       let hasActualResize = false;
-      let isContainerResize = false;
 
       for (const entry of entries) {
         const target = entry.target as HTMLElement;
 
-        // 如果是外部容器尺寸变动：只在容器「宽度」发生实质变化（如窗口缩放/侧边栏展开）时重排，
-        // 坚决忽略「高度」变化，因为 Muuri 自己设置高度会改变容器 height，监听高度会导致无限触发
+        // 如果是外部容器尺寸变动：只在容器「宽度」发生实质断点变化（如窗口缩放/侧边栏展开）时重排，
+        // 阈值提高至 18px，坚决过滤滚动条隐现产生的 15-17px 突变
         if (target === containerRef.current) {
           const newWidth = Math.round(entry.contentRect.width);
-          if (newWidth > 0 && Math.abs(newWidth - prevContainerWidthRef.current) >= 3) {
+          if (newWidth > 0 && Math.abs(newWidth - prevContainerWidthRef.current) >= 18) {
             prevContainerWidthRef.current = newWidth;
             hasActualResize = true;
-            isContainerResize = true;
           }
           continue;
         }
 
-        // 如果是子卡片：检查宽度或高度是否发生实质变化（超过 3px 阈值过滤亚像素抖动）
-        const newW = Math.round(entry.contentRect.width);
-        const newH = Math.round(entry.contentRect.height);
+        // 如果是子卡片：其宽度由 CSS 百分比严格锁定，只检测内容自然「高度」变化（如异步加载图片、流式文本渲染）
+        const box = entry.borderBoxSize?.[0];
+        const newH = Math.round(box ? box.blockSize : target.offsetHeight);
         const prev = itemDimensionsRef.current.get(target);
 
-        if (!prev || Math.abs(prev.w - newW) >= 3 || Math.abs(prev.h - newH) >= 3) {
-          itemDimensionsRef.current.set(target, { w: newW, h: newH });
+        // 首次见到的元素只记录基准尺寸，不触发重排（因为 syncAndLayout 已经完成初次排版）
+        if (!prev) {
+          itemDimensionsRef.current.set(target, { w: Math.round(target.offsetWidth), h: newH });
+          continue;
+        }
+
+        // 仅在卡片内部高度实质变化超过 6px 阈值时触发重排
+        if (Math.abs(prev.h - newH) >= 6) {
+          itemDimensionsRef.current.set(target, { w: Math.round(target.offsetWidth), h: newH });
           hasActualResize = true;
         }
       }
 
       if (!hasActualResize) return;
 
-      // 防抖合并布局请求：流式内容生成或图片加载时平滑重排，避免一帧内多次重复运算
+      // 防抖合并布局请求：流式内容生成或图片加载时平滑重排，延时 150ms 避免中途打断 250ms 动画
       if (layoutDebounceTimerRef.current) {
         clearTimeout(layoutDebounceTimerRef.current);
       }
 
       layoutDebounceTimerRef.current = setTimeout(() => {
-        if (!gridInstanceRef.current || isDraggingRef.current) return;
-        try {
-          gridInstanceRef.current.refreshItems();
-          // 如果是卡片内部流式微动，使用瞬间/快速对齐避免动画抽搐；如果是容器宽度变化使用动画过渡
-          gridInstanceRef.current.layout(isContainerResize ? false : true);
-        } catch (e) {
-          console.warn("Muuri layout resize notice:", e);
-        }
-      }, 60);
+        scheduleLayout("resizeObserver");
+      }, 150);
     });
 
+    roRef.current = ro;
     ro.observe(containerRef.current);
     prevContainerWidthRef.current = Math.round(containerRef.current.clientWidth);
 
@@ -261,11 +303,12 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
 
     return () => {
       ro.disconnect();
+      roRef.current = null;
       if (layoutDebounceTimerRef.current) {
         clearTimeout(layoutDebounceTimerRef.current);
       }
     };
-  }, [items, isReady]);
+  }, [isReady, scheduleLayout]);
 
   // Muuri 的 fillGaps 以真实 CSS item box 排列，宽度随当前断点变为确定百分比值。
   const getItemWidth = (size: TileWidth) => `${getMuuriItemWidthPercent(size, totalColumns)}%`;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Trash2,
@@ -82,11 +82,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   // 容器物理宽度监听
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(1280);
-
-  // 规则：一次性显示所有内容无需手动向下滑动查看隐藏内容
-  // 测量并存储每个小组件完整展示所需要的自然高度
-  const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
-  const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   // 注册中心补全版本号
   const [registryRevision] = useState(0);
@@ -198,70 +193,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     return uniqueKeys;
   }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, activeResult, widgetPlan]);
 
-
-  // 4.6 防抖动的高度测量：120ms 防抖 + requestAnimationFrame 合并 + 量化 rowSpan 迟滞过滤
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rafIdRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (typeof ResizeObserver === "undefined") return;
-
-    const ro = new ResizeObserver((entries) => {
-      const updates: Record<string, number> = {};
-
-      for (const entry of entries) {
-        const target = entry.target as HTMLElement;
-        const id = target.getAttribute("data-tile-measure-id");
-        if (!id) continue;
-
-        // 获取组件内容的自然真实高度（含背面最大值）
-        const scrollH = target.scrollHeight;
-        const offsetH = target.offsetHeight;
-        const naturalH = Math.ceil(Math.max(scrollH, offsetH));
-
-        if (naturalH > 0 && naturalH < 2400) {
-          updates[id] = naturalH;
-        }
-      }
-
-      if (Object.keys(updates).length === 0) return;
-
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = setTimeout(() => {
-        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = requestAnimationFrame(() => {
-          setContentHeights((prev) => {
-            let hasDiff = false;
-            const next = { ...prev };
-            for (const [id, h] of Object.entries(updates)) {
-              const oldH = prev[id] || 0;
-              // 迟滞：仅当量化后的 rowSpan 单位发生变化才触发重排
-              const oldRows = Math.ceil(oldH / TILE_ROW_UNIT_PX);
-              const newRows = Math.ceil(h / TILE_ROW_UNIT_PX);
-              if (oldRows !== newRows || Math.abs(oldH - h) >= TILE_ROW_UNIT_PX) {
-                next[id] = h;
-                hasDiff = true;
-              }
-            }
-            return hasDiff ? next : prev;
-          });
-        });
-      }, 120);
-    });
-
-    tileRefs.current.forEach((el, id) => {
-      if (activeKeys.includes(id as any)) {
-        ro.observe(el);
-      }
-    });
-
-    return () => {
-      ro.disconnect();
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-    };
-  }, [activeKeys]);
-
   // 2. 小组件排版 Agent 排版决策
   const layoutDecision = strategy.layoutAgentDecision;
   const agentSpans = useMemo<Partial<Record<string, number>>>(() => {
@@ -310,8 +241,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         }
       }
 
-      const measuredHeight = contentHeights[keyStr];
-
       // 首帧高度预估（若小组件提供了 estimateItemCount 且配置了 itemHeightPx，在实测值到达前作为占位高度）
       let estimatedHeightPx: number | undefined;
       const itemHeightConfig = MANIFEST_ITEM_HEIGHTS[keyStr];
@@ -338,7 +267,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         preferredSide: userSides[keyStr],
         priority,
         isEmphasized,
-        contentHeightPx: measuredHeight,
         estimatedHeightPx,
         minSpan: keyStr === "image_gallery" ? spanOfTileWidth(75, activeColumns) : minSpanFor(keyStr, size)
       });
@@ -354,8 +282,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     hiddenTileIds,
     userOverrides,
     userSides,
-    activeColumns,
-    contentHeights
+    activeColumns
   ]);
 
 
@@ -421,12 +348,42 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   const [customMuuriOrder, setCustomMuuriOrder] = useState<string[]>([]);
 
   // 拖拽排序后更新顺序
-  const handleMuuriOrderChange = (newOrder: string[]) => {
+  const handleMuuriOrderChange = useCallback((newOrder: string[]) => {
     setCustomMuuriOrder(newOrder);
-  };
+  }, []);
+
+  // 保持对父级回调与活跃查询的最新引用，避免父组件重新渲染时破坏卡片内部 memo
+  const onNavigateTabRef = useRef(onNavigateTab);
+  onNavigateTabRef.current = onNavigateTab;
+  const onExecuteSearchRef = useRef(onExecuteSearch);
+  onExecuteSearchRef.current = onExecuteSearch;
+  const activeQueryRef = useRef(activeResult?.query || "");
+  activeQueryRef.current = activeResult?.query || "";
+
+  // 按模块 ID 缓存 boundModule，确保 actions 引用稳定，避免触发下游 WidgetRuntime 内部重复解析
+  const boundModulesCache = useRef<Map<string, { baseModule: any; boundModule: any }>>(new Map());
+
+  const getBoundModule = useCallback((widgetModule: any) => {
+    if (!widgetModule) return null;
+    const cached = boundModulesCache.current.get(widgetModule.id);
+    if (cached && cached.baseModule === widgetModule) {
+      return cached.boundModule;
+    }
+    const bound = {
+      ...widgetModule,
+      actions: {
+        ...(widgetModule.actions || {}),
+        openMindMap: () => onNavigateTabRef.current?.("mindmap"),
+        openComparison: () => onNavigateTabRef.current?.("comparison"),
+        reSearch: () => onExecuteSearchRef.current?.(activeQueryRef.current, true)
+      }
+    };
+    boundModulesCache.current.set(widgetModule.id, { baseModule: widgetModule, boundModule: bound });
+    return bound;
+  }, []);
 
   // 处理用户手动调整尺寸
-  const handleTileResize = (id: string, nextSize: TileWidth) => {
+  const handleTileResize = useCallback((id: string, nextSize: TileWidth) => {
     setUserOverrides((prev) => {
       const next = { ...prev, [id]: { size: nextSize } };
       try {
@@ -436,7 +393,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       }
       return next;
     });
-  };
+  }, []);
 
   // 渲染单个磁贴内容
   const renderTileContentById = (id: string, size: TileWidth) => {
@@ -461,16 +418,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       return null;
     }
 
-
-    const boundModule = {
-      ...widgetModule,
-      actions: {
-        ...(widgetModule.actions || {}),
-        openMindMap: () => onNavigateTab?.("mindmap"),
-        openComparison: () => onNavigateTab?.("comparison"),
-        reSearch: () => onExecuteSearch?.(activeResult.query, true)
-      }
-    };
+    const boundModule = getBoundModule(widgetModule);
 
     return (
       <WidgetRuntime
@@ -480,7 +428,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         size={size}
         isCompact={size === 25}
         onResize={(nextSize) => handleTileResize(id, nextSize)}
-        onExecuteSearch={onExecuteSearch}
+        onExecuteSearch={onExecuteSearchRef.current}
       />
     );
   };
@@ -499,16 +447,9 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     setIsLayoutLocked(prev => !prev);
   };
 
-  // Muuri 磁贴项列表 (带拖拽手柄、展开收起与卡片内容包装)
+  // Muuri 磁贴项列表 (带拖拽手柄与卡片内容包装)
   const muuriItems: MuuriWidgetItem[] = useMemo(() => {
     const rawItems = muuriTileInputs.map((input) => {
-      const isExpanded = expandedTileIds.has(input.id);
-      const measuredH = contentHeights[input.id] || 0;
-      const defaultMaxHeightPx = 4 * DEFAULT_ROW_UNIT_PX; // 480px (4个基准行高单位)
-      const expandedMaxHeightPx = 6 * DEFAULT_ROW_UNIT_PX; // 720px (6个基准行高单位)
-      const isOverflowing = measuredH > defaultMaxHeightPx;
-      const maxAllowedHeightPx = isExpanded ? expandedMaxHeightPx : defaultMaxHeightPx;
-
       return {
         id: input.id,
         size: input.size,
@@ -523,27 +464,6 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
               >
                 <GripVertical className="w-3.5 h-3.5" />
               </div>
-            )}
-
-            {/* 展开/收起把手 (超过 4 个 row 单位即 480px 时提供) */}
-            {isOverflowing && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setExpandedTileIds(prev => {
-                    const next = new Set(prev);
-                    if (next.has(input.id)) next.delete(input.id);
-                    else next.add(input.id);
-                    return next;
-                  });
-                }}
-                title={isExpanded ? "收起磁贴" : "展开至 6 单位高度"}
-                className="absolute top-2.5 right-17 z-30 opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 backdrop-blur-sm border border-border/70 text-muted-foreground hover:text-foreground rounded-xl shadow-xs"
-              >
-                {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              </Button>
             )}
 
             {/* 75% 与 25% 互补磁贴左右排位切换把手 */}
@@ -576,19 +496,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
 
-            {/* 磁贴视图内容：4.2 行高量化与内部滚动 */}
-            <div
-              ref={(el) => {
-                if (el) {
-                  tileRefs.current.set(input.id, el);
-                } else {
-                  tileRefs.current.delete(input.id);
-                }
-              }}
-              data-tile-measure-id={input.id}
-              style={isOverflowing ? { maxHeight: `${maxAllowedHeightPx}px` } : undefined}
-              className={`w-full h-auto flex flex-col flex-none ${isOverflowing ? "overflow-y-auto overscroll-contain" : ""}`}
-            >
+            {/* 磁贴视图内容 */}
+            <div className="w-full h-auto flex flex-col flex-none">
               {renderTileContentById(input.id, input.size)}
             </div>
           </div>
@@ -608,7 +517,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     }
 
     return rawItems;
-  }, [muuriTileInputs, activeResult, customMuuriOrder, muuriDragEnabled, isLayoutLocked, expandedTileIds, contentHeights, onNavigateTab, onExecuteSearch]);
+  }, [muuriTileInputs, activeResult, customMuuriOrder, muuriDragEnabled, isLayoutLocked, getBoundModule, handleTileResize]);
 
   return (
     <div className="w-full">
@@ -735,17 +644,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
                   </Button>
 
                   {/* 磁贴实际视图渲染 */}
-                  <div
-                    ref={(el) => {
-                      if (el) {
-                        tileRefs.current.set(item.id, el);
-                      } else {
-                        tileRefs.current.delete(item.id);
-                      }
-                    }}
-                    data-tile-measure-id={item.id}
-                    className="w-full h-auto flex flex-col flex-none"
-                  >
+                  <div className="w-full h-auto flex flex-col flex-none">
                     {renderTileContentById(item.id, item.size)}
                   </div>
                 </motion.div>

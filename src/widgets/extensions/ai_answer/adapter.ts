@@ -8,15 +8,9 @@ export const aiAnswerAdapter: WidgetAdapter<SearchSynthesisResult, AiAnswerData>
   },
 
   transform(query: string, result?: SearchSynthesisResult): AiAnswerData {
-    const inputChars = result?.summary?.length || 0;
-    const outputSummary = result?.summary || "";
-    if (typeof console !== "undefined") {
-      console.log(`[PipelineMetrics][DataPipeline] inputSummaryChars=${inputChars}, outputSummaryChars=${outputSummary.length}, droppedChars=0 (100% preserved)`);
-    }
-
     return {
       query: query || result?.query || "",
-      summary: outputSummary,
+      summary: result?.summary || "",
       activeResult: result
     };
   },

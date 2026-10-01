@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+
   /* 所有 HSL 变量的饱和度一律为 0% —— 单色约束的底层保证。
      原值中的品牌蓝、品牌红等色相全部收敛为中性灰，
      并交由明度承担原"主色 / 危险色"的层级区分。 */
@@ -255,7 +260,7 @@ body {
 
 .muuri-item-content {
   width: 100%;
-  height: 100%;
+  height: auto;
   position: relative;
 }
 
