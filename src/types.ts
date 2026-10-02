@@ -337,6 +337,7 @@ export type OfficialWidgetId =
   | "actions_toolbox"
   | "verification_checklist"
   | "software_info"
+  | "company_info"
   | "download"
   | "release_history"
   | "repository"
@@ -373,6 +374,7 @@ export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "actions_toolbox",
   "verification_checklist",
   "software_info",
+  "company_info",
   "download",
   "release_history",
   "repository",

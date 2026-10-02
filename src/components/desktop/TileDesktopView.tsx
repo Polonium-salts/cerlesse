@@ -209,6 +209,12 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     if (uniqueKeys.includes("ai_answer")) {
       sortedKeys.push("ai_answer");
     }
+    if (uniqueKeys.includes("image_gallery")) {
+      sortedKeys.push("image_gallery");
+      if (uniqueKeys.includes("company_info")) {
+        sortedKeys.push("company_info");
+      }
+    }
     for (const k of uniqueKeys) {
       if (!sortedKeys.includes(k)) {
         sortedKeys.push(k);
@@ -258,12 +264,13 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         size = 50;
       }
 
-      // 4 个顶部小比例组件 (widget_navigator, token_usage, takeaways, search_engine) 固定为 25% 宽度 (3 栅格)
+      // 4 个顶部小比例组件及企业概况卡 (widget_navigator, token_usage, takeaways, search_engine, company_info) 固定为 25% 宽度 (3 栅格)
       if (
         (keyStr === "widget_navigator" ||
           keyStr === "token_usage" ||
           keyStr === "takeaways" ||
-          keyStr === "search_engine") &&
+          keyStr === "search_engine" ||
+          keyStr === "company_info") &&
         !userOverriddenSize
       ) {
         size = 25;

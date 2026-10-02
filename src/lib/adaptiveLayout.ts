@@ -242,6 +242,11 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     intentFit: ["install", "tool_discovery", "code_tutorial", "deep_research"],
     isActionOriented: false
   },
+  company_info: {
+    capabilities: ["company_info", "entity_profile", "overview_synthesis", "concept_definition", "official_site", "authoritative_entry"],
+    intentFit: ["official_portal", "quick_definition", "deep_research", "balanced"],
+    isActionOriented: false
+  },
   download: {
     capabilities: ["download", "releases", "release_binary", "install_command", "package_manager", "official_site"],
     intentFit: ["install", "tool_discovery"],
@@ -460,6 +465,15 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     width: 50,
     minWidth: 25,
     basePriority: 24,
+    category: "primary"
+  },
+  company_info: {
+    id: "company_info",
+    label: "公司信息",
+    iconName: "Building2",
+    width: 25,
+    minWidth: 25,
+    basePriority: 25,
     category: "primary"
   },
   download: {
@@ -1185,6 +1199,7 @@ export function calculateAdaptiveBinPacking(
 
   const getItemSpan = (key: ResultWidgetKey): number => {
     if (key === "image_gallery") return 9; // 严格固定为 9 格 (75%)
+    if (key === "company_info") return 3; // 严格固定为 3 格 (25%)，与 image_gallery 互补同一行
     if (key === "related_links" || key === "sources") return 6; // 严格固定为 6 格 (50% / 2格)
     const custom = options.customSpans?.[key];
     return normalizeWidgetSpan(

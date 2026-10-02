@@ -1,0 +1,97 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "company_info",
+  "name": "公司信息",
+  "version": "1.0.0",
+  "description": "智能呈现企业与公司全景信息卡片，包含企业全称、总部园区实况照片、业务概览详述及维基百科权威溯源直达",
+  "presence": "conditional",
+  "category": "synthesis",
+  "tags": [
+    "公司",
+    "企业",
+    "科技公司",
+    "跨国公司",
+    "维基百科",
+    "谷歌",
+    "商业实体",
+    "企业概况"
+  ],
+  "agentHint": {
+    "functionality": "结构化展示企业全景信息卡片，包含大标题公司名称、总部实景照片、权威详实的业务与发展综述段落，以及维基百科溯源跳转通道",
+    "bestFor": [
+      "用户搜索具体公司、企业实体、知名跨国科技巨头（如谷歌、微软、苹果、腾讯等）",
+      "企业概况、公司简介、总部位置、商业与行业领域查询",
+      "结合图片与维基百科权威事实的全景企业认知"
+    ],
+    "dataRequirements": [
+      "检索内容指向明确的公司或商业组织实体",
+      "包含企业核心概览与维基百科/官方信源"
+    ],
+    "selectionHeuristics": "当搜索词或检索信源涉及具体公司名称或企业实体时，由 AI 自动高优先级选型装配。",
+    "triggerKeywords": [
+      "公司",
+      "企业",
+      "集团",
+      "科技公司",
+      "跨国公司",
+      "总部",
+      "创始人",
+      "ceo",
+      "谷歌",
+      "google",
+      "微软",
+      "microsoft",
+      "苹果",
+      "apple",
+      "腾讯",
+      "tencent",
+      "阿里",
+      "alibaba",
+      "英伟达",
+      "nvidia",
+      "meta",
+      "特斯拉",
+      "tesla",
+      "openai",
+      "华为",
+      "huawei"
+    ]
+  },
+  "icon": "Building2",
+  "grid": {
+    "width": 25,
+    "supportedWidths": [
+      25,
+      50
+    ],
+    "ratio": "4:3",
+    "ratioMode": "flexible",
+    "itemHeightPx": 120,
+    "baseHeightPx": 60,
+    "ratioByBreakpoint": {
+      "tablet": "4:3",
+      "mobile": "1:1"
+    },
+    "minWidth": 25,
+    "height": "auto"
+  },
+  "layout": {
+    "defaultWidth": 25,
+    "minWidth": 25,
+    "maxWidth": 50,
+    "preferredRoles": [
+      "primary",
+      "secondary"
+    ],
+    "canPairWith": [
+      "image_gallery",
+      "ai_answer",
+      "related_links",
+      "sources"
+    ]
+  },
+  "theme": {
+    "accentColor": "#3b82f6",
+    "flipAnimation": "3d-flip"
+  }
+}

@@ -7,6 +7,7 @@ import Test from "../extensions/_test/index.js";
 import actionsToolbox from "../extensions/actions_toolbox/index.js";
 import aiAnswer from "../extensions/ai_answer/index.js";
 import codePlayground from "../extensions/code_playground/index.js";
+import companyInfo from "../extensions/company_info/index.js";
 import comparison from "../extensions/comparison/index.js";
 import documentPreview from "../extensions/document_preview/index.js";
 import download from "../extensions/download/index.js";
@@ -35,6 +36,7 @@ export const BUILTIN_WIDGET_EXTENSIONS: WidgetExtension<any>[] = [
   actionsToolbox,
   aiAnswer,
   codePlayground,
+  companyInfo,
   comparison,
   documentPreview,
   download,

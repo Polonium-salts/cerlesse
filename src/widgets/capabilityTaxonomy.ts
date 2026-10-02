@@ -203,7 +203,11 @@ export const CANONICAL_CAPABILITIES = [
   "text_translation",
   "bilingual_comparison",
   "pronunciation_guide",
-  "dictionary_lookup"
+  "dictionary_lookup",
+
+  // ── 商业与企业实体 ──
+  "company_info",
+  "entity_profile"
 ] as const;
 
 export type CanonicalCapability = (typeof CANONICAL_CAPABILITIES)[number];
@@ -666,7 +670,9 @@ export const CANONICAL_INTENTS = [
   "install",
   "compare",
   "tutorial",
-  "explain"
+  "explain",
+  "company_info",
+  "entity_profile"
 ] as const;
 
 export type CanonicalIntent = (typeof CANONICAL_INTENTS)[number];

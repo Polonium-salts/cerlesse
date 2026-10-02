@@ -69,6 +69,7 @@ const NEWS_INTENT_REGEX = /(新闻|资讯|热点|最新|动态|进展|发布|快
 const DOWNLOAD_INTENT_REGEX = /(下载|安装|安装包|installer|download|dmg|exe|pkg|msi|release)/i;
 const GITHUB_INTENT_REGEX = /(github|gitlab|仓库|开源项目|repo|源码|git\s*clone)/i;
 const TOOL_INTENT_REGEX = /(工具|替代品|alternative|好用|推荐工具)/i;
+const COMPANY_INTENT_REGEX = /(公司|企业|集团|科技公司|跨国公司|总部|创始人|ceo|市值|上市|有限责任公司|股份有限公司|谷歌|google|微软|microsoft|苹果|apple|腾讯|tencent|阿里|alibaba|百度|baidu|字节跳动|bytedance|英伟达|nvidia|meta|facebook|特斯拉|tesla|亚马逊|amazon|openai|华为|huawei|小米|xiaomi|比亚迪|byd|三星|samsung|网易|netease|美团|meituan|京东|jd|快手|kuaishou|拼多多|pdd|pinduoduo|uber|airbnb|netflix|奈飞|intel|英特尔|amd|tsmc|台积电|oracle|甲骨文|ibm|salesforce|adobe|sony|索尼|spacex|company|corporation|inc|llc)/i;
 
 /** 常驻锚点：由 Manifest presence='resident' 决定（ai_answer 智能速答 + sources 信源溯源存证 + image_gallery 视觉图集 + token_usage 遥测监控，不走意图打分） */
 export const RESIDENT_WIDGET_IDS = ["ai_answer", "sources", "image_gallery", "token_usage"] as const;
@@ -98,6 +99,7 @@ const INTENT_TRIGGERS: Array<{ intents: string[]; regex: RegExp }> = [
   { intents: ["tool_discovery"], regex: TOOL_INTENT_REGEX },
   { intents: ["study_tutorial"], regex: /(教程|怎么用|学习|入门|上手|tutorial|how to)/i },
   { intents: ["concept_explanation", "research"], regex: /(是什么|为什么|如何|原理|介绍|解释|含义|分析|总结)/i },
+  { intents: ["company_info", "entity_profile"], regex: COMPANY_INTENT_REGEX },
   { intents: ["general_knowledge"], regex: NEWS_INTENT_REGEX }
 ];
 
@@ -203,6 +205,11 @@ function passesEvidenceGate(
 
     case "tool_discovery":
       return TOOL_INTENT_REGEX.test(q) || matchedIntents.includes("tool_discovery");
+
+    case "company_info":
+      return COMPANY_INTENT_REGEX.test(q)
+        || matchedIntents.includes("company_info")
+        || sources.some(s => /(有限责任公司|股份有限公司|跨国科技公司|商业控股|公司总部|创立于|上市企业|母公司|集团总部|corporation|inc\.|holdings)/i.test(`${s.title || ""} ${s.snippet || ""}`));
 
     default:
       // 其余通用组件不设额外门槛，但仍需通过关键词/意图/语料评分才可入选

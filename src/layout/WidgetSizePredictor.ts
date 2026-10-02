@@ -50,6 +50,7 @@ export function inferDefaultSizeCategory(type: string): WidgetSizeCategory {
     case "image":
       return "wide"; // 75% 宽幅展示
     case "token_usage":
+    case "company_info":
     case "followup":
     case "metrics_telemetry":
     case "mobile_qr":
