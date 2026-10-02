@@ -162,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
             </Button>
 
             {isQuickConfigOpen && (
-              <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-sm sm:w-96 p-4 rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-sm sm:w-96 p-4 rounded-2xl border border-border bg-card dark:bg-zinc-900 bg-white text-card-foreground shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/10 dark:ring-white/10">
                 <div className="flex items-center justify-between pb-2 border-b border-border/60 mb-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="size-4 text-primary" />

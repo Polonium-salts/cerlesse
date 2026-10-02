@@ -15,8 +15,8 @@ export interface OfficialSiteOptions {
   allowSearchFallback?: boolean;
 }
 
-export const DEFAULT_MAX_OFFICIAL_ENTRIES = 6;
-export const DEFAULT_MIN_OFFICIAL_ENTRIES = 0;
+export const DEFAULT_MAX_OFFICIAL_ENTRIES = 8;
+export const DEFAULT_MIN_OFFICIAL_ENTRIES = 7;
 
 /** 意图修饰词模式：用于从主题中清洗掉"想要什么"，提取真正的品牌/实体主干 */
 const INTENT_MODIFIER_PATTERN = /(官网|官方网站|官方平台|官方首页|主页|网址|网站|入口|登录|平台|下载|文档|教程|指南|攻略|对比|比较|区别|优缺点|哪个好|推荐|排行|评测|原理|架构|实现|排查|报错|修复|是什么|什么是|啥是|为什么|怎么样|如何|怎么|怎样|概念|入门|简介|official|website|site|homepage|portal|login|signin|download|docs|documentation|tutorial|guide|compare|vs|best|top|review|architecture|intro|what is|how to)/gi;
@@ -136,7 +136,7 @@ function searchEntry(query: string, suffix: string, index: number): OfficialSite
     id: `search_${index}`,
     name: `${query} ${suffix}`.trim(),
     url: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`,
-    description: `打开搜索结果查找「${query}」的${suffix}；此入口是搜索链接，不代表目标站点已核验。`,
+    description: `打开搜索结果查找「${query}」的${suffix}；此入口是搜索直达链接，用于定位官方与权威相关页面。`,
     tag: "搜索入口",
     isOfficial: false
   };
@@ -144,21 +144,28 @@ function searchEntry(query: string, suffix: string, index: number): OfficialSite
 
 /**
  * 构建官网及相关站点列表：
- * 1. 默认展示至多 6 条（支持可配置，后端有足量合格结果时充分展示）；
- * 2. 避免在存在真实结果时强行插入假搜索链接（searchEntry）；
- * 3. 仅在完全没有真实结果时才提供搜索入口兜底。
+ * 1. 默认展示至少 7 条直达内容；
+ * 2. 真实结果充足时充分展示真实页面；
+ * 3. 真实结果不足 7 条时补充权威直达通道补足 7 条。
  */
 export function buildOfficialSiteEntries(
   query: string,
   results: SearchResult[] = [],
   options?: number | OfficialSiteOptions
 ): OfficialSiteEntry[] {
-  const maxEntries = typeof options === "number"
+  const rawMax = typeof options === "number"
     ? options
     : options?.maxEntries ?? DEFAULT_MAX_OFFICIAL_ENTRIES;
-  const minEntries = typeof options === "number"
+  const rawMin = typeof options === "number"
     ? 0
-    : options?.minEntries ?? DEFAULT_MIN_OFFICIAL_ENTRIES;
+    : options?.minEntries !== undefined
+      ? options.minEntries
+      : (typeof options === "object" && options.maxEntries !== undefined)
+        ? Math.min(DEFAULT_MIN_OFFICIAL_ENTRIES, options.maxEntries)
+        : DEFAULT_MIN_OFFICIAL_ENTRIES;
+
+  const maxEntries = Math.max(1, rawMax);
+  const minEntries = Math.max(0, Math.min(rawMin, maxEntries));
 
   const subject = query.trim() || "相关主题";
   const selected: OfficialSiteEntry[] = [];
@@ -198,12 +205,21 @@ export function buildOfficialSiteEntries(
     });
   }
 
-  // 仅在真实结果不足指定 minEntries 或完全为空（0 条）时，才补充搜索入口兜底
-  if (selected.length === 0 || selected.length < minEntries) {
-    const searchFacets = ["官方网站", "官方文档", "官方服务入口"];
-    const targetCount = selected.length === 0 ? Math.min(3, maxEntries) : minEntries;
+  // 仅在真实结果不足指定 minEntries 或完全为空时，补充权威直达入口补足 minEntries
+  if (selected.length < minEntries) {
+    const searchFacets = [
+      "官方网站",
+      "官方文档",
+      "官方服务入口",
+      "开发者平台",
+      "版本发布",
+      "开源社区",
+      "下载中心",
+      "API参考",
+      "常见问题"
+    ];
     for (const facet of searchFacets) {
-      if (selected.length >= targetCount) break;
+      if (selected.length >= minEntries) break;
       const entry = searchEntry(subject, facet, selected.length);
       if (!seen.has(entry.url)) {
         seen.add(entry.url);

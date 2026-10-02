@@ -2,7 +2,7 @@ import { SearchResult, SearchHitLevel } from "../../src/types.js";
 import { searchSearxng } from "../searxng.js";
 import { rankSearchPools, RankingReport } from "../retrievalRanker.js";
 
-/** 最小证据条数：低于此数视为证据不足。 */
+/** 最小证据条数基准：低于此数视为证据不足。 */
 export const MIN_EVIDENCE_COUNT = 3;
 
 export function resolveHitLevel(
@@ -48,18 +48,18 @@ export async function executeWebSearch(
   query: string,
   options: DirectSearchOptions = {}
 ): Promise<DirectSearchResult> {
+  const targetLimit = Math.max(16, options.limit ?? 16);
   const raw = await searchSearxng(query, {
     customUrl: options.customUrl,
     language: options.language,
     env: options.env,
-    resultTarget: options.limit ?? 12
-
+    resultTarget: targetLimit
   });
   const ranked = rankSearchPools([
     { source: "web_search", results: raw.results }
   ], {
     query,
-    limit: options.limit ?? 12,
+    limit: targetLimit,
     recencyWindowDays: options.recencyDays,
     allowEncyclopedia: /维基|wikipedia|百科/i.test(query),
     filters: options.domains && options.domains.length > 0
@@ -68,6 +68,18 @@ export async function executeWebSearch(
   });
 
   const report = ranked.report;
+  const finalResults: SearchResult[] = [...ranked.results];
+  if (finalResults.length < 7 && raw.results.length > 0) {
+    const seenUrls = new Set(finalResults.map((r) => r.url));
+    for (const item of raw.results) {
+      if (finalResults.length >= targetLimit) break;
+      if (!seenUrls.has(item.url) && item.title && item.url.startsWith("http")) {
+        seenUrls.add(item.url);
+        finalResults.push(item);
+      }
+    }
+  }
+
   const rankingRemoved = report.hardRejected + report.userFiltered + report.belowQualityFloor +
     report.titleLevelRemoved + report.domainCapSkipped + report.capacitySkipped;
   const diagnostics = {
@@ -82,7 +94,7 @@ export async function executeWebSearch(
     rankingReport: report
   };
   return {
-    results: ranked.results,
+    results: finalResults,
     rawCount: raw.diagnostics.candidateCount,
     uniqueCount: raw.diagnostics.uniqueCount,
     query,

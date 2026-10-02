@@ -345,7 +345,8 @@ export type OfficialWidgetId =
   | "document_preview"
   | "news_feed"
   | "trend_chart"
-  | "map";
+  | "map"
+  | "widget_navigator";
 
 export type RemoteWidgetId = string;
 
@@ -380,7 +381,8 @@ export const ALL_RESULT_WIDGET_KEYS: ResultWidgetKey[] = [
   "document_preview",
   "news_feed",
   "trend_chart",
-  "map"
+  "map",
+  "widget_navigator"
 ];
 
 export interface WidgetStatusDetail {

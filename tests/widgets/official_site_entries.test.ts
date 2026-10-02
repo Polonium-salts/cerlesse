@@ -33,19 +33,26 @@ describe("Official navigation entry stability", () => {
     assert.ok(rich.some((entry) => entry.url === "https://react.example.com/docs"));
   });
 
-  it("expands real official and related entries up to 6 by default without fake search entries", () => {
+  it("expands real official and related entries up to at least 7 by default without fake search entries", () => {
     const items = [
       result("react", true),
       result("docs"),
       result("community"),
       result("extra"),
       result("tools"),
-      result("blog")
+      result("blog"),
+      result("releases")
     ];
     const entries = buildOfficialSiteEntries("React", items);
-    assert.equal(entries.length, 6);
+    assert.equal(entries.length, 7);
     // 真实结果充足时，全部为真实页面，不再包含任何假搜索链接
-    assert.ok(entries.every((entry) => entry.tag !== "搜索入口"));
+    assert.ok(entries.every((entry) => !entry.url.includes("google.com/search")));
+  });
+
+  it("guarantees at least 7 entries by default for official site navigation", () => {
+    const entries = buildOfficialSiteEntries("React", []);
+    assert.equal(entries.length, 7);
+    assert.ok(entries.every((entry) => entry.url.startsWith("https://www.google.com/search?")));
   });
 
   it("accurately matches brand domain without false positives on intent modifiers", () => {
@@ -77,7 +84,7 @@ describe("Official navigation entry stability", () => {
   it("ignores malformed URLs and keeps fallback URLs navigable", () => {
     const entries = buildOfficialSiteEntries("Rust", [
       { ...result("bad"), url: "javascript:alert(1)", isOfficial: true }
-    ]);
+    ], { minEntries: 3, maxEntries: 3 });
     assert.equal(entries.length, 3);
     assert.ok(entries.every((entry) => entry.url.startsWith("https://www.google.com/search?")));
     assert.ok(entries.every((entry) => !entry.isOfficial));

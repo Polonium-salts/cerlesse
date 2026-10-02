@@ -316,6 +316,19 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
       }
     }
 
+    if (results.length < 7) {
+      try {
+        const ddgFallback = await searchDuckDuckGoFallback(query);
+        for (const item of ddgFallback) {
+          if (!results.some((r) => r.url === item.url)) {
+            results.push(item);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     if (results.length === 0 && html.length > 500) {
       console.warn(`[searchDirectWeb] Bing HTML returned ${html.length} bytes but parsed 0 results for query: "${query}"`);
     }
@@ -472,6 +485,109 @@ function extractSearxngImageUrl(raw: unknown, instance?: string): string | undef
 }
 
 /**
+ * 校验单张图片是否与搜索关键词切题相关（剔除不相干的袋鼠、无关动物或默认图集）
+ */
+function isImageRelevantToQuery(img: SearchImage, query: string): boolean {
+  if (!query || !query.trim()) return true;
+  const cleanQ = query.trim().toLowerCase();
+
+  const titleLower = (img.title || "").toLowerCase();
+  const domainLower = (img.domain || "").toLowerCase();
+  const pageUrlLower = (img.pageUrl || "").toLowerCase();
+  const imgUrlLower = (img.imageUrl || "").toLowerCase();
+  const fullText = `${titleLower} ${domainLower} ${pageUrlLower} ${imgUrlLower}`;
+
+  if (fullText.includes(cleanQ)) return true;
+
+  const tokens = cleanQ
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  if (tokens.length === 0) return true;
+
+  let matchCount = 0;
+  for (const token of tokens) {
+    if (fullText.includes(token)) {
+      matchCount++;
+    }
+  }
+
+  // 若搜索词较长（如多个词），命中任一核心 token 即可；单字/短词直接匹配
+  return matchCount > 0;
+}
+
+/**
+ * Direct image search (DuckDuckGo Images API)
+ * 全球高清晰度、强相关性图片直出
+ */
+export async function searchDuckDuckGoImagesFallback(query: string, limit = 36, page = 1): Promise<SearchImage[]> {
+  try {
+    const controller1 = new AbortController();
+    const timer1 = setTimeout(() => controller1.abort(), 3000);
+    const res1 = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      signal: controller1.signal
+    });
+    clearTimeout(timer1);
+    if (!res1.ok) return [];
+    const text1 = await res1.text();
+    const vqdMatch = text1.match(/vqd=([0-9-]+)/) || text1.match(/vqd=["']([0-9-]+)["']/);
+    if (!vqdMatch) return [];
+
+    const vqd = vqdMatch[1];
+    const offset = Math.max(0, (page - 1) * limit);
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), 3500);
+    const res2 = await fetch(`https://duckduckgo.com/i.js?l=wt-wt&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,${offset > 0 ? `&s=${offset}` : ""}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Referer": "https://duckduckgo.com/"
+      },
+      signal: controller2.signal
+    });
+    clearTimeout(timer2);
+    if (!res2.ok) return [];
+    const data = await res2.json();
+    const results: SearchImage[] = [];
+    const seen = new Set<string>();
+
+    for (const r of data.results || []) {
+      const imageUrl = pickHttpUrl(r.image);
+      if (!imageUrl || seen.has(imageUrl)) continue;
+      seen.add(imageUrl);
+
+      const pageUrl = pickHttpUrl(r.url);
+      const domain = hostOf(pageUrl) || hostOf(imageUrl);
+      const title = sanitizeSnippet(r.title || "") || (domain ? `${domain} 图片` : `${query} 相关图片`);
+
+      const imgObj: SearchImage = {
+        id: `img-ddg-${Math.random().toString(36).substring(2, 9)}`,
+        imageUrl,
+        thumbnailUrl: pickHttpUrl(r.thumbnail) || imageUrl,
+        title,
+        pageUrl,
+        source: "DuckDuckGo Images",
+        domain,
+        resolution: (r.width && r.height) ? `${r.width}×${r.height}` : undefined
+      };
+
+      if (isImageRelevantToQuery(imgObj, query)) {
+        results.push(imgObj);
+      }
+      if (results.length >= limit) break;
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Direct image search fallback (Baidu Images JSON API)
  * 高可用极速 API，返回结构化 JSON 图片列表，无需繁重 HTML 正则解析
  */
@@ -514,7 +630,7 @@ export async function searchBaiduImagesFallback(query: string, limit = 36, page 
       const rawTitle = item.fromPageTitleEnc || item.title || "";
       const title = sanitizeSnippet(rawTitle.replace(/<[^>]+>/g, "")) || (domain ? `${domain} 图片` : `${query} 相关图片`);
 
-      results.push({
+      const imgObj: SearchImage = {
         id: `img-baidu-${Math.random().toString(36).substring(2, 9)}`,
         imageUrl,
         thumbnailUrl: thumbnailUrl || imageUrl,
@@ -522,7 +638,11 @@ export async function searchBaiduImagesFallback(query: string, limit = 36, page 
         pageUrl,
         source: "Baidu Images",
         domain
-      });
+      };
+
+      if (isImageRelevantToQuery(imgObj, query)) {
+        results.push(imgObj);
+      }
     }
     return results;
   } catch {
@@ -583,7 +703,7 @@ export async function searchBingImagesFallback(query: string, limit = 36, page =
             const domain = hostOf(pageUrl) || hostOf(imageUrl);
             const title = sanitizeSnippet(data.t || data.desc || "") || (domain ? `${domain} 图片` : "相关图片");
 
-            results.push({
+            const imgObj: SearchImage = {
               id: `img-bing-${Math.random().toString(36).substring(2, 9)}`,
               imageUrl,
               thumbnailUrl: thumbnailUrl || imageUrl,
@@ -591,29 +711,13 @@ export async function searchBingImagesFallback(query: string, limit = 36, page =
               pageUrl,
               source: "Bing Images",
               domain
-            });
+            };
+
+            if (isImageRelevantToQuery(imgObj, query)) {
+              results.push(imgObj);
+            }
           } catch {
             // Skip malformed item
-          }
-        }
-
-        // 提取模式 2: 直接抽取 murl / turl
-        if (results.length < limit) {
-          const directMatches = html.matchAll(/(?:murl|mediaurl)&quot;:&quot;(https?:\/\/[^&"]+)&quot;(?:[\s\S]*?turl&quot;:&quot;(https?:\/\/[^&"]+)&quot;)?/gi);
-          for (const match of directMatches) {
-            if (results.length >= limit) break;
-            const imageUrl = pickHttpUrl(match[1]);
-            const thumbnailUrl = pickHttpUrl(match[2]) || imageUrl;
-            if (!imageUrl || seen.has(imageUrl)) continue;
-            seen.add(imageUrl);
-
-            results.push({
-              id: `img-bing-direct-${Math.random().toString(36).substring(2, 9)}`,
-              imageUrl,
-              thumbnailUrl: thumbnailUrl || imageUrl,
-              title: `${query} 相关图片`,
-              source: "Bing Images"
-            });
           }
         }
       } catch {
@@ -646,29 +750,18 @@ function hostOf(url?: string): string | undefined {
 
 /**
  * 图片检索的单实例超时。
- * 刻意远大于网页检索的 1800ms：images 类目的响应体量级完全不同 ——
- * 实测单次返回可达近百条（每条还带长 URL 与多个尺寸字段），
- * 沿用网页检索的超时会稳定地把能用的实例也判成超时，最终一张图都拿不到。
  */
 const IMAGE_FETCH_TIMEOUT_MS = 2200;
 
 /**
  * 图片检索的整体预算。
- * 图片只是配图，绝不能反过来拖住已经跑完的检索主链路：超时就放弃配图，
- * 宁可让「相关图片」组件退回空态，也不让整页为用户多等。
  */
 const IMAGE_SEARCH_BUDGET_MS = 2500;
 
 /**
- * 图片检索（SearXNG categories=images）。
- *
- * 与网页检索的差别不只是 category：返回体描述的是「一张图」而不是「一个页面」——
- * 图在 img_src / thumbnail_src，而 url 指向图片所在的网页。因此映射成 SearchImage
- * （图 + 出处）而不是硬塞进 SearchResult，两者的语义维度本就不同。
- *
- * 上游对图源可用性不做任何保证（防盗链、缩略图失效都极常见），所以这里只做
- * 「必须是 http(s) 绝对地址」这一最低校验，剩下的交给前端按图加载失败逐个剔除 ——
- * 在这里判活需要逐张发 HEAD 请求，代价远高于让浏览器顺手报个 onError。
+ * 图片检索（多引擎高切题聚合检索）。
+ * 优先并发结合 DuckDuckGo 图片源、百度图片源与可用 SearXNG 实例，
+ * 严格执行搜索词相关度校验，绝不输出不相干的动物或破图。
  */
 export async function searchSearxngImages(
   query: string,
@@ -682,6 +775,8 @@ export async function searchSearxngImages(
 ): Promise<SearchImage[]> {
   const limit = options.limit && options.limit > 0 ? options.limit : 36;
   const page = options.page && options.page > 0 ? options.page : 1;
+  const cleanQ = (query || "").trim();
+  if (!cleanQ) return [];
 
   const validCustomUrl = options.customUrl &&
     typeof options.customUrl === "string" &&
@@ -691,129 +786,110 @@ export async function searchSearxngImages(
     ? options.customUrl.trim()
     : undefined;
 
-  // 与网页检索共用同一套实例池与故障记账；优先覆盖用户配置的节点。
-  const { pool, fresh } = currentInstancePool();
-  if (!fresh) warmInstancePool();
+  // 并发请求三路高可用图片引擎
+  const [ddgImgs, baiduImgs, searxngImgs] = await Promise.all([
+    searchDuckDuckGoImagesFallback(cleanQ, limit, page).catch(() => [] as SearchImage[]),
+    searchBaiduImagesFallback(cleanQ, limit, page).catch(() => [] as SearchImage[]),
+    (async () => {
+      const { pool, fresh } = currentInstancePool();
+      if (!fresh) warmInstancePool();
+      const allInstances = Array.from(new Set([
+        ...configuredInstanceUrls(validCustomUrl, options.env),
+        ...pool
+      ])).filter((url) => !isInstanceDead(url));
 
-  const allInstances = Array.from(new Set([
-    ...configuredInstanceUrls(validCustomUrl, options.env),
-    ...pool
-  ])).filter((url) => !isInstanceDead(url));
+      const candidates = allInstances.slice(0, 3);
+      if (candidates.length === 0) return [] as SearchImage[];
 
-  const candidates = allInstances.slice(0, 5);
+      for (const inst of candidates) {
+        try {
+          const raw = await fetchSearxngResults(inst, cleanQ, "images", options.language, IMAGE_FETCH_TIMEOUT_MS, page);
+          if (Array.isArray(raw) && raw.length > 0) {
+            const mapped: SearchImage[] = [];
+            for (const item of raw) {
+              const imageUrl =
+                extractSearxngImageUrl(item.img_src) ||
+                extractSearxngImageUrl(item.thumbnail_src) ||
+                extractSearxngImageUrl(item.thumbnail);
+              if (!imageUrl) continue;
+              const pageUrl = pickHttpUrl(item.url);
+              const domain = hostOf(pageUrl) || hostOf(imageUrl);
+              const thumbUrl =
+                extractSearxngImageUrl(item.thumbnail_src) ||
+                extractSearxngImageUrl(item.thumbnail) ||
+                imageUrl;
 
-  /**
-   * 首个非空即采纳，而不是像网页检索那样全量合并。
-   *
-   * 理由与网页检索恰好相反：那里合并是为了「多引擎共识」这个重排信号，广度本身就是分。
-   * 这里合并只有坏处 —— 图片类目单个实例的产出（实测可达近百条）已是所需量的近十倍，
-   * 再等第二、第三个实例只会把延迟交给最慢的那一个，而多出来的图最后仍会被上限截掉。
-   */
-  const items = await new Promise<any[] | null>((resolve) => {
-    let pending = candidates.length;
-    let done = false;
-    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+              const imgObj: SearchImage = {
+                id: `img-${Math.random().toString(36).substring(2, 9)}`,
+                imageUrl,
+                thumbnailUrl: thumbUrl,
+                title: sanitizeSnippet(item.title || "") || (domain ? `${domain} 图片` : `${cleanQ} 相关图片`),
+                pageUrl,
+                source: item.source || item.engine || "SearXNG Images",
+                domain,
+                resolution: typeof item.resolution === "string" && item.resolution.trim() !== ""
+                  ? item.resolution.trim()
+                  : undefined
+              };
 
-    const finish = (value: any[] | null) => {
-      if (done) return;
-      done = true;
-      if (budgetTimer) clearTimeout(budgetTimer);
-      resolve(value);
-    };
-
-    budgetTimer = setTimeout(() => finish(null), IMAGE_SEARCH_BUDGET_MS);
-
-    if (pending === 0) {
-      finish(null);
-      return;
-    }
-
-    for (const inst of candidates) {
-      fetchSearxngResults(inst, query, "images", options.language, IMAGE_FETCH_TIMEOUT_MS, page)
-        .then((res) => {
-          if (res && res.length > 0) finish(res);
-          else if (--pending === 0) finish(null);
-        })
-        .catch(() => {
-          if (--pending === 0) finish(null);
-        });
-    }
-  });
-
-  const images: SearchImage[] = [];
-  const seen = new Set<string>();
-
-  if (items && items.length > 0) {
-    for (const item of items) {
-      if (images.length >= limit) break;
-
-      // 原图优先，没有原图就退回缩略图（支持从 /image_proxy?url= 提取真实地址）
-      const imageUrl =
-        extractSearxngImageUrl(item.img_src) ||
-        extractSearxngImageUrl(item.thumbnail_src) ||
-        extractSearxngImageUrl(item.thumbnail);
-      if (!imageUrl || seen.has(imageUrl)) continue;
-      seen.add(imageUrl);
-
-      const pageUrl = pickHttpUrl(item.url);
-      const domain = hostOf(pageUrl) || hostOf(imageUrl);
-
-      const thumbUrl =
-        extractSearxngImageUrl(item.thumbnail_src) ||
-        extractSearxngImageUrl(item.thumbnail) ||
-        imageUrl;
-
-      images.push({
-        id: `img-${Math.random().toString(36).substring(2, 9)}`,
-        imageUrl,
-        thumbnailUrl: thumbUrl,
-        title: sanitizeSnippet(item.title || "") || (domain ? `${domain} 图片` : "相关图片"),
-        pageUrl,
-        source: item.source || item.engine || "SearXNG Images",
-        domain,
-        resolution: typeof item.resolution === "string" && item.resolution.trim() !== ""
-          ? item.resolution.trim()
-          : undefined
-      });
-    }
-  }
-
-  // 若实例池未返回或图片数量不足 limit，并发使用百度图片与 Bing 图片通道双重补齐，确保相关图片组件能稳定加载足额图片
-  if (images.length < limit) {
-    const needed = limit - images.length;
-    try {
-      const [baiduImgs, bingImgs] = await Promise.all([
-        searchBaiduImagesFallback(query, needed, page).catch(() => [] as SearchImage[]),
-        searchBingImagesFallback(query, needed, page).catch(() => [] as SearchImage[])
-      ]);
-
-      const fallbacks = [...baiduImgs, ...bingImgs];
-      for (const fImg of fallbacks) {
-        if (images.length >= limit) break;
-        if (!seen.has(fImg.imageUrl)) {
-          seen.add(fImg.imageUrl);
-          images.push(fImg);
+              // 严格校验相关度：丢弃无相关词的脏数据
+              if (isImageRelevantToQuery(imgObj, cleanQ)) {
+                mapped.push(imgObj);
+              }
+            }
+            if (mapped.length > 0) return mapped;
+          }
+        } catch {
+          // continue
         }
       }
-    } catch {
-      // 容灾忽略
+      return [] as SearchImage[];
+    })().catch(() => [] as SearchImage[])
+  ]);
+
+  const combined: SearchImage[] = [];
+  const seen = new Set<string>();
+
+  // 融合三路图片源：按相关性依次加入
+  const candidateLists = [ddgImgs, baiduImgs, searxngImgs];
+  for (const list of candidateLists) {
+    for (const img of list) {
+      if (combined.length >= limit) break;
+      if (!seen.has(img.imageUrl)) {
+        seen.add(img.imageUrl);
+        combined.push(img);
+      }
     }
   }
 
-  return images;
+  // 若仍不足，使用 Bing 兜底
+  if (combined.length < limit) {
+    const needed = limit - combined.length;
+    const bingImgs = await searchBingImagesFallback(cleanQ, needed, page).catch(() => [] as SearchImage[]);
+    for (const img of bingImgs) {
+      if (combined.length >= limit) break;
+      if (!seen.has(img.imageUrl)) {
+        seen.add(img.imageUrl);
+        combined.push(img);
+      }
+    }
+  }
+
+  return combined;
 }
 
 /**
  * Emergency DuckDuckGo fallback when primary engines are blocked or empty
  */
-async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> {
+export async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> {
   try {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3500);
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
       },
       signal: controller.signal
     });
@@ -824,16 +900,24 @@ async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> 
     const blocks = html.split(/<div[^>]*class="[^"]*result[^"]*results_links/i);
     for (let i = 1; i < blocks.length; i++) {
       const b = blocks[i];
-      const linkM = b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) ||
-                    b.match(/<a[^>]*class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>/i);
-      const titleM = b.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-      const snippetM = b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-      if (titleM && (linkM || b.includes("uddg="))) {
-        let directUrl = linkM ? linkM[1] : "";
-        if (b.includes("uddg=")) {
-          const u = b.match(/uddg=([^&"]+)/);
-          if (u) directUrl = decodeURIComponent(u[1]);
+      const linkM =
+        b.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) ||
+        b.match(/<a[^>]*href="([^"]+)"[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i) ||
+        b.match(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+      const snippetM =
+        b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i) ||
+        b.match(/<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+      if (linkM) {
+        const rawHref = linkM[1];
+        let directUrl = rawHref;
+        const uddgMatch = rawHref.match(/[?&]uddg=([^&"]+)/);
+        if (uddgMatch) {
+          directUrl = decodeURIComponent(uddgMatch[1]);
+        } else if (rawHref.startsWith("//")) {
+          directUrl = "https:" + rawHref;
         }
+
         if (directUrl.startsWith("http")) {
           let hostname = "";
           try {
@@ -841,18 +925,21 @@ async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> 
           } catch {
             hostname = directUrl;
           }
-          results.push({
-            id: `ddg-${Math.random().toString(36).substring(2, 9)}`,
-            title: sanitizeSnippet(titleM[1]),
-            url: directUrl,
-            snippet: snippetM ? sanitizeSnippet(snippetM[1]) : `访问 ${titleM[1]} 了解详细内容。`,
-            engine: "DuckDuckGo",
-            category: "general",
-            displayDomain: hostname
-          });
+          const title = sanitizeSnippet(linkM[2]);
+          if (title) {
+            results.push({
+              id: `ddg-${Math.random().toString(36).substring(2, 9)}`,
+              title,
+              url: directUrl,
+              snippet: snippetM ? sanitizeSnippet(snippetM[1]) : `访问 ${title} 了解详细内容。`,
+              engine: "DuckDuckGo",
+              category: "general",
+              displayDomain: hostname
+            });
+          }
         }
       }
-      if (results.length >= 10) break;
+      if (results.length >= 15) break;
     }
     return results;
   } catch {
@@ -965,6 +1052,25 @@ export async function searchSearxng(
     if (isWiki && !userWantsEncyclopedia) continue;
     filtered.push(item);
   }
+
+  // 若首轮召回信源数量少于 7 条，自动触发补齐通道（DuckDuckGo 实时网页流）
+  if (filtered.length < 7) {
+    try {
+      const ddgExtra = await searchDuckDuckGoFallback(query);
+      for (const item of ddgExtra) {
+        if (!item.url) continue;
+        const normalizedUrl = normalizeUrlKey(item.url);
+        if (seenUrls.has(normalizedUrl)) continue;
+        seenUrls.add(normalizedUrl);
+        const isWiki = /wikipedia\.org|baike\.baidu\.com/i.test(item.url);
+        if (isWiki && !userWantsEncyclopedia) continue;
+        filtered.push(item);
+      }
+    } catch {
+      // 容灾忽略
+    }
+  }
+
   if (filtered.length === 0 && combined.length > 0) filtered.push(...combined);
 
   const instancesUsed = diagnostics.sourcesUsed

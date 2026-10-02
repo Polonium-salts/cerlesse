@@ -245,9 +245,9 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 
       {/* 现代悬浮卡片下拉列表 (Redesigned Model Dropdown Popover) */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-[360px] sm:w-[390px] md:w-[420px] rounded-2xl border border-border/80 bg-popover/98 text-popover-foreground shadow-2xl backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150 flex flex-col overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-[360px] sm:w-[390px] md:w-[420px] rounded-2xl border border-border bg-card dark:bg-zinc-900 bg-white text-card-foreground shadow-2xl z-50 flex flex-col overflow-hidden ring-1 ring-black/10 dark:ring-white/10 animate-in fade-in zoom-in-95 duration-150">
           {/* 1. 顶部搜索框与清空 */}
-          <div className="p-3 pb-2 border-b border-border/60 bg-muted/30">
+          <div className="p-3 pb-2 border-b border-border/60 bg-muted/40 dark:bg-zinc-800/50">
             <div className="relative flex items-center">
               <Search className="absolute left-3 size-3.5 text-muted-foreground pointer-events-none" />
               <input
@@ -277,7 +277,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                 className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 ${
                   activeTab === "all"
                     ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-background/80 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
+                    : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
                 }`}
               >
                 全部 ({models.length})
@@ -290,7 +290,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                   className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
                     activeTab === "recommended"
                       ? "bg-primary text-primary-foreground shadow-xs"
-                      : "bg-background/80 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
+                      : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
                   }`}
                 >
                   <Star className="size-2.5 fill-current" />
@@ -319,7 +319,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                 className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
                   activeTab === "large_ctx"
                     ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-background/80 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
+                    : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
                 }`}
               >
                 <Database className="size-2.5" />
@@ -329,7 +329,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
           </div>
 
           {/* 3. 精美模型列表项 (Custom Styled Items) */}
-          <div className="max-h-[340px] overflow-y-auto p-2 space-y-1 divide-y divide-border/20">
+          <div className="max-h-[340px] overflow-y-auto p-2 space-y-1 divide-y divide-border/20 bg-card dark:bg-zinc-900 bg-white">
             {filteredModels.length > 0 ? (
               filteredModels.map((model) => {
                 const meta = parseModelMetadata(model);

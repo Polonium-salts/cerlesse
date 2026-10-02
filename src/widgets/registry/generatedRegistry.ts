@@ -28,6 +28,7 @@ import trendChart from "../extensions/trend_chart/index.js";
 import troubleshooting from "../extensions/troubleshooting/index.js";
 import verificationChecklist from "../extensions/verification_checklist/index.js";
 import weather from "../extensions/weather/index.js";
+import widgetNavigator from "../extensions/widget_navigator/index.js";
 
 export const BUILTIN_WIDGET_EXTENSIONS: WidgetExtension<any>[] = [
   Test,
@@ -54,5 +55,6 @@ export const BUILTIN_WIDGET_EXTENSIONS: WidgetExtension<any>[] = [
   trendChart,
   troubleshooting,
   verificationChecklist,
-  weather
+  weather,
+  widgetNavigator
 ].filter((ext): ext is WidgetExtension<any> => Boolean(ext && ext?.manifest?.id));

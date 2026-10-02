@@ -1,0 +1,71 @@
+{
+  "$schema": "./widget-manifest.schema.json",
+  "id": "widget_navigator",
+  "name": "桌面导览",
+  "version": "1.0.0",
+  "presence": "conditional",
+  "description": "显示本次搜索已加载的所有小组件，支持一键点击平滑滚动跳转到对应的桌面位置",
+  "category": "portal",
+  "tags": [
+    "导航",
+    "桌面导览",
+    "小组件列表",
+    "快速跳转",
+    "大纲目录",
+    "视图总览"
+  ],
+  "agentHint": {
+    "functionality": "桌面卡片快速定位与导览，展示当前已挂载的所有小组件并支持一键跳转聚焦",
+    "bestFor": [
+      "快速查找并滚动定位到特定小组件",
+      "全览本次搜索桌面加载的所有功能模块与视图",
+      "多卡片复杂排版时的快速大纲导航"
+    ],
+    "dataRequirements": [
+      "当前检索桌面挂载的小组件清单"
+    ],
+    "selectionHeuristics": "当桌面存在多个小组件、或与 75% 图片画廊并排作为 25% 紧凑大纲导览卡片时启用。",
+    "triggerKeywords": [
+      "导航",
+      "导览",
+      "目录",
+      "小组件",
+      "大纲",
+      "跳转",
+      "定位",
+      "nav",
+      "navigator"
+    ]
+  },
+  "icon": "Compass",
+  "grid": {
+    "width": 25,
+    "supportedWidths": [
+      25,
+      50
+    ],
+    "ratio": "4:3",
+    "minWidth": 25,
+    "height": "auto",
+    "ratioMode": "flexible"
+  },
+  "layout": {
+    "defaultWidth": 25,
+    "minWidth": 25,
+    "maxWidth": 50,
+    "preferredRoles": [
+      "utility",
+      "navigation",
+      "supporting"
+    ],
+    "canPairWith": [
+      "image_gallery",
+      "ai_answer",
+      "search_engine"
+    ]
+  },
+  "theme": {
+    "accentColor": "#6366f1",
+    "flipAnimation": "3d-flip"
+  }
+}

@@ -217,6 +217,14 @@ export const WIDGET_CAPABILITY_REGISTRY: Record<ResultWidgetKey, WidgetCapabilit
     ],
     isActionOriented: false
   },
+  widget_navigator: {
+    capabilities: ["quick_links" as any, "quick_action" as any, "overview_synthesis" as any],
+    intentFit: [
+      "deep_research",
+      "balanced"
+    ],
+    isActionOriented: false
+  },
   weather: {
     capabilities: ["live_telemetry" as any, "weather_current" as any, "weather_forecast" as any],
     intentFit: ["travel"],
@@ -387,10 +395,10 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     id: "search_engine",
     label: "搜索引擎直达",
     iconName: "Search",
-    width: 50,
-    minWidth: 50,
+    width: 25,
+    minWidth: 25,
     basePriority: 10,
-    category: "primary",
+    category: "utility",
     // 门槛：仅在搜索词涉及主流搜索引擎或用户明确需要搜索引擎直达时才加载
     requiresData: (s) => Boolean(s.searchEngineIntent)
   },
@@ -401,6 +409,16 @@ export const WIDGET_REGISTRY: Record<ResultWidgetKey, WidgetDefinition> = {
     width: 25,
     minWidth: 25,
     basePriority: 8,
+    category: "utility",
+    requiresData: () => true
+  },
+  widget_navigator: {
+    id: "widget_navigator",
+    label: "桌面导览",
+    iconName: "Compass",
+    width: 25,
+    minWidth: 25,
+    basePriority: 15,
     category: "utility",
     requiresData: () => true
   },
@@ -599,7 +617,7 @@ export function selectAgentWidgets(params: {
     if (key === "weather") return Boolean(params.signals.weatherIntent);
     if (key === "translation") return Boolean(params.signals.translationIntent);
     if (key === "search_engine") return Boolean(params.signals.searchEngineIntent);
-    if (key === "token_usage") return true;
+    if (key === "token_usage" || key === "widget_navigator") return true;
     if (key === "takeaways") return params.signals.takeawayCount > 0;
 
     return WIDGET_CAPABILITY_REGISTRY[key]?.intentFit?.includes(params.intent) ?? false;

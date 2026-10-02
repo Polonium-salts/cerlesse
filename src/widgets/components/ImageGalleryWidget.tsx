@@ -147,7 +147,7 @@ export function buildImageGalleryData(result?: SearchSynthesisResult): ImageGall
     });
   };
 
-  // 1. SearXNG 图片检索产出（主来源）
+  // 1. 专业图片检索产出（主来源：DuckDuckGo / 百度图片 / SearXNG 结构化图库）
   for (const img of result?.relatedImages || []) {
     push({
       grid: img.thumbnailUrl || img.imageUrl,
@@ -160,14 +160,17 @@ export function buildImageGalleryData(result?: SearchSynthesisResult): ImageGall
     });
   }
 
-  // 2. 网页检索结果自带的缩略图（替代来源）
-  for (const r of result?.filteredResults || []) {
-    push({
-      grid: r.thumbnail,
-      alt: r.title,
-      pageUrl: r.url,
-      source: r.displayDomain || r.engine || "全网检索"
-    });
+  // 2. 仅当专业图库暂无结果时，才从网页检索结果挑取有效且大尺寸的缩略图（避免被 16x16 图标与通用 Logo 污染）
+  if (images.length === 0) {
+    for (const r of result?.filteredResults || []) {
+      if (!r.thumbnail || /favicon|icon|logo\.svg|avatar|default/i.test(r.thumbnail)) continue;
+      push({
+        grid: r.thumbnail,
+        alt: r.title,
+        pageUrl: r.url,
+        source: r.displayDomain || r.engine || "全网检索"
+      });
+    }
   }
 
   // 3. 研报 Markdown 内嵌配图（补充来源）

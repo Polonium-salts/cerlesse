@@ -49,7 +49,7 @@ export const manifest: WidgetManifest = {
     "必应检索 最新论文"
   ],
   layout: {
-    defaultWidth: 50,
+    defaultWidth: 25,
     minWidth: 25,
     maxWidth: 75,
     preferredHeight: 280,

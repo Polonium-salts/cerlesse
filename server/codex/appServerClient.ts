@@ -605,20 +605,20 @@ export async function runCodexAgent(
         alreadySearched ? `已执行检索式：${executedSearchQueries.join(" | ")}` : "本轮尚未发起检索"
       ]
     );
-    const outcome = await runReasonedSearch(query, 10, {
+    const outcome = await runReasonedSearch(query, 14, {
       initialResults: session.collectedSources,
       skipPrimary: alreadySearched
     });
     evidence = outcome.assessment;
-  } else if (evidence.shouldRefine) {
+  } else if (evidence.shouldRefine || session.collectedSources.length < 7) {
     recordReasoning(
-      `已有 ${session.collectedSources.length} 条信源但证据不足：${evidence.reason}`,
+      `信源存证内容较少（当前仅 ${session.collectedSources.length} 条，不足 7 条目标或证据不足）：${evidence.reason}，启动重新再搜索一次`,
       [`已执行检索式：${executedSearchQueries.join(" | ") || "无"}`, `补检上限：1 轮`]
     );
-    const outcome = await runReasonedSearch(query, 10, { initialResults: session.collectedSources });
+    const outcome = await runReasonedSearch(query, 14, { initialResults: session.collectedSources });
     evidence = outcome.assessment;
   } else {
-    recordReasoning(`证据充分，不再发起额外检索：${evidence.reason}`);
+    recordReasoning(`信源存证与网站直达充分（已达 ${session.collectedSources.length} 条，满足至少 7 条要求）：${evidence.reason}`);
   }
 
   // 必须对主要来源执行 verify_source

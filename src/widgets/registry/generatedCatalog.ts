@@ -592,10 +592,10 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
   },
   {
     "id": "related_links",
-    "name": "官网跳转 / 权威入口",
+    "name": "信源存证与网站直达",
     "version": "1.0.0",
     "apiVersion": 1,
-    "description": "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道",
+    "description": "智能提取检索结果中的权威官方网站、产品主页与官方文档，提供安全卡片式快速跳转通道与已核验信源存证",
     "category": "portal",
     "tags": [
       "官方入口",
@@ -640,7 +640,7 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "layout": {
       "defaultWidth": 50,
       "minWidth": 25,
-      "maxWidth": 75
+      "maxWidth": 50
     },
     "agent": {
       "selectable": true,
@@ -811,7 +811,7 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       "必应检索 最新论文"
     ],
     "layout": {
-      "defaultWidth": 50,
+      "defaultWidth": 25,
       "minWidth": 25,
       "maxWidth": 75
     },
@@ -880,10 +880,10 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
   },
   {
     "id": "sources",
-    "name": "信源溯源存证",
+    "name": "信源存证与网站直达",
     "version": "1.0.0",
     "apiVersion": 1,
-    "description": "基于全网交叉核验的信源存证、权威度认证、来源域名与原始引用可追溯链路",
+    "description": "基于全网交叉核验的信源存证、权威认证与官方网站快捷直达通道",
     "presence": "resident",
     "category": "synthesis",
     "tags": [
@@ -921,7 +921,7 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "layout": {
       "defaultWidth": 50,
       "minWidth": 25,
-      "maxWidth": 100
+      "maxWidth": 50
     },
     "agent": {
       "selectable": true,
@@ -989,8 +989,8 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "name": "Token 消耗统计",
     "version": "1.0.0",
     "apiVersion": 1,
+    "description": "展示每次搜索与 Codex Agent 调用的真实 Token 消耗、吞吐速率、历史记录与全局累计监控",
     "presence": "resident",
-    "description": "显示本次搜索与 AI 研报生成的 Prompt、Output 及总 Token 消耗与吞吐效率",
     "category": "developer",
     "tags": [
       "Token",
@@ -998,12 +998,14 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       "吞吐效率",
       "大模型度量",
       "成本监控",
-      "性能度量"
+      "性能度量",
+      "遥测监控"
     ],
     "capabilities": [
       "agent_telemetry",
-      "source_telemetry",
-      "confidence_meter"
+      "token_telemetry",
+      "cost_telemetry",
+      "search_history"
     ],
     "intents": [
       "research",
@@ -1011,13 +1013,16 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     ],
     "keywords": [
       "token",
+      "tokens",
       "消耗",
       "开销",
       "成本",
-      "字数",
+      "用量",
       "吞吐",
       "速度",
-      "模型用量"
+      "模型用量",
+      "usage",
+      "cost"
     ],
     "examples": [
       "大模型 Token 消耗监控",
@@ -1355,6 +1360,60 @@ export const GENERATED_EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
     "agent": {
       "selectable": true,
       "minConfidence": 0.75
+    }
+  },
+  {
+    "id": "widget_navigator",
+    "name": "桌面导览",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "description": "展示本次搜索桌面已加载的全部小组件，支持一键平滑滚动定位与高亮导览",
+    "presence": "conditional",
+    "category": "portal",
+    "tags": [
+      "导航",
+      "小组件列表",
+      "快速跳转",
+      "桌面导览",
+      "视图总览",
+      "目录大纲"
+    ],
+    "capabilities": [
+      "quick_links",
+      "quick_action",
+      "overview_synthesis"
+    ],
+    "intents": [
+      "portal_navigation",
+      "research",
+      "general_knowledge"
+    ],
+    "keywords": [
+      "导航",
+      "导览",
+      "目录",
+      "小组件",
+      "大纲",
+      "跳转",
+      "定位",
+      "nav",
+      "navigator",
+      "outline"
+    ],
+    "examples": [
+      "小组件快速跳转与大纲导览",
+      "多卡片视图导航"
+    ],
+    "layout": {
+      "defaultWidth": 25,
+      "minWidth": 25,
+      "maxWidth": 50
+    },
+    "agent": {
+      "selectable": true,
+      "minConfidence": 0.6,
+      "priority": 85,
+      "flexible": true
     }
   }
 ];

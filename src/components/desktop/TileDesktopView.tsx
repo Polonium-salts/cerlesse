@@ -181,16 +181,41 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     const canonicalized = visibleList.map(k => (String(k) === "sources" ? "related_links" : k) as ResultWidgetKey);
     const uniqueKeys = Array.from(new Set(canonicalized));
 
-    // 确保信源存证与网站直达 (related_links) 永远排在第 1 位
-    const targetIdx = uniqueKeys.indexOf("related_links");
-    if (targetIdx > 0) {
-      uniqueKeys.splice(targetIdx, 1);
-      uniqueKeys.unshift("related_links");
-    } else if (targetIdx < 0 && isAlwaysOnWidget("related_links")) {
-      uniqueKeys.unshift("related_links");
+    // 顶部小比例组件 4 件套（桌面导览、Token 消耗、核心要点、搜索引擎直达）
+    // 固定有序排布在顶部右上象限，形成 2x2 精准栅格矩阵
+    const TOP_COMPACT_WIDGETS: ResultWidgetKey[] = [
+      "widget_navigator",
+      "token_usage",
+      "takeaways",
+      "search_engine"
+    ];
+
+    for (const wId of TOP_COMPACT_WIDGETS) {
+      if (!hiddenTileIds.has(wId) && !uniqueKeys.includes(wId)) {
+        uniqueKeys.push(wId);
+      }
     }
 
-    return uniqueKeys;
+    // 结构化排序：related_links 占据左侧置顶，右上象限固定排布 4 个小比例组件，其后紧随 ai_answer、image_gallery 等
+    const sortedKeys: ResultWidgetKey[] = [];
+    if (uniqueKeys.includes("related_links")) {
+      sortedKeys.push("related_links");
+    }
+    for (const wId of TOP_COMPACT_WIDGETS) {
+      if (uniqueKeys.includes(wId)) {
+        sortedKeys.push(wId);
+      }
+    }
+    if (uniqueKeys.includes("ai_answer")) {
+      sortedKeys.push("ai_answer");
+    }
+    for (const k of uniqueKeys) {
+      if (!sortedKeys.includes(k)) {
+        sortedKeys.push(k);
+      }
+    }
+
+    return sortedKeys;
   }, [enabledWidgets, strategy.componentOrder, strategy.intentType, registryRevision, hiddenTileIds, activeResult.keyTakeaways, activeResult.query, activeResult, widgetPlan]);
 
   // 2. 小组件排版 Agent 排版决策
@@ -231,6 +256,17 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
       // 信源存证与网站直达小组件 (related_links / sources) 严格横向占据 2 格 (50%)
       if ((keyStr === "related_links" || keyStr === "sources") && !userOverriddenSize) {
         size = 50;
+      }
+
+      // 4 个顶部小比例组件 (widget_navigator, token_usage, takeaways, search_engine) 固定为 25% 宽度 (3 栅格)
+      if (
+        (keyStr === "widget_navigator" ||
+          keyStr === "token_usage" ||
+          keyStr === "takeaways" ||
+          keyStr === "search_engine") &&
+        !userOverriddenSize
+      ) {
+        size = 25;
       }
 
       // 优化方案 D.1: ai_answer 在长篇回答时自动升至 75% 档位，提供宽阔舒适的阅读与排版空间

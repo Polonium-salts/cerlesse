@@ -12,6 +12,8 @@ import {
   type WidgetRegistryState
 } from "./registryHealth.js";
 
+let isInitialized = false;
+
 export {
   extensionRegistry,
   ExtensionRegistry,
@@ -30,8 +32,6 @@ export {
   type WidgetRegistryHealth,
   type WidgetRegistryState
 };
-
-let isInitialized = false;
 
 /**
  * 初始化系统内所有小组件扩展：

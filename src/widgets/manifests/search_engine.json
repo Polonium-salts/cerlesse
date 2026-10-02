@@ -41,20 +41,21 @@
   },
   "icon": "Search",
   "grid": {
-    "width": 50,
+    "width": 25,
     "supportedWidths": [
+      25,
       50,
       75,
       100
     ],
     "ratio": "3:1",
-    "minWidth": 50,
+    "minWidth": 25,
     "height": "auto",
     "ratioMode": "flexible"
   },
   "layout": {
-    "defaultWidth": 50,
-    "minWidth": 50,
+    "defaultWidth": 25,
+    "minWidth": 25,
     "maxWidth": 100,
     "preferredRoles": [
       "utility",

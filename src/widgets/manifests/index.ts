@@ -15,6 +15,7 @@ import mindmap from "./mindmap.json";
 import actionsToolbox from "./actions_toolbox.json";
 import verificationChecklist from "./verification_checklist.json";
 import troubleshooting from "./troubleshooting.json";
+import widgetNavigator from "./widget_navigator.json";
 
 /**
  * 小组件插件清单聚合层 (Widget Manifest Catalog)
@@ -99,7 +100,8 @@ export const WIDGET_MANIFESTS: WidgetManifest[] = [
   mindmap,
   actionsToolbox,
   verificationChecklist,
-  troubleshooting
+  troubleshooting,
+  widgetNavigator
 ].map(asManifest);
 
 /** id → 清单 索引 */

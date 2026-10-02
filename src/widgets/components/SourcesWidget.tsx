@@ -50,19 +50,51 @@ export const SourcesWidget: React.FC<SourcesWidgetProps> = ({
 
   const effectiveQuery = (customQuery || result?.query || "权威检索").trim();
 
-  // 1. 结构化已核验信源列表
-  const verifiedSources = useMemo<SearchResult[]>(() => {
+  // 1. 结构化原始信源列表
+  const rawSources = useMemo<SearchResult[]>(() => {
     if (customSources && customSources.length > 0) return customSources;
     if (result?.sources && result.sources.length > 0) return result.sources;
     if (result?.filteredResults && result.filteredResults.length > 0) return result.filteredResults;
     return [];
   }, [customSources, result?.sources, result?.filteredResults]);
 
-  // 2. 官方与权威网站入口列表
+  // 2. 官方与权威网站直达列表（契约保障最少 7 条直达）
   const siteEntries = useMemo(
-    () => buildOfficialSiteEntries(effectiveQuery, verifiedSources),
-    [effectiveQuery, verifiedSources]
+    () => buildOfficialSiteEntries(effectiveQuery, rawSources, { minEntries: 7, maxEntries: 10 }),
+    [effectiveQuery, rawSources]
   );
+
+  // 3. 信源存证保障最少 7 条：检索信源不足 7 条时，以网站直达中的权威站点补足存证
+  const verifiedSources = useMemo<SearchResult[]>(() => {
+    if (rawSources.length === 0) return [];
+    if (rawSources.length >= 7) return rawSources;
+
+    const list = [...rawSources];
+    const seenUrls = new Set(list.map((s) => s.url));
+
+    for (const site of siteEntries) {
+      if (list.length >= 7) break;
+      if (site.url && !seenUrls.has(site.url)) {
+        seenUrls.add(site.url);
+        let domain = "";
+        try {
+          domain = new URL(site.url).hostname.replace(/^www\./, "");
+        } catch {
+          domain = "权威直达";
+        }
+        list.push({
+          id: `verified_entry_${list.length + 1}`,
+          title: site.name,
+          url: site.url,
+          snippet: site.description || `「${site.name}」官方权威直达索引，提供标准规范与官方文档参考。`,
+          isOfficial: Boolean(site.isOfficial),
+          displayDomain: domain,
+          engine: "官方直达存证"
+        });
+      }
+    }
+    return list;
+  }, [rawSources, siteEntries]);
 
   const handleOpenUrl = (e: React.MouseEvent, url: string) => {
     if (openUrl) {

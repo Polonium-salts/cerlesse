@@ -327,6 +327,7 @@ export const MuuriWidgetGrid: React.FC<MuuriWidgetGridProps> = ({
         return (
           <div
             key={item.id}
+            id={`tile-${item.id}`}
             data-muuri-id={item.id}
             className="muuri-tile-item absolute block z-10"
             style={{

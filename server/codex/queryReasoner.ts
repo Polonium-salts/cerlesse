@@ -114,14 +114,14 @@ export function detectQueryIntent(query: string): QueryIntent {
  * 因此主查询保持原样，只在证据不足时才退到「深入解读」类补检。
  */
 const INTENT_FACETS: Record<QueryIntent, { cjk: string[]; latin: string[] }> = {
-  official: { cjk: ["官方文档", "版本发布说明"], latin: ["official documentation", "release notes"] },
-  troubleshooting: { cjk: ["报错 解决方法", "常见错误 原因"], latin: ["error fix", "common error causes"] },
-  comparison: { cjk: ["对比", "优缺点"], latin: ["comparison", "pros and cons"] },
-  research: { cjk: ["论文 综述", "研究进展"], latin: ["paper survey", "research review"] },
-  news: { cjk: ["最新 动态", "发布 公告"], latin: ["latest news", "release announcement"] },
-  definition: { cjk: ["原理", "入门 概念"], latin: ["overview principles", "introduction concepts"] },
-  howto: { cjk: ["教程 步骤", "常见问题"], latin: ["tutorial guide", "frequently asked questions"] },
-  general: { cjk: ["", "深入 解读"], latin: ["", "in depth explanation"] }
+  official: { cjk: ["官方文档", "版本发布说明", "官方网站"], latin: ["official documentation", "release notes", "official site"] },
+  troubleshooting: { cjk: ["报错 解决方法", "常见错误 原因", "故障修复指南"], latin: ["error fix", "common error causes", "troubleshooting guide"] },
+  comparison: { cjk: ["对比", "优缺点", "特性评测"], latin: ["comparison", "pros and cons", "feature review"] },
+  research: { cjk: ["论文 综述", "研究进展", "权威解析"], latin: ["paper survey", "research review", "authoritative analysis"] },
+  news: { cjk: ["最新 动态", "发布 公告", "实时资讯"], latin: ["latest news", "release announcement", "real-time updates"] },
+  definition: { cjk: ["原理", "入门 概念", "核心架构"], latin: ["overview principles", "introduction concepts", "core architecture"] },
+  howto: { cjk: ["教程 步骤", "常见问题", "实操指南"], latin: ["tutorial guide", "frequently asked questions", "practical guide"] },
+  general: { cjk: ["深入 解读", "官方 资料", "核心 概述"], latin: ["in depth explanation", "official resources", "core overview"] }
 };
 
 // ============================================================
@@ -412,6 +412,8 @@ function hostOf(url: string): string {
     return "";
   }
 }
+
+export const MIN_SOURCES_TARGET = 7;
 
 /** 评估一批结果是否足以支撑回答；输出**可解释的缺口**而不只是布尔值 */
 export function assessEvidence(results: SearchResult[], plan: SearchPlan): EvidenceAssessment {
@@ -706,7 +708,7 @@ export async function executeReasonedSearch(
   deps: ReasonedSearchDeps
 ): Promise<ReasonedSearchOutcome> {
   const plan = planSearchQueries(query, { language: deps.language });
-  const limit = Math.max(1, deps.limit ?? 10);
+  const limit = Math.max(1, deps.limit ?? 14);
   const emit = deps.emitReasoning ?? (() => { /* 无事件订阅时静默 */ });
 
   const pools: CandidatePool[] = [];
