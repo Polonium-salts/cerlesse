@@ -10,8 +10,8 @@ import { SearchResult } from "../../src/types.js";
 describe("Search Policy & Contract Guarantees", () => {
   it("should have unified SEARCH_POLICY constants", () => {
     assert.equal(SEARCH_POLICY.minSources, 7, "minSources must be 7");
-    assert.equal(SEARCH_POLICY.targetSources, 12, "targetSources must be 12");
-    assert.equal(SEARCH_POLICY.hardCap, 16, "hardCap must be 16");
+    assert.equal(SEARCH_POLICY.targetSources, 100, "targetSources is 100");
+    assert.equal(SEARCH_POLICY.hardCap, 1000, "hardCap is 1000");
     assert.equal(SEARCH_POLICY.minEvidenceHits, 3, "minEvidenceHits must be 3");
     assert.equal(SEARCH_POLICY.maxSearchRounds, 4, "maxSearchRounds must be 4");
   });
@@ -61,9 +61,9 @@ describe("Search Policy & Contract Guarantees", () => {
   });
 
   it("should clamp requested limit to hardCap", async () => {
-    // Calling with limit > hardCap (e.g. 50)
-    // Even if SearXNG mock/fetch returns results, input limit must be capped at 16
-    const output = await searchWebTool({ query: "vitest testing framework", limit: 50 });
+    // Calling with limit > hardCap (e.g. 2000)
+    // Even if SearXNG mock/fetch returns results, input limit must be capped at hardCap
+    const output = await searchWebTool({ query: "vitest testing framework", limit: 2000 });
     assert.ok(output.results.length <= SEARCH_POLICY.hardCap, `Results length ${output.results.length} must be <= hardCap ${SEARCH_POLICY.hardCap}`);
   });
 

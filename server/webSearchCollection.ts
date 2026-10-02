@@ -1,7 +1,7 @@
 import type { SearchResult } from "../src/types.js";
 import { normalizeUrlKey } from "./retrievalRanker.js";
 
-export const WEB_SEARCH_RESULT_TARGET = 12;
+export const WEB_SEARCH_RESULT_TARGET = 100;
 export const WEB_SEARCH_MAX_SEARXNG_INSTANCES = 5;
 
 export interface WebSearchSourceBatch {

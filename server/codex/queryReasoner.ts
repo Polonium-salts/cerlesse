@@ -536,7 +536,7 @@ export function buildSearchObservation(
   options: { plan?: SearchPlan; maxResults?: number; snippetChars?: number } = {}
 ): SearchObservation {
   const plan = options.plan ?? planSearchQueries(query);
-  const maxResults = Math.max(1, options.maxResults ?? 10);
+  const maxResults = Math.max(1, options.maxResults ?? 30);
   const snippetChars = Math.max(40, options.snippetChars ?? 240);
   const assessment = assessEvidence(results, plan);
 
@@ -712,7 +712,7 @@ export async function executeReasonedSearch(
   deps: ReasonedSearchDeps
 ): Promise<ReasonedSearchOutcome> {
   const plan = planSearchQueries(query, { language: deps.language });
-  const limit = Math.max(1, deps.limit ?? 14);
+  const limit = Math.max(1, deps.limit ?? 100);
   const emit = deps.emitReasoning ?? (() => { /* 无事件订阅时静默 */ });
 
   const pools: CandidatePool[] = [];
@@ -723,7 +723,7 @@ export async function executeReasonedSearch(
     const ranked = rankSearchPools(pools, {
       query: plan.primary.query || plan.understanding.original,
       limit,
-      maxPerDomain: deps.maxPerDomain ?? 2,
+      maxPerDomain: deps.maxPerDomain ?? 8,
       allowEncyclopedia: deps.allowEncyclopedia ?? plan.understanding.allowEncyclopedia,
       recencyWindowDays: plan.understanding.recencyDays
     });

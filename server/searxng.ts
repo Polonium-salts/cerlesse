@@ -293,7 +293,7 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
           });
         }
       }
-      if (results.length >= 20) break;
+      if (results.length >= 100) break;
     }
 
     if (results.length === 0) {
@@ -318,7 +318,7 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
             displayDomain: hostname
           });
         }
-        if (results.length >= 20) break;
+        if (results.length >= 100) break;
       }
     }
 
@@ -436,7 +436,6 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
       thumbnail: item.thumbnail,
       displayDomain: hostname
     });
-    if (mapped.length >= 25) break;
   }
   return mapped;
 }
@@ -985,14 +984,25 @@ export async function searchSearxng(
     })
     .slice(0, WEB_SEARCH_MAX_SEARXNG_INSTANCES);
 
+  const searxngJobs: Array<{ source: string; search: () => Promise<SearchResult[]> }> = [];
+  for (const inst of candidateInstances) {
+    searxngJobs.push({
+      source: `SearXNG ${inst}`,
+      search: () => searchSingleSearxng(inst, query, options.language, options.page || 1)
+    });
+    if (!options.page) {
+      searxngJobs.push({
+        source: `SearXNG ${inst} p2`,
+        search: () => searchSingleSearxng(inst, query, options.language, 2)
+      });
+    }
+  }
+
   const collection = await collectWebSearchResults({
     query,
-    target: Math.min(WEB_SEARCH_RESULT_TARGET, Math.max(1, options.resultTarget ?? WEB_SEARCH_RESULT_TARGET)),
+    target: Math.max(1, options.resultTarget ?? WEB_SEARCH_RESULT_TARGET),
     direct: () => searchDirectWeb(query, options.language),
-    searxng: candidateInstances.map((inst) => ({
-      source: `SearXNG ${inst}`,
-      search: () => searchSingleSearxng(inst, query, options.language, options.page)
-    })),
+    searxng: searxngJobs,
     fallback: () => searchDuckDuckGoFallback(query)
   });
 
@@ -1050,8 +1060,12 @@ export async function searchSearxng(
     filtered.push(...combined);
   }
 
-  const instancesUsed = diagnostics.sourcesUsed
-    .filter((source) => source.startsWith("SearXNG "))
-    .map((source) => source.slice("SearXNG ".length));
+  const instancesUsed = Array.from(
+    new Set(
+      diagnostics.sourcesUsed
+        .filter((source) => source.startsWith("SearXNG "))
+        .map((source) => source.slice("SearXNG ".length).replace(/ p2$/, ""))
+    )
+  );
   return { results: filtered, instanceUsed, instancesUsed, diagnostics };
 }

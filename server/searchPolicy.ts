@@ -13,10 +13,10 @@
 export const SEARCH_POLICY = {
   /** 最小信源门槛：低于此值明确标记 insufficient: true，由 Agent 决定是否补检 */
   minSources: 7,
-  /** 召回目标线：单次搜索向检索池索取的基准目标条数 */
-  targetSources: 12,
-  /** 单次 search_web 向下游返回的硬上限截断值 */
-  hardCap: 16,
+  /** 召回目标线：单次搜索向检索池索取的基准目标条数（放开限制，支持全量加载） */
+  targetSources: 100,
+  /** 单次 search_web 向下游返回的硬上限截断值（已移除 16 条硬上限，充分加载 SearXNG 内容） */
+  hardCap: 1000,
   /** 实体判定门槛：仅用于 hit / partial 级别判定 */
   minEvidenceHits: 3,
   /** 单次 Agent 会话内的最大搜索轮数，超出后停止循环并基于现有证据作答 */

@@ -1185,12 +1185,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** 动态域名配额：技术/官方/开源类查询允许更高的同域名信源上限 */
 export function getMaxPerDomain(query: string): number {
   if (/官方|官网|文档|documentation|docs|guide|reference/i.test(query)) {
-    return 5;
+    return 10;
   }
   if (/github|仓库|源码|api|开发|教程|安装|部署|报错|下载|rom/i.test(query)) {
-    return 4;
+    return 8;
   }
-  return 3;
+  return 6;
 }
 
 /** 质量地板：低于此分数的条目一律不进入默认信源集 */
@@ -1253,7 +1253,7 @@ export function rankAndFilterResultsWithReport(
   } = options;
 
   // 用户显式指定条数上限时以用户为准，否则回落到服务端默认
-  const limit = filters?.maxResults ?? options.limit ?? 20;
+  const limit = filters?.maxResults ?? options.limit ?? 500;
 
   // 分层淘汰计数（口径见 RankingReport）
   let hardRejected = 0;
@@ -1610,22 +1610,22 @@ function isDirectRootHomepage(urlStr: string, queryCanonicals: string[]): boolea
   runPass(30, 0.82, true);
 
   // 第二轮：若高质量结果不足，补充 Tier B (Score >= 20)
-  if (output.length < Math.min(limit, 15)) {
+  if (output.length < Math.min(limit, 100)) {
     runPass(20, 0.88, true);
   }
 
-  // 第三轮：若仍不足 10 条，补充 Tier C (Score >= 12) 基础质量结果
-  if (output.length < Math.min(limit, 10)) {
+  // 第三轮：补充 Tier C (Score >= 12) 基础质量结果
+  if (output.length < Math.min(limit, 50)) {
     runPass(12, 0.92, true);
   }
 
   // 第四轮：全网结果较少时放宽域名限制，避免结果归零
-  if (output.length < Math.min(limit, 8)) {
+  if (output.length < Math.min(limit, 30)) {
     runPass(12, 0.95, false);
   }
 
   // 第五轮：长尾极度匮乏查询保底（Score >= LOWEST_FALLBACK_FLOOR）
-  if (output.length < 3) {
+  if (output.length < 10) {
     runPass(LOWEST_FALLBACK_FLOOR, 0.98, false);
   }
 

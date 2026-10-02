@@ -150,10 +150,11 @@ app.get("/api/search", async (req, res) => {
   try {
     const q = req.query.q as string;
     if (!q || q.trim() === "") return res.status(400).json({ error: "缺少搜索关键词" });
+    const limit = req.query.limit ? Math.max(1, parseInt(req.query.limit as string) || 200) : 200;
     const response = await executeWebSearch(q, {
       customUrl: cleanParam(req.query.customUrl),
       language: cleanParam(req.query.lang),
-      limit: 20
+      limit
     });
     res.json({
       results: response.results,
