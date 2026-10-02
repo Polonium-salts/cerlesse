@@ -1,6 +1,8 @@
 import { SearchResult } from "../../src/types.js";
 import { PreparedWidgetOutput } from "../tools/widgetTool.js";
 import { SolveLayoutOutput } from "../tools/layoutTool.js";
+import { normalizeUrlKey } from "../retrievalRanker.js";
+import { generateStableSourceId } from "../searxng.js";
 
 export interface MessageTurn {
   role: "user" | "assistant" | "tool";
@@ -78,11 +80,19 @@ export class CodexSessionManager {
   public recordSources(threadId: string, sources: SearchResult[]): void {
     const s = this.sessions.get(threadId);
     if (s) {
-      const existingIds = new Set(s.collectedSources.map(x => x.id || x.url));
+      const seenKeys = new Set(s.collectedSources.map(x => normalizeUrlKey(x.url || x.id || "")));
       for (const item of sources) {
-        if (!existingIds.has(item.id || item.url)) {
-          existingIds.add(item.id || item.url);
-          s.collectedSources.push(item);
+        if (!item.url) continue;
+        const normKey = normalizeUrlKey(item.url);
+        if (!seenKeys.has(normKey)) {
+          seenKeys.add(normKey);
+          const ref = s.collectedSources.length + 1;
+          const stableItem: SearchResult = {
+            ...item,
+            id: item.id || generateStableSourceId(item.url),
+            ref
+          };
+          s.collectedSources.push(stableItem);
         }
       }
     }

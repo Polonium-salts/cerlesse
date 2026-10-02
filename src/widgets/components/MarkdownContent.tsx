@@ -81,7 +81,7 @@ function InlineCitationPill({
 }
 
 /**
- * 递归转换文本节点中的 [1], [2], [source-1] 为交互式信源角标
+ * 递归转换文本节点中的 [1], [2], [source-1] 以及文本标题/摘要引用为交互式信源角标
  */
 function renderChildrenWithCitations(
   children: React.ReactNode,
@@ -89,23 +89,70 @@ function renderChildrenWithCitations(
   onOpenUrl?: (url: string) => void
 ): React.ReactNode {
   if (typeof children === "string") {
-    const citationRegex = /\[(?:source-)?(\d+)\]/g;
-    if (!citationRegex.test(children)) {
+    // 匹配常规数字角标 [1], [2], [source-1] 以及模型意外输出的文本标题/摘要引用 [Title: Snippet]
+    const bracketRegex = /\[([^\]\n]+)\]/g;
+    if (!bracketRegex.test(children)) {
       return children;
     }
 
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
-    const matchIter = children.matchAll(/\[(?:source-)?(\d+)\]/g);
+    const matchIter = children.matchAll(/\[([^\]\n]+)\]/g);
 
     for (const match of matchIter) {
       const matchStart = match.index ?? 0;
+      const rawContent = match[1].trim();
+
+      // 跳过纯空内容
+      if (!rawContent) continue;
+
+      let citationIndex: number | undefined;
+      let matchedSource: SourceCitation | undefined;
+
+      // 1. 检查是否为标准数字引用 [1], [2], [source-1]
+      const numMatch = rawContent.match(/^(?:source-)?(\d+)$/i);
+      if (numMatch) {
+        citationIndex = parseInt(numMatch[1], 10);
+        matchedSource = sources ? sources[citationIndex - 1] : undefined;
+      } else {
+        // 2. 检查是否为带有标题、冒号或长摘要的畸变引用（如 [Google Play], [bilibili: 官方主站...]）
+        // 尝试在信源中模糊匹配标题或关键词，映射为正确的数字角标
+        const titleKey = rawContent.split(/[:：]/)[0].trim().toLowerCase();
+        if (sources && sources.length > 0) {
+          const foundIdx = sources.findIndex((s) => {
+            const sTitle = (s.title || "").toLowerCase();
+            const sUrl = (s.url || "").toLowerCase();
+            return (
+              (titleKey.length >= 2 && (sTitle.includes(titleKey) || titleKey.includes(sTitle))) ||
+              (rawContent.length >= 3 && (sTitle.includes(rawContent.toLowerCase()) || rawContent.toLowerCase().includes(sTitle))) ||
+              (sUrl && rawContent.toLowerCase().includes(sUrl))
+            );
+          });
+          if (foundIdx !== -1) {
+            citationIndex = foundIdx + 1;
+            matchedSource = sources[foundIdx];
+          }
+        }
+
+        // 如果信源中没精准匹配到，但文本很长或带有冒号，说明是残留的 snippet 引用
+        // 如果没有匹配到任何信源且很短（可能是普通括号文本如 [可选]），则保持原样
+        if (citationIndex === undefined) {
+          const looksLikeCitation =
+            rawContent.includes(":") ||
+            rawContent.includes("：") ||
+            rawContent.length > 15 ||
+            /http|\.com|\.org|官网|官方|主页|下载|百科|搜索/i.test(rawContent);
+          if (!looksLikeCitation) {
+            continue;
+          }
+          citationIndex = 1;
+          matchedSource = sources ? sources[0] : undefined;
+        }
+      }
+
       if (matchStart > lastIndex) {
         parts.push(children.slice(lastIndex, matchStart));
       }
-
-      const citationIndex = parseInt(match[1], 10);
-      const matchedSource = sources ? sources[citationIndex - 1] : undefined;
 
       parts.push(
         <InlineCitationPill
@@ -123,7 +170,7 @@ function renderChildrenWithCitations(
       parts.push(children.slice(lastIndex));
     }
 
-    return <>{parts}</>;
+    return parts.length > 0 ? <>{parts}</> : children;
   }
 
   if (Array.isArray(children)) {

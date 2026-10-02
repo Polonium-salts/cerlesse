@@ -17,6 +17,7 @@ export interface SearchResult {
   filteredOut?: boolean;
   isOfficial?: boolean;
   displayDomain?: string;
+  ref?: number;
 }
 
 /**

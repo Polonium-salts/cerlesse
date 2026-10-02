@@ -24,6 +24,7 @@
 import { SearchResult, SearchHitLevel, SearchSourceType } from "../../src/types.js";
 import { detectQueryLanguage } from "../language.js";
 import { resolveHitLevel } from "../services/searchService.js";
+import { SEARCH_POLICY } from "../searchPolicy.js";
 import {
   CandidatePool,
   buildQueryProfile,
@@ -413,7 +414,7 @@ function hostOf(url: string): string {
   }
 }
 
-export const MIN_SOURCES_TARGET = 7;
+export const MIN_SOURCES_TARGET = SEARCH_POLICY.minSources;
 
 /** 评估一批结果是否足以支撑回答；输出**可解释的缺口**而不只是布尔值 */
 export function assessEvidence(results: SearchResult[], plan: SearchPlan): EvidenceAssessment {
@@ -458,7 +459,10 @@ export function assessEvidence(results: SearchResult[], plan: SearchPlan): Evide
 
   const level = resolveHitLevel(entityMatchedCount);
   const coverage = usable.length > 0 ? entityMatchedCount / usable.length : 0;
-  const shouldRefine = usable.length === 0 || level !== "hit" || authoritativeCount === 0;
+  // 证据评估去“硬规则化”：仅当查询意图确实强依赖官方/研究/文档等权威源时才把 authoritativeCount === 0 当作硬缺口
+  const AUTHORITY_INTENTS = new Set<QueryIntent>(["official", "research", "howto", "troubleshooting"]);
+  const needsAuthority = AUTHORITY_INTENTS.has(plan.understanding.intent);
+  const shouldRefine = usable.length === 0 || level !== "hit" || (needsAuthority && authoritativeCount === 0);
 
   let reason: string;
   if (usable.length === 0) {
@@ -491,6 +495,7 @@ export function assessEvidence(results: SearchResult[], plan: SearchPlan): Evide
 
 export interface ObservationResult {
   id: string;
+  ref?: number;
   title: string;
   url: string;
   domain: string;
@@ -531,8 +536,8 @@ export function buildSearchObservation(
   options: { plan?: SearchPlan; maxResults?: number; snippetChars?: number } = {}
 ): SearchObservation {
   const plan = options.plan ?? planSearchQueries(query);
-  const maxResults = Math.max(1, options.maxResults ?? 6);
-  const snippetChars = Math.max(40, options.snippetChars ?? 420);
+  const maxResults = Math.max(1, options.maxResults ?? 10);
+  const snippetChars = Math.max(40, options.snippetChars ?? 240);
   const assessment = assessEvidence(results, plan);
 
   const all = (results || []).filter((item) => item && item.url && item.title);
@@ -548,6 +553,7 @@ export function buildSearchObservation(
     const host = hostOf(item.url);
     return {
       id: item.id,
+      ref: item.ref,
       title: (item.title || "").replace(/\s+/g, " ").trim().slice(0, 160),
       url: item.url,
       domain: item.displayDomain || host,
@@ -557,18 +563,16 @@ export function buildSearchObservation(
     };
   });
 
-  // 证据不足时，观测里必须同时给出三件事：缺口在哪、下一步搜什么、以及「搜不到就不许编」。
-  // 只说「证据不足」而不给下一步，模型的下一个动作往往是重复同一句查询或直接作答；
-  // 而少了最后那句禁制，它就会用常识把缺口自行填上 —— 那正是最不精准的输出。
+  // 证据不足时，观测里给出缺口建议，由模型自主判断是否需要补搜；同时严明事实边界
   const notice = assessment.shouldRefine
     ? [
         `证据评估：${assessment.level === "no_hit" ? "无命中" : "部分命中"} —— ${assessment.reason}`,
         plan.refinements.length > 0
-          ? `下一步：先调用 search_web 补检 [${plan.refinements.map((r) => `"${r.query}"`).join(", ")}]，再作答。`
-          : "下一步：更换表述补检。",
-        "补检仍无覆盖时，必须明确说明证据不足，不得推测。"
+          ? `可参考以下补检方向 [${plan.refinements.map((r) => `"${r.query}"`).join(", ")}]，由你判断是否需要，再作答。`
+          : "可根据需要更换表述补检。",
+        "若证据仍有不足，必须明确说明证据边界，不得主观推测。"
       ].join("\n")
-    : `证据评估：命中 —— ${assessment.reason} 可以基于下列结果作答，并保留 [id] 引用；不得引入未出现在结果中的事实。`;
+    : `证据评估：命中 —— ${assessment.reason} 可以基于下列结果作答，正文引用请务必使用 [1], [2] 标注对应序号；不得引入未出现在结果中的事实。`;
 
   return {
     plannedQuery: plan.primary.query,

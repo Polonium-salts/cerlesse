@@ -23,6 +23,7 @@ import { PreparedWidgetOutput } from "../tools/widgetTool.js";
 import { SolveLayoutOutput } from "../tools/layoutTool.js";
 import { selectWidgetsByEvidence, WidgetEvidenceInput } from "./widgetSelectionSkill.js";
 import { TokenUsageCollector } from "./tokenUsageCollector.js";
+import { SEARCH_POLICY } from "../searchPolicy.js";
 
 export interface CodexRunOptions {
   model?: string;
@@ -136,6 +137,7 @@ export async function runCodexAgent(
   // 目标：让「搜什么 / 搜到的东西够不够 / 下一步该补搜什么」这三件事都有明确依据，
   // 而不是把用户原话一股脑丢给检索引擎、再拿一整坨 JSON 去猜。
   const executedSearchQueries: string[] = [];
+  let searchRounds = 0;
   let evidenceAssessment: EvidenceAssessment | undefined;
 
   const recordReasoning = (content: string, details?: string[]) => {
@@ -201,8 +203,34 @@ export async function runCodexAgent(
 
   let llmkitToolCallSequence = 0;
   const runLlmkitTool = async (toolName: string, input: Record<string, unknown>): Promise<string> => {
+    // 关键前置门控条件：组件准备与布局求解前必须收集足够信源或用尽搜索预算
+    if (toolName === "prepare_widget" || toolName === "solve_layout") {
+      const needMore = session.collectedSources.length < SEARCH_POLICY.minSources
+                       && searchRounds < SEARCH_POLICY.maxSearchRounds;
+      if (needMore) {
+        return JSON.stringify({
+          error: "evidence_insufficient",
+          detail: `当前已收集信源 ${session.collectedSources.length} 条，低于系统建议最低基准 ${SEARCH_POLICY.minSources} 条。请先用不同侧重的查询调用 search_web 补齐证据后再进行组件准备与布局求解。`
+        });
+      }
+      if (toolName === "solve_layout" && !toolsUsed.has("verify_source") && session.collectedSources.length > 0) {
+        return JSON.stringify({
+          error: "verify_required",
+          detail: "在求解最终桌面几何布局前，请先调用 verify_source 对主要信源完成真实性与权威性核验。"
+        });
+      }
+    }
+
     const args: Record<string, any> = { ...input };
     if (toolName === "search_web") {
+      if (searchRounds >= SEARCH_POLICY.maxSearchRounds) {
+        return JSON.stringify({
+          error: "search_rounds_exceeded",
+          detail: `已达到最大检索轮数上限 (${SEARCH_POLICY.maxSearchRounds} 轮)。请基于现有收集到的 ${session.collectedSources.length} 条信源进行综合回答，或在回答中明确说明证据不足，不得继续调用 search_web。`
+        });
+      }
+      searchRounds++;
+
       const prepared = prepareSearchArguments({
         query: String(args.query ?? ""),
         limit: typeof args.limit === "number" ? args.limit : undefined,
@@ -244,7 +272,7 @@ export async function runCodexAgent(
       const plan = planSearchQueries(String(args.query || query), {
         language: typeof args.language === "string" ? args.language : undefined
       });
-      const assessment = assessEvidence(result.results as SearchResult[], plan);
+      const assessment = assessEvidence(session.collectedSources, plan);
       evidenceAssessment = assessment;
       if (assessment.shouldRefine) {
         recordReasoning(
@@ -257,10 +285,12 @@ export async function runCodexAgent(
         );
       }
       observation = {
-        ...buildSearchObservation(plan.primary.query || query, result.results as SearchResult[], {
+        originalQuery: String(input.query ?? ""),
+        effectiveQuery: String(args.query ?? ""),
+        ...buildSearchObservation(plan.primary.query || query, session.collectedSources, {
           plan,
-          maxResults: 8,
-          snippetChars: 420
+          maxResults: 10,
+          snippetChars: 240
         }),
         diagnostics: {
           candidateCount: result?.diagnostics?.candidateCount ?? result?.rawCount ?? result.results.length,
@@ -285,7 +315,7 @@ export async function runCodexAgent(
       sessionManager.recordLayout(threadId, result as SolveLayoutOutput);
       observation = {
         ...result,
-        instruction: "所有小组件与 12 栅格几何装箱已计算就绪。请在此轮直接输出针对用户问题的深度、结构化最终回答（包括核心结论、分节背景/机制/实操步骤/注意事项，详细阐述，使用空行分段并标注 [1], [2] 信源引用），不要再调用任何工具。"
+        instruction: "所有小组件与 12 栅格几何装箱已计算就绪。请在此轮直接输出高品质深度结构化最终回答。重要规范：事实引用必须且仅能使用纯数字角标如 [1], [2]（严禁将文章标题或长摘要塞入括号）；切勿简单复读搜索卡片标题，请对定位/矩阵/亮点/实操进行深度综合提炼。不要再调用任何工具。"
       };
     } else if (toolName === "create_action" && result?.action) {
       actions.push(result.action as WidgetAction);
@@ -605,20 +635,17 @@ export async function runCodexAgent(
         alreadySearched ? `已执行检索式：${executedSearchQueries.join(" | ")}` : "本轮尚未发起检索"
       ]
     );
-    const outcome = await runReasonedSearch(query, 14, {
+    const outcome = await runReasonedSearch(query, SEARCH_POLICY.targetSources, {
       initialResults: session.collectedSources,
       skipPrimary: alreadySearched
     });
     evidence = outcome.assessment;
-  } else if (evidence.shouldRefine || session.collectedSources.length < 7) {
-    recordReasoning(
-      `信源存证内容较少（当前仅 ${session.collectedSources.length} 条，不足 7 条目标或证据不足）：${evidence.reason}，启动重新再搜索一次`,
-      [`已执行检索式：${executedSearchQueries.join(" | ") || "无"}`, `补检上限：1 轮`]
-    );
-    const outcome = await runReasonedSearch(query, 14, { initialResults: session.collectedSources });
-    evidence = outcome.assessment;
-  } else {
-    recordReasoning(`信源存证与网站直达充分（已达 ${session.collectedSources.length} 条，满足至少 7 条要求）：${evidence.reason}`);
+  } else if (evidence) {
+    if (evidence.level === "hit" && session.collectedSources.length >= SEARCH_POLICY.minSources) {
+      recordReasoning(`信源存证与网站直达充分（已达 ${session.collectedSources.length} 条，满足至少 ${SEARCH_POLICY.minSources} 条要求）：${evidence.reason}`);
+    } else {
+      recordReasoning(`信源存证已收集 ${session.collectedSources.length} 条：${evidence.reason}`);
+    }
   }
 
   // 必须对主要来源执行 verify_source
@@ -651,7 +678,7 @@ export async function runCodexAgent(
   }
 
   // 小组件选型技能包（确定性、注册表驱动、证据可追溯）：
-  // 模型已成功绑定的组件保持不变；绑定不足时按证据评分补齐缺失项（含核心组件常驻锚点）。
+  // 模型已成功绑定的组件保持不变；收尾阶段仅补齐常驻基础组件，专业组件必须由模型自主 prepare_widget 选择
   const widgetSelection = selectWidgetsByEvidence({
     query,
     sources: session.collectedSources.map((s) => ({
@@ -674,31 +701,37 @@ export async function runCodexAgent(
     eventBridge.recordToolResult(callIdCatalog, "get_widget_catalog", catalog, 10);
   }
 
-  // 依技能选型结果补齐缺失的真实 prepare_widget 绑定（sourceIds 可追溯到检索信源）
+  // 仅对未就绪的常驻基础三件套 (ai_answer / related_links / image_gallery) 进行兜底补位，标注 source: "system_fallback"
+  const RESIDENT_FALLBACK_WIDGETS = new Set(["ai_answer", "related_links", "image_gallery"]);
   const preparedIds = new Set(session.preparedWidgets.map((w) => w.widgetId));
-  const missingIds = widgetSelection.selected.filter((id) => !preparedIds.has(id));
-  for (const wId of missingIds) {
+  const missingResidentIds = widgetSelection.selected.filter(
+    (id) => !preparedIds.has(id) && RESIDENT_FALLBACK_WIDGETS.has(id)
+  );
+  for (const wId of missingResidentIds) {
     const prepId = `prep_${wId}_${Date.now()}`;
     toolsUsed.add("prepare_widget");
-    eventBridge.recordToolCall(prepId, "prepare_widget", { widgetId: wId, query });
+    eventBridge.recordToolCall(prepId, "prepare_widget", { widgetId: wId, query, source: "system_fallback" });
     const prepRes = await cerlesseMcpServer.callTool("prepare_widget", {
       widgetId: wId,
       query,
       sourceIds: session.collectedSources.slice(0, 3).map((s) => s.id)
     });
-    eventBridge.recordToolResult(prepId, "prepare_widget", prepRes, 10);
+    eventBridge.recordToolResult(prepId, "prepare_widget", { ...prepRes, source: "system_fallback" }, 10);
     if (prepRes.success) {
       sessionManager.recordWidget(threadId, prepRes);
     }
   }
 
-  if (missingIds.length > 0) {
+  if (missingResidentIds.length > 0) {
     eventBridge.emit({
       type: "widget_update",
       widgets: session.preparedWidgets,
       timestamp: Date.now()
     });
   }
+
+  // 最终对 session.collectedSources 按 ref 递增排序，保证 [1], [2] 引用与列表一一对应
+  session.collectedSources.sort((a, b) => (a.ref ?? 0) - (b.ref ?? 0));
 
   // 必须调用 solve_layout 进行无重叠几何装箱
   if (!session.layout || session.layout.tiles.length === 0) {

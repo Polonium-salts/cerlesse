@@ -181,11 +181,10 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
     const canonicalized = visibleList.map(k => (String(k) === "sources" ? "related_links" : k) as ResultWidgetKey);
     const uniqueKeys = Array.from(new Set(canonicalized));
 
-    // 顶部小比例组件 4 件套（桌面导览、Token 消耗、核心要点、搜索引擎直达）
-    // 固定有序排布在顶部右上象限，形成 2x2 精准栅格矩阵
+    // 顶部小比例组件（桌面导览、核心要点、搜索引擎直达）
+    // 固定有序排布在顶部右上象限，避免工程调试指标挤占核心视觉区
     const TOP_COMPACT_WIDGETS: ResultWidgetKey[] = [
       "widget_navigator",
-      "token_usage",
       "takeaways",
       "search_engine"
     ];
@@ -284,6 +283,11 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         }
       }
 
+      // image_gallery 默认充满 100% 宽度作为全景图片流，彻底避免底部出现单边空洞
+      if (keyStr === "image_gallery" && !userOverriddenSize) {
+        size = 100;
+      }
+
       // 首帧高度预估（若小组件提供了 estimateItemCount 且配置了 itemHeightPx，在实测值到达前作为占位高度）
       let estimatedHeightPx: number | undefined;
       const itemHeightConfig = MANIFEST_ITEM_HEIGHTS[keyStr];
@@ -311,7 +315,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         priority,
         isEmphasized,
         estimatedHeightPx,
-        minSpan: keyStr === "image_gallery" ? spanOfTileWidth(75, activeColumns) : minSpanFor(keyStr, size)
+        minSpan: keyStr === "image_gallery" ? spanOfTileWidth(100, activeColumns) : minSpanFor(keyStr, size)
       });
     }
 

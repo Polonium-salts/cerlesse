@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
 import { SearchResult, SearchImage } from "../src/types.js";
 import { normalizeUrlKey } from "./retrievalRanker.js";
 import { acceptLanguageFor, toSearxngLanguage } from "./language.js";
 import { collectWebSearchResults, WEB_SEARCH_MAX_SEARXNG_INSTANCES, WEB_SEARCH_RESULT_TARGET } from "./webSearchCollection.js";
+
+export function generateStableSourceId(url: string): string {
+  const norm = normalizeUrlKey(url);
+  return "src-" + createHash("sha1").update(norm).digest("hex").slice(0, 10);
+}
 
 // Active, responsive SearXNG instances verified for JSON output
 const VERIFIED_SEARXNG_INSTANCES = [
@@ -313,19 +319,6 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
           });
         }
         if (results.length >= 20) break;
-      }
-    }
-
-    if (results.length < 7) {
-      try {
-        const ddgFallback = await searchDuckDuckGoFallback(query);
-        for (const item of ddgFallback) {
-          if (!results.some((r) => r.url === item.url)) {
-            results.push(item);
-          }
-        }
-      } catch {
-        // ignore
       }
     }
 
@@ -881,15 +874,14 @@ export async function searchSearxngImages(
 /**
  * Emergency DuckDuckGo fallback when primary engines are blocked or empty
  */
-export async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> {
+async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> {
   try {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3500);
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
       },
       signal: controller.signal
     });
@@ -900,24 +892,16 @@ export async function searchDuckDuckGoFallback(query: string): Promise<SearchRes
     const blocks = html.split(/<div[^>]*class="[^"]*result[^"]*results_links/i);
     for (let i = 1; i < blocks.length; i++) {
       const b = blocks[i];
-      const linkM =
-        b.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) ||
-        b.match(/<a[^>]*href="([^"]+)"[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i) ||
-        b.match(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
-      const snippetM =
-        b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i) ||
-        b.match(/<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-
-      if (linkM) {
-        const rawHref = linkM[1];
-        let directUrl = rawHref;
-        const uddgMatch = rawHref.match(/[?&]uddg=([^&"]+)/);
-        if (uddgMatch) {
-          directUrl = decodeURIComponent(uddgMatch[1]);
-        } else if (rawHref.startsWith("//")) {
-          directUrl = "https:" + rawHref;
+      const linkM = b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) ||
+                    b.match(/<a[^>]*class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>/i);
+      const titleM = b.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+      const snippetM = b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+      if (titleM && (linkM || b.includes("uddg="))) {
+        let directUrl = linkM ? linkM[1] : "";
+        if (b.includes("uddg=")) {
+          const u = b.match(/uddg=([^&"]+)/);
+          if (u) directUrl = decodeURIComponent(u[1]);
         }
-
         if (directUrl.startsWith("http")) {
           let hostname = "";
           try {
@@ -925,21 +909,18 @@ export async function searchDuckDuckGoFallback(query: string): Promise<SearchRes
           } catch {
             hostname = directUrl;
           }
-          const title = sanitizeSnippet(linkM[2]);
-          if (title) {
-            results.push({
-              id: `ddg-${Math.random().toString(36).substring(2, 9)}`,
-              title,
-              url: directUrl,
-              snippet: snippetM ? sanitizeSnippet(snippetM[1]) : `访问 ${title} 了解详细内容。`,
-              engine: "DuckDuckGo",
-              category: "general",
-              displayDomain: hostname
-            });
-          }
+          results.push({
+            id: `ddg-${Math.random().toString(36).substring(2, 9)}`,
+            title: sanitizeSnippet(titleM[1]),
+            url: directUrl,
+            snippet: snippetM ? sanitizeSnippet(snippetM[1]) : `访问 ${titleM[1]} 了解详细内容。`,
+            engine: "DuckDuckGo",
+            category: "general",
+            displayDomain: hostname
+          });
         }
       }
-      if (results.length >= 15) break;
+      if (results.length >= 10) break;
     }
     return results;
   } catch {
@@ -1042,36 +1023,32 @@ export async function searchSearxng(
 
   const userWantsEncyclopedia = /维基|wikipedia|百科/i.test(query);
   const seenUrls = new Set<string>();
+  const seenDomainTitles = new Set<string>();
   const filtered: SearchResult[] = [];
   for (const item of combined) {
     if (!item.url) continue;
     const normalizedUrl = normalizeUrlKey(item.url);
     if (seenUrls.has(normalizedUrl)) continue;
     seenUrls.add(normalizedUrl);
+
+    // 同域名下过滤完全同名或同前缀的冗余页面（如多个 Sign-in - Google Accounts 登录入口）
+    const host = hostOf(item.url) || "";
+    const cleanTitle = (item.title || "").trim().toLowerCase();
+    const domainTitleKey = `${host}:::${cleanTitle}`;
+    if (seenDomainTitles.has(domainTitleKey)) continue;
+    seenDomainTitles.add(domainTitleKey);
+
     const isWiki = /wikipedia\.org|baike\.baidu\.com/i.test(item.url);
     if (isWiki && !userWantsEncyclopedia) continue;
+    item.id = generateStableSourceId(item.url);
     filtered.push(item);
   }
-
-  // 若首轮召回信源数量少于 7 条，自动触发补齐通道（DuckDuckGo 实时网页流）
-  if (filtered.length < 7) {
-    try {
-      const ddgExtra = await searchDuckDuckGoFallback(query);
-      for (const item of ddgExtra) {
-        if (!item.url) continue;
-        const normalizedUrl = normalizeUrlKey(item.url);
-        if (seenUrls.has(normalizedUrl)) continue;
-        seenUrls.add(normalizedUrl);
-        const isWiki = /wikipedia\.org|baike\.baidu\.com/i.test(item.url);
-        if (isWiki && !userWantsEncyclopedia) continue;
-        filtered.push(item);
-      }
-    } catch {
-      // 容灾忽略
+  if (filtered.length === 0 && combined.length > 0) {
+    for (const item of combined) {
+      if (item.url) item.id = generateStableSourceId(item.url);
     }
+    filtered.push(...combined);
   }
-
-  if (filtered.length === 0 && combined.length > 0) filtered.push(...combined);
 
   const instancesUsed = diagnostics.sourcesUsed
     .filter((source) => source.startsWith("SearXNG "))

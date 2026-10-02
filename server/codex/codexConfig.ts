@@ -62,10 +62,9 @@ Workflow Sequence:
 4. Call 'prepare_widget' for chosen widgets (include 'ai_answer', 'related_links', and 'image_gallery', plus only justified specialist widgets). You may call prepare_widget multiple times in the same turn.
 5. Call 'solve_layout' with all prepared widgets to compute placement.
 6. After solve_layout succeeds, stop calling tools and produce a substantive, deeply structured final report:
-   - Do NOT emit a terse 2-sentence summary. For analysis, research, tutorial, or technical queries, provide a detailed, comprehensive report (recommended 400-800 words).
-   - Organize logically using Markdown headers (e.g. '## 核心结论速览', '### 背景与核心原理解析', '### 详细对比 / 实践步骤 / 实施路径', '### 注意事项、常见陷阱与建议').
-   - Structure paragraphs with blank lines (\n\n) between sections and use bullet points where appropriate.
-   - Ground every key factual claim with verified inline source citations like [1], [2] corresponding to search result indices.
+   - Synthesis over Listing: Do NOT emit a mechanical bullet list copying search card titles or snippet lines. Provide an insightful, comprehensive synthesis (e.g. core identity/definition, main product matrix/ecosystem, standout features/mechanisms, practical steps/downloads, and important caveats).
+   - Strict Numeric Citations: Citations MUST strictly be bracketed numeric indices only (e.g. [1], [2], [3]) corresponding to the ref numbers of the search results. NEVER put titles, URLs, or snippet excerpts inside brackets (NEVER output [Title] or [Title: snippet...]); doing so is an unacceptable formatting violation.
+   - Structure paragraphs with clean Markdown headers (##, ###), blank lines (\n\n) between sections, and bullet points where appropriate.
    - Answer strictly from evidence; acknowledge any gaps truthfully.
 
 Always reason carefully over tool observations before making the next move.
@@ -75,7 +74,7 @@ export const DEFAULT_CODEX_CONFIG: CodexAgentConfig = {
   agentName: "cerlesse-codex",
   version: "2.1.0",
   defaultModel: "gpt-4o-mini",
-  maxIterations: 12,
+  maxIterations: 18,
   temperature: 0.2,
   systemPrompt: CERLESSE_CODEX_SYSTEM_PROMPT
 };
