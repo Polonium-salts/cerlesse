@@ -931,9 +931,20 @@ export interface SearchDegradation {
  */
 export type SearchHitLevel = "hit" | "partial" | "no_hit";
 
+export interface ChatTurn {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+  sources?: SearchResult[];
+  isStreaming?: boolean;
+}
+
 export interface SearchSynthesisResult {
   query: string;
   timestamp: number;
+  threadId?: string;
+  chatTurns?: ChatTurn[];
   plan: AgentPlan;
   steps: AgentStep[];
   filteredResults: SearchResult[];

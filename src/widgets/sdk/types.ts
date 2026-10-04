@@ -169,6 +169,7 @@ export interface WidgetContext<TData = any> {
   // 宿主程序桥接能力
   onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
+  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
   

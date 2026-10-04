@@ -16,6 +16,7 @@ export const AiAnswerExtensionWidget: React.FC<ExtensionComponentProps<AiAnswerD
       summary={summary}
       query={data?.query || result?.query || context.activeResult?.query}
       onExecuteSearch={context.onExecuteSearch}
+      onAskFollowUp={context.onAskFollowUp}
       openUrl={context.openUrl}
       copyText={context.copyText}
       flipTile={context.flipTile}

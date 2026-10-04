@@ -23,6 +23,10 @@ export const onRequest: PagesFunction = async (context) => {
   let query: string | undefined;
   let model: string | undefined;
   let customSearxngUrl: string | undefined;
+  let mode: "search" | "followup" = "search";
+  let threadId: string | undefined;
+  let history: Array<{ role: "user" | "assistant"; content: string }> | undefined;
+  let sources: any[] | undefined;
   const { apiKey: headerApiKey, apiBaseUrl: headerApiBaseUrl } = extractAuthHeaders(context.request);
   let apiKey: string | undefined = headerApiKey;
   let apiBaseUrl: string | undefined = headerApiBaseUrl;
@@ -33,6 +37,10 @@ export const onRequest: PagesFunction = async (context) => {
       query = cleanParam(body?.query);
       model = cleanParam(body?.model);
       customSearxngUrl = cleanParam(body?.customSearxngUrl || body?.searxngUrl);
+      mode = body?.mode === "followup" ? "followup" : "search";
+      threadId = cleanParam(body?.threadId);
+      history = Array.isArray(body?.history) ? body.history : undefined;
+      sources = Array.isArray(body?.sources) ? body.sources : undefined;
       apiKey = apiKey || cleanParam(body?.apiKey);
       apiBaseUrl = apiBaseUrl || cleanParam(body?.apiBaseUrl);
     } catch {
@@ -45,6 +53,8 @@ export const onRequest: PagesFunction = async (context) => {
     query = cleanParam(url.searchParams.get("q") || url.searchParams.get("query"));
     model = model || cleanParam(url.searchParams.get("model"));
     customSearxngUrl = customSearxngUrl || cleanParam(url.searchParams.get("searxngUrl") || url.searchParams.get("customSearxngUrl"));
+    mode = (url.searchParams.get("mode") === "followup") ? "followup" : mode;
+    threadId = threadId || cleanParam(url.searchParams.get("threadId"));
     apiKey = apiKey || cleanParam(url.searchParams.get("apiKey"));
     apiBaseUrl = apiBaseUrl || cleanParam(url.searchParams.get("apiBaseUrl"));
   }
@@ -96,6 +106,10 @@ export const onRequest: PagesFunction = async (context) => {
         query: query!.trim(),
         model,
         customSearxngUrl,
+        mode,
+        threadId,
+        history,
+        sources,
         apiKey,
         apiBaseUrl,
         env: effectiveEnv,

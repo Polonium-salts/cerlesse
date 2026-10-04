@@ -223,6 +223,58 @@ export class CodexEventBridge {
 /**
  * 将全新的 CodexAgentResponse 转换为向前完全兼容的 SearchSynthesisResult
  */
+/**
+ * 依据检索结果、回答内容与用户查询智能提炼衍生追问建议
+ */
+export function generateFollowUpQuestions(
+  query: string,
+  answer: string,
+  _sources: SearchResult[] = [],
+  _takeaways: string[] = []
+): string[] {
+  const questions: string[] = [];
+  
+  // 1. 尝试从模型输出中抽取显式的追问或推荐拓展
+  const matches = answer.match(/(?:(?:您可能还想|可以进一步|推荐拓展|延伸阅读|相关问题|追问建议|进一步探索)[：:]?\s*)([\s\S]*?)(?=\n\n|$)/i);
+  if (matches && matches[1]) {
+    const lines = matches[1].split(/\n+/);
+    for (const l of lines) {
+      const clean = l.replace(/^[-*•\d+.\s\[\]()（）]+/, "").trim();
+      if (clean && clean.length >= 4 && clean.length <= 45) {
+        questions.push(clean.replace(/[?？]$/, "") + "？");
+      }
+    }
+  }
+
+  // 2. 结合 query 意图智能启发式生成高质量结构化追问
+  if (questions.length < 3) {
+    const qTrim = query.trim().replace(/[?？!！]+$/, "");
+    const isTech = /代码|技术|算法|框架|语言|开发|架构|实现|原理|bug|error|教程|配置|部署/i.test(qTrim);
+    const isProduct = /公司|产品|手机|车型|评测|参数|对比|价格|市值|财报|投资/i.test(qTrim);
+    const isHistoryOrConcept = /历史|起源|概念|是什么|背景|定义|发展|简史/i.test(qTrim);
+
+    if (isTech) {
+      questions.push(`如何在实际项目中配置与落地 ${qTrim}？`);
+      questions.push(`${qTrim} 最常见的性能瓶颈与避坑指南？`);
+      questions.push(`${qTrim} 与同类主流方案的对比与技术选型？`);
+    } else if (isProduct) {
+      questions.push(`${qTrim} 的核心优劣势与主流竞品对比？`);
+      questions.push(`${qTrim} 最新市场反馈与真实用户评价如何？`);
+      questions.push(`${qTrim} 的未来战略规划与演进趋势？`);
+    } else if (isHistoryOrConcept) {
+      questions.push(`${qTrim} 对当今行业与社会产生了哪些深远影响？`);
+      questions.push(`${qTrim} 演进历程中的标志性里程碑与关键转折？`);
+      questions.push(`学术界与业界对 ${qTrim} 目前有哪些前沿展望？`);
+    } else {
+      questions.push(`关于 ${qTrim}，还有哪些值得关注的核心细节？`);
+      questions.push(`${qTrim} 在实际场景中有哪些典型落地案例？`);
+      questions.push(`如何更高效地深入探索 ${qTrim}？`);
+    }
+  }
+
+  return Array.from(new Set(questions)).slice(0, 4);
+}
+
 export function buildSynthesisResultFromCodex(
   query: string,
   response: CerlesseAgentResponse,
@@ -343,7 +395,7 @@ export function buildSynthesisResultFromCodex(
     keyTakeaways: takeaways,
     comparisonTable: [],
     mindMap: { id: "root", label: query, children: [] },
-    followUpQuestions: [],
+    followUpQuestions: generateFollowUpQuestions(query, stableAnswer, sources, takeaways),
     modelUsed: response.diagnostics?.model || (response.diagnostics?.provider === "mock" ? "测试替身" : "未知模型"),
     generationStatus: response.diagnostics?.provider === "mock" ? "test_mock" : "agent_completed",
     generationProvider: response.diagnostics?.provider || "unknown",

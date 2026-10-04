@@ -18,7 +18,7 @@ import {
   buildSynthesisResultFromCodex
 } from "./eventBridge.js";
 import { synthesizeAnswerFromSources } from "./agentWidgetContent.js";
-import { DEFAULT_CODEX_CONFIG, CodexAgentConfig } from "./codexConfig.js";
+import { DEFAULT_CODEX_CONFIG, CodexAgentConfig, CERLESSE_FOLLOWUP_SYSTEM_PROMPT } from "./codexConfig.js";
 import { getAiApiClient, getAiApiConfig, LlmProviderError, toLlmProviderError } from "../aiProvider.js";
 import { PreparedWidgetOutput } from "../tools/widgetTool.js";
 import { SolveLayoutOutput } from "../tools/layoutTool.js";
@@ -27,6 +27,9 @@ import { TokenUsageCollector } from "./tokenUsageCollector.js";
 import { SEARCH_POLICY } from "../searchPolicy.js";
 
 export interface CodexRunOptions {
+  mode?: "search" | "followup";
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  sources?: SearchResult[];
   model?: string;
   customSearxngUrl?: string;
   env?: Record<string, string | undefined>;
@@ -89,7 +92,13 @@ export async function runCodexAgent(
 ): Promise<CodexRunResult> {
   const startTime = Date.now();
   const eventBridge = options.eventBridge || new CodexEventBridge();
-  const session = sessionManager.createSession(query, options.threadId);
+  const isFollowUp = options.mode === "followup";
+  const session = sessionManager.resumeOrCreateSession(
+    query,
+    options.threadId,
+    options.sources,
+    options.history
+  );
   const threadId = session.threadId;
 
   eventBridge.emit({
@@ -110,8 +119,9 @@ export async function runCodexAgent(
   const config: CodexAgentConfig = {
     ...DEFAULT_CODEX_CONFIG,
     defaultModel: aiApiConfig.model,
-    maxIterations: options.maxIterations || DEFAULT_CODEX_CONFIG.maxIterations,
-    temperature: typeof options.temperature === "number" ? options.temperature : DEFAULT_CODEX_CONFIG.temperature
+    maxIterations: options.maxIterations || (isFollowUp ? 8 : DEFAULT_CODEX_CONFIG.maxIterations),
+    temperature: typeof options.temperature === "number" ? options.temperature : DEFAULT_CODEX_CONFIG.temperature,
+    systemPrompt: isFollowUp ? CERLESSE_FOLLOWUP_SYSTEM_PROMPT : DEFAULT_CODEX_CONFIG.systemPrompt
   };
 
   const mcpContext: McpCallContext = {
@@ -325,7 +335,12 @@ export async function runCodexAgent(
     return typeof observation === "string" ? observation : JSON.stringify(observation);
   };
 
-  const llmkitTools: Tool[] = CERLESSE_MCP_TOOLS.map((definition) => ({
+  const allowedToolNames = isFollowUp
+    ? new Set(["search_web", "browser_read", "verify_source"])
+    : new Set(CERLESSE_MCP_TOOLS.map((t) => t.name));
+
+  const filteredMcpTools = CERLESSE_MCP_TOOLS.filter((t) => allowedToolNames.has(t.name));
+  const llmkitTools: Tool[] = filteredMcpTools.map((definition) => ({
     name: definition.name,
     description: definition.description,
     schema: definition.inputSchema,
@@ -393,12 +408,21 @@ export async function runCodexAgent(
   if (llmClient) {
     const rawTargetModel = options.model || config.defaultModel;
     const targetModel = normalizeModelForTarget(rawTargetModel, aiApiConfig.apiBaseUrl);
+    const historyMsgs: any[] = (options.history || []).map((h) => ({
+      role: h.role,
+      content: h.content,
+      toolCalls: []
+    }));
+
     let agent = llmClient.agent
       .system(config.systemPrompt)
       .model(targetModel)
       .temperature(config.temperature)
       .maxToolIterations(config.maxIterations)
       .addMiddleware(middleware);
+    if (historyMsgs.length > 0) {
+      agent = agent.history(...historyMsgs);
+    }
     for (const tool of llmkitTools) agent = agent.addTool(tool);
 
     try {
@@ -472,6 +496,9 @@ export async function runCodexAgent(
             .temperature(config.temperature)
             .maxToolIterations(config.maxIterations)
             .addMiddleware(middleware);
+          if (historyMsgs.length > 0) {
+            retryAgent = retryAgent.history(...historyMsgs);
+          }
           for (const tool of llmkitTools) retryAgent = retryAgent.addTool(tool);
 
           const retryResult = await retryAgent.prompt(query);
@@ -657,7 +684,7 @@ export async function runCodexAgent(
 
   const alreadySearched = executedSearchQueries.length > 0;
 
-  if (session.collectedSources.length === 0) {
+  if (!isFollowUp && session.collectedSources.length === 0) {
     recordReasoning(
       alreadySearched
         ? `已检索但未获得有效信源：${evidence.reason}`
@@ -680,7 +707,7 @@ export async function runCodexAgent(
     }
   }
 
-  // 必须对主要来源执行 verify_source
+  // 必须对主要来源执行 verify_source（非追问或有新未核验信源时）
   if (session.collectedSources.length > 0 && !toolsUsed.has("verify_source")) {
     const primarySource = session.collectedSources[0];
     const callId = `verify_${Date.now()}`;
@@ -693,90 +720,101 @@ export async function runCodexAgent(
     eventBridge.recordToolResult(callId, "verify_source", verifyRes, 50);
   }
 
-  // 自动为配图与视觉需求执行真实 search_images 工具调用（记录工具调用与真实结果事件）
-  if (session.collectedSources.length > 0 && imagesFound.length === 0) {
-    const imageCallId = `images_${Date.now()}`;
-    toolsUsed.add("search_images");
-    eventBridge.recordToolCall(imageCallId, "search_images", { query, limit: 16 });
-    try {
-      const imgOutput = await cerlesseMcpServer.callTool("search_images", { query, limit: 16 }, mcpContext);
-      if (Array.isArray(imgOutput?.images)) {
-        imagesFound = [...imagesFound, ...imgOutput.images];
+  let widgetSelection: ReturnType<typeof selectWidgetsByEvidence>;
+
+  if (!isFollowUp) {
+    // 自动为配图与视觉需求执行真实 search_images 工具调用（记录工具调用与真实结果事件）
+    if (session.collectedSources.length > 0 && imagesFound.length === 0) {
+      const imageCallId = `images_${Date.now()}`;
+      toolsUsed.add("search_images");
+      eventBridge.recordToolCall(imageCallId, "search_images", { query, limit: 16 });
+      try {
+        const imgOutput = await cerlesseMcpServer.callTool("search_images", { query, limit: 16 }, mcpContext);
+        if (Array.isArray(imgOutput?.images)) {
+          imagesFound = [...imagesFound, ...imgOutput.images];
+        }
+        eventBridge.recordToolResult(imageCallId, "search_images", imgOutput, 30);
+      } catch (err: any) {
+        eventBridge.recordToolResult(imageCallId, "search_images", { error: err?.message || "Image search failed" }, 30);
       }
-      eventBridge.recordToolResult(imageCallId, "search_images", imgOutput, 30);
-    } catch (err: any) {
-      eventBridge.recordToolResult(imageCallId, "search_images", { error: err?.message || "Image search failed" }, 30);
     }
-  }
 
-  // 小组件选型技能包（确定性、注册表驱动、证据可追溯）：
-  // 模型已成功绑定的组件保持不变；收尾阶段仅补齐常驻基础组件，专业组件必须由模型自主 prepare_widget 选择
-  const widgetSelection = selectWidgetsByEvidence({
-    query,
-    sources: session.collectedSources.map((s) => ({
-      id: s.id,
-      title: s.title,
-      snippet: s.snippet,
-      url: s.url,
-      thumbnail: (s as any).thumbnail,
-      isOfficial: (s as any).isOfficial
-    })),
-    images: imagesFound.map((img) => ({ imageUrl: img.imageUrl, thumbnailUrl: img.thumbnailUrl })),
-    finalAnswer: finalAnswer || undefined
-  });
-
-  if (session.preparedWidgets.length === 0) {
-    const callIdCatalog = `catalog_${Date.now()}`;
-    toolsUsed.add("get_widget_catalog");
-    eventBridge.recordToolCall(callIdCatalog, "get_widget_catalog", {});
-    const catalog = await cerlesseMcpServer.callTool("get_widget_catalog", {});
-    eventBridge.recordToolResult(callIdCatalog, "get_widget_catalog", catalog, 10);
-  }
-
-  // 仅对未就绪的常驻基础三件套 (ai_answer / related_links / image_gallery) 进行兜底补位，标注 source: "system_fallback"
-  const RESIDENT_FALLBACK_WIDGETS = new Set(["ai_answer", "related_links", "image_gallery"]);
-  const preparedIds = new Set(session.preparedWidgets.map((w) => w.widgetId));
-  const missingResidentIds = widgetSelection.selected.filter(
-    (id) => !preparedIds.has(id) && RESIDENT_FALLBACK_WIDGETS.has(id)
-  );
-  for (const wId of missingResidentIds) {
-    const prepId = `prep_${wId}_${Date.now()}`;
-    toolsUsed.add("prepare_widget");
-    eventBridge.recordToolCall(prepId, "prepare_widget", { widgetId: wId, query, source: "system_fallback" });
-    const prepRes = await cerlesseMcpServer.callTool("prepare_widget", {
-      widgetId: wId,
+    // 小组件选型技能包（确定性、注册表驱动、证据可追溯）：
+    // 模型已成功绑定的组件保持不变；收尾阶段仅补齐常驻基础组件，专业组件必须由模型自主 prepare_widget 选择
+    widgetSelection = selectWidgetsByEvidence({
       query,
-      sourceIds: session.collectedSources.slice(0, 3).map((s) => s.id)
+      sources: session.collectedSources.map((s) => ({
+        id: s.id,
+        title: s.title,
+        snippet: s.snippet,
+        url: s.url,
+        thumbnail: (s as any).thumbnail,
+        isOfficial: (s as any).isOfficial
+      })),
+      images: imagesFound.map((img) => ({ imageUrl: img.imageUrl, thumbnailUrl: img.thumbnailUrl })),
+      finalAnswer: finalAnswer || undefined
     });
-    eventBridge.recordToolResult(prepId, "prepare_widget", { ...prepRes, source: "system_fallback" }, 10);
-    if (prepRes.success) {
-      sessionManager.recordWidget(threadId, prepRes);
+
+    if (session.preparedWidgets.length === 0) {
+      const callIdCatalog = `catalog_${Date.now()}`;
+      toolsUsed.add("get_widget_catalog");
+      eventBridge.recordToolCall(callIdCatalog, "get_widget_catalog", {});
+      const catalog = await cerlesseMcpServer.callTool("get_widget_catalog", {});
+      eventBridge.recordToolResult(callIdCatalog, "get_widget_catalog", catalog, 10);
     }
-  }
 
-  if (missingResidentIds.length > 0) {
-    eventBridge.emit({
-      type: "widget_update",
-      widgets: session.preparedWidgets,
-      timestamp: Date.now()
-    });
-  }
+    // 仅对未就绪的常驻基础三件套 (ai_answer / related_links / image_gallery) 进行兜底补位，标注 source: "system_fallback"
+    const RESIDENT_FALLBACK_WIDGETS = new Set(["ai_answer", "related_links", "image_gallery"]);
+    const preparedIds = new Set(session.preparedWidgets.map((w) => w.widgetId));
+    const missingResidentIds = widgetSelection.selected.filter(
+      (id) => !preparedIds.has(id) && RESIDENT_FALLBACK_WIDGETS.has(id)
+    );
+    for (const wId of missingResidentIds) {
+      const prepId = `prep_${wId}_${Date.now()}`;
+      toolsUsed.add("prepare_widget");
+      eventBridge.recordToolCall(prepId, "prepare_widget", { widgetId: wId, query, source: "system_fallback" });
+      const prepRes = await cerlesseMcpServer.callTool("prepare_widget", {
+        widgetId: wId,
+        query,
+        sourceIds: session.collectedSources.slice(0, 3).map((s) => s.id)
+      });
+      eventBridge.recordToolResult(prepId, "prepare_widget", { ...prepRes, source: "system_fallback" }, 10);
+      if (prepRes.success) {
+        sessionManager.recordWidget(threadId, prepRes);
+      }
+    }
 
-  // 最终对 session.collectedSources 按 ref 递增排序，保证 [1], [2] 引用与列表一一对应
-  session.collectedSources.sort((a, b) => (a.ref ?? 0) - (b.ref ?? 0));
+    if (missingResidentIds.length > 0) {
+      eventBridge.emit({
+        type: "widget_update",
+        widgets: session.preparedWidgets,
+        timestamp: Date.now()
+      });
+    }
 
-  // 必须调用 solve_layout 进行无重叠几何装箱
-  if (!session.layout || session.layout.tiles.length === 0) {
-    const layoutCallId = `layout_${Date.now()}`;
-    toolsUsed.add("solve_layout");
-    const widgetIds = session.preparedWidgets.map((w) => w.widgetId);
-    eventBridge.recordToolCall(layoutCallId, "solve_layout", { widgetIds });
-    const layoutRes: SolveLayoutOutput = await cerlesseMcpServer.callTool("solve_layout", {
-      widgetIds,
-      emphasizedWidgetId: "ai_answer"
-    });
-    eventBridge.recordToolResult(layoutCallId, "solve_layout", layoutRes, 20);
-    sessionManager.recordLayout(threadId, layoutRes);
+    // 最终对 session.collectedSources 按 ref 递增排序，保证 [1], [2] 引用与列表一一对应
+    session.collectedSources.sort((a, b) => (a.ref ?? 0) - (b.ref ?? 0));
+
+    // 必须调用 solve_layout 进行无重叠几何装箱
+    if (!session.layout || session.layout.tiles.length === 0) {
+      const layoutCallId = `layout_${Date.now()}`;
+      toolsUsed.add("solve_layout");
+      const widgetIds = session.preparedWidgets.map((w) => w.widgetId);
+      eventBridge.recordToolCall(layoutCallId, "solve_layout", { widgetIds });
+      const layoutRes: SolveLayoutOutput = await cerlesseMcpServer.callTool("solve_layout", {
+        widgetIds,
+        emphasizedWidgetId: "ai_answer"
+      });
+      eventBridge.recordToolResult(layoutCallId, "solve_layout", layoutRes, 20);
+      sessionManager.recordLayout(threadId, layoutRes);
+    }
+  } else {
+    // 追问模式：沿用已建立的组件与布局，不重复排版
+    widgetSelection = {
+      selected: session.preparedWidgets.map((w) => w.widgetId),
+      ranking: session.preparedWidgets.map((w) => w.widgetId) as any,
+      evaluations: []
+    } as any;
   }
 
   // 测试替身兼容旧用例；正式请求已在前面强制要求模型最终回答，不允许规则拼接伪装。
@@ -788,8 +826,7 @@ export async function runCodexAgent(
     }
   }
 
-  // 证据边界是本次检索的**事实**，与答案由谁生成无关：模型作答时同样要如实标注，
-  // 否则一次 no_hit 会被一段自信的措辞完全掩盖，用户没法知道底下的证据到底有多少。
+  // 证据边界是本次检索的事实，与答案由谁生成无关：模型作答时同样要如实标注
   if (finalAnswer && evidence && evidence.level !== "hit" && !finalAnswer.includes("证据边界")) {
     finalAnswer += `\n\n> **证据边界**：${evidence.reason}`;
   }
@@ -814,11 +851,17 @@ export async function runCodexAgent(
   };
 
   if (finalAnswer) {
-    eventBridge.emit({
-      type: "answer_delta",
-      delta: finalAnswer,
-      timestamp: Date.now()
-    });
+    const chunkSize = 16;
+    for (let i = 0; i < finalAnswer.length; i += chunkSize) {
+      eventBridge.emit({
+        type: "answer_delta",
+        delta: finalAnswer.slice(i, i + chunkSize),
+        timestamp: Date.now()
+      });
+      if (process.env.NODE_ENV !== "test") {
+        await new Promise((resolve) => setTimeout(resolve, 14));
+      }
+    }
   }
 
   eventBridge.emit({
@@ -840,6 +883,7 @@ export async function runCodexAgent(
     // 让「展示给用户的检索计划」与「实际下发过的检索式 / 真实命中级别」一致
     { subQueries: executedSearchQueries, hitLevel: evidence?.level }
   );
+  (legacySynthesis as any).threadId = threadId;
 
   const tokenRecord = tokenCollector.buildRecord({
     searchId: threadId,

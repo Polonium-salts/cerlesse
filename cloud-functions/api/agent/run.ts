@@ -22,7 +22,17 @@ export const onRequest: PagesFunction = async (context) => {
       return errorResponse("无效的 JSON 请求体", 400);
     }
 
-    const { query, model, customSearxngUrl, apiKey: bodyApiKey, apiBaseUrl: bodyApiBaseUrl } = body || {};
+    const {
+      query,
+      model,
+      customSearxngUrl,
+      mode,
+      threadId,
+      history,
+      sources,
+      apiKey: bodyApiKey,
+      apiBaseUrl: bodyApiBaseUrl
+    } = body || {};
     if (!query || typeof query !== "string" || query.trim() === "") {
       return errorResponse("缺少搜索关键词", 400);
     }
@@ -36,6 +46,10 @@ export const onRequest: PagesFunction = async (context) => {
       query: query.trim(),
       model: cleanParam(model),
       customSearxngUrl: cleanParam(customSearxngUrl),
+      mode: mode === "followup" ? "followup" : "search",
+      threadId: cleanParam(threadId),
+      history: Array.isArray(history) ? history : undefined,
+      sources: Array.isArray(sources) ? sources : undefined,
       apiKey: effectiveApiKey,
       apiBaseUrl: effectiveApiBaseUrl,
       env: effectiveEnv

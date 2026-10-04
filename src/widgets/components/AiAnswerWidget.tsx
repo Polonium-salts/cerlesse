@@ -14,9 +14,12 @@ import {
   RefreshCw,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Send,
+  MessageSquare,
+  CornerDownLeft
 } from "lucide-react";
-import { SearchSynthesisResult } from "../../types.js";
+import { SearchSynthesisResult, ChatTurn } from "../../types.js";
 import { IOSWidget } from "../../components/ui/IOSWidget.js";
 import { MarkdownContent, SourceCitation } from "./MarkdownContent.js";
 import { Button } from "../../components/ui/button.js";
@@ -32,6 +35,7 @@ export interface AiAnswerWidgetProps {
   onRetry?: () => void;
   ratioMode?: "flexible" | "strict";
   onExecuteSearch?: (query: string, deep?: boolean) => void;
+  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
   flipTile?: () => void;
@@ -86,11 +90,15 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   onRetry,
   ratioMode = "flexible",
   onExecuteSearch,
+  onAskFollowUp,
   openUrl,
   copyText,
   flipTile
 }) => {
   const [copied, setCopied] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(() => {
     return typeof window !== "undefined" ? window.innerWidth < 768 : false;
   });
@@ -148,15 +156,24 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   const modelUsed = result?.modelUsed || (summary ? "AI 深度推理引擎" : "AI 权威信源综合");
   const executionTimeMs = result?.executionTimeMs || 0;
 
-  useEffect(() => {
-    if (effectiveSummary && typeof console !== "undefined") {
-      console.log(`[PipelineMetrics][Render] summaryChars=${effectiveSummary.length}, isClamped=${isMobile && !isExpanded && effectiveSummary.length > 360}, isExpanded=${isExpanded}, isMobile=${isMobile}`);
+  // 会话轮次解析：支持从 result.chatTurns 恢复多轮追问上下文
+  const chatTurns: ChatTurn[] = useMemo(() => {
+    if (result?.chatTurns && Array.isArray(result.chatTurns) && result.chatTurns.length > 0) {
+      return result.chatTurns;
     }
-  }, [effectiveSummary, isExpanded, isMobile]);
+    return [];
+  }, [result?.chatTurns]);
+
+  // 新增消息或流式片段到达时自动滚动到底部
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatTurns, effectiveSummary, isStreaming]);
 
   // 将信源转换为 Markdown 可溯源引用的格式
   const citations: SourceCitation[] = useMemo(() => {
-    return filteredResults.map((item, idx) => ({
+    return filteredResults.map((item: any, idx: number) => ({
       index: idx + 1,
       title: item.title,
       url: item.url,
@@ -165,7 +182,12 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   }, [filteredResults]);
 
   const handleCopy = () => {
-    const textToCopy = `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${effectiveSummary}`;
+    let textToCopy = `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${effectiveSummary}`;
+    if (chatTurns.length > 0) {
+      textToCopy = chatTurns
+        .map((t) => `${t.role === "user" ? "Q" : "A"}: ${t.content}`)
+        .join("\n\n");
+    }
     if (copyText) {
       copyText(textToCopy);
     } else if (navigator.clipboard) {
@@ -175,10 +197,25 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleFollowUpClick = (question: string) => {
-    if (onExecuteSearch) {
-      onExecuteSearch(question);
+  const handleFollowUpSubmit = async (textToSubmit?: string) => {
+    const q = (textToSubmit ?? inputText).trim();
+    if (!q || isStreaming || isSubmitting) return;
+
+    setInputText("");
+    setIsSubmitting(true);
+    try {
+      if (onAskFollowUp) {
+        await onAskFollowUp(q);
+      } else if (onExecuteSearch) {
+        onExecuteSearch(q);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleFollowUpClick = (question: string) => {
+    handleFollowUpSubmit(question);
   };
 
   return (
@@ -192,7 +229,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
           {isStreaming ? (
             <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/15 text-primary border-primary/30 animate-pulse">
               <span className="size-1.5 rounded-full bg-primary animate-ping" />
-              <span>正在生成中</span>
+              <span>正在思考中</span>
             </Badge>
           ) : (
             <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/10 text-primary border-primary/20">
@@ -217,7 +254,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
               size="sm"
               onClick={handleCopy}
               className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-              title="复制 AI 回答全文"
+              title="复制对话全文"
             >
               {copied ? (
                 <>
@@ -246,14 +283,14 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
           )}
         </div>
       }
-      className={`w-full h-auto transition-all duration-300 ${
+      className={`w-full transition-all duration-300 ${
         isStreaming ? "border-primary/40 ring-1 ring-primary/15 shadow-sm" : "border-border/80"
       } bg-card`}
-      contentClassName="p-3.5 sm:p-4 flex flex-col gap-3"
+      contentClassName="p-3 sm:p-4 flex flex-col h-[520px] max-h-[580px] gap-2.5 overflow-hidden"
     >
-      {/* 状态三：Provider Error 局部克制提示 (保留已搜索信源，不整页崩溃) */}
+      {/* 状态：Provider Error 局部克制提示 */}
       {isProviderError && (
-        <div className="rounded-xl border border-amber-300/40 bg-amber-50/50 dark:bg-amber-950/20 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="rounded-xl border border-amber-300/40 bg-amber-50/50 dark:bg-amber-950/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
           <div className="flex items-start gap-2">
             <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
@@ -272,25 +309,64 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
               variant="outline"
               size="sm"
               onClick={onRetry}
-              className="h-7 px-2.5 text-xs gap-1 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 self-end sm:self-auto cursor-pointer"
+              className="h-7 px-2.5 text-xs gap-1 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 self-end sm:self-auto cursor-pointer shrink-0"
             >
               <RefreshCw className="size-3" />
-              <span>重试生成</span>
+              <span>重试</span>
             </Button>
           )}
         </div>
       )}
 
-      {/* AI 深度回答正文 (Markdown Content with citations and streaming indicator) */}
-      {effectiveSummary ? (
-        <div className="flex flex-col gap-1.5 flex-1">
-          <div
-            className={`flex-1 bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4 transition-all duration-300 ${
-              isMobile && !isExpanded && effectiveSummary.length > 220
-                ? "max-h-[290px] overflow-hidden relative"
-                : ""
-            }`}
-          >
+      {/* 消息滚动容器：承载首轮全景研报与后续多轮对话 */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1.5 scrollbar-thin">
+        {chatTurns.length > 0 ? (
+          // 多轮对话模式
+          chatTurns.map((turn, index) => {
+            if (turn.role === "user") {
+              return (
+                <div key={turn.id || index} className="flex justify-end">
+                  <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-primary text-primary-foreground px-3.5 py-2 text-xs sm:text-sm shadow-xs leading-relaxed break-words">
+                    {turn.content}
+                  </div>
+                </div>
+              );
+            }
+
+            // Assistant 回答
+            const isFirstAssistantTurn = index <= 1;
+            const turnText = cleanAdFromSummary(turn.content || (isFirstAssistantTurn ? effectiveSummary : ""));
+
+            return (
+              <div key={turn.id || index} className="flex gap-2.5 items-start">
+                <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="size-3.5" />
+                </div>
+                <div className="flex-1 bg-background/50 rounded-2xl rounded-tl-xs border border-border/60 p-3 text-xs sm:text-sm text-foreground shadow-xs space-y-2">
+                  {turnText ? (
+                    <MarkdownContent
+                      className="leading-relaxed text-xs sm:text-sm"
+                      isStreaming={turn.isStreaming}
+                      sources={citations}
+                      onOpenUrl={openUrl}
+                    >
+                      {turnText}
+                    </MarkdownContent>
+                  ) : turn.isStreaming ? (
+                    <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground animate-pulse">
+                      <span className="size-1.5 rounded-full bg-primary animate-ping" />
+                      <span>正在组织深度回答...</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">暂无回答内容</p>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ) : effectiveSummary ? (
+          // 首轮单次研报渲染（向后兼容）
+          <div className="bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4">
             <MarkdownContent
               className="leading-relaxed text-sm"
               isStreaming={isStreaming}
@@ -299,91 +375,122 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
             >
               {effectiveSummary}
             </MarkdownContent>
+          </div>
+        ) : isStreaming ? (
+          <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground border border-dashed border-primary/30 bg-primary/[0.02] rounded-xl animate-pulse">
+            <Sparkles className="size-6 text-primary mb-2 animate-spin" />
+            <p className="text-xs sm:text-sm font-medium text-foreground">
+              Codex 智能体正在流式组织深度回答...
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              根据全网检索的权威信源交叉验证并撰写报告
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground border border-dashed border-border rounded-xl">
+            <Bot className="size-7 text-muted-foreground/50 mb-1.5" />
+            <p className="text-xs sm:text-sm font-medium">暂无 AI 回答内容</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              可尝试重新检索或追问细节
+            </p>
+          </div>
+        )}
 
-            {isMobile && !isExpanded && effectiveSummary.length > 220 && (
-              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-card via-card/85 to-transparent pointer-events-none" />
+        {/* 智能拓展追问推荐气泡 */}
+        {followUpQuestions.length > 0 && !isStreaming && (
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-border/40">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <HelpCircle className="size-3 text-primary" />
+              <span>智能推荐追问：</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {followUpQuestions.map((q, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleFollowUpClick(q)}
+                  disabled={isStreaming || isSubmitting}
+                  className="group inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-muted/60 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border border-border/80 transition-all text-foreground text-left cursor-pointer disabled:opacity-50"
+                  title={`点击追问: ${q}`}
+                >
+                  <span className="truncate max-w-[240px] sm:max-w-[340px]">{q}</span>
+                  <ArrowRight className="size-2.5 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-0.5 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 滚动锚点 */}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* 底部追问输入框（钉在底部） */}
+      <div className="pt-2 border-t border-border/50 shrink-0">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleFollowUpSubmit();
+          }}
+          className="flex items-center gap-1.5"
+        >
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleFollowUpSubmit();
+                }
+              }}
+              placeholder="向 AI 追问或补充细节... (Enter 发送)"
+              disabled={isStreaming || isSubmitting}
+              className="w-full bg-background/80 border border-border/80 rounded-xl px-3 py-1.5 pr-8 text-xs sm:text-sm placeholder:text-muted-foreground/60 focus:outline-hidden focus:ring-1 focus:ring-primary disabled:opacity-50 transition-all"
+            />
+            {inputText && (
+              <button
+                type="button"
+                onClick={() => setInputText("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground text-xs"
+              >
+                ×
+              </button>
             )}
           </div>
-
-          {/* 移动端长内容折叠与展开交互 */}
-          {isMobile && effectiveSummary.length > 220 && (
-            <div className="flex justify-center -mt-1 relative z-10">
-              <Button
-                variant={isExpanded ? "ghost" : "outline"}
-                size="sm"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className={`h-7 px-3 text-xs gap-1.5 rounded-full transition-all cursor-pointer ${
-                  isExpanded
-                    ? "text-muted-foreground hover:text-foreground"
-                    : "bg-card/90 backdrop-blur-sm border-border/80 shadow-xs hover:bg-muted text-foreground font-medium"
-                }`}
-              >
-                <span>{isExpanded ? "收起全文" : "展开完整回答"}</span>
-                {isExpanded ? (
-                  <ChevronUp className="size-3.5 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="size-3.5 text-muted-foreground" />
-                )}
-              </Button>
-            </div>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!inputText.trim() || isStreaming || isSubmitting}
+            className="h-8 px-3 rounded-xl text-xs gap-1 cursor-pointer shrink-0"
+          >
+            <Send className="size-3" />
+            <span className="hidden sm:inline">发送</span>
+          </Button>
+          {onExecuteSearch && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onExecuteSearch(effectiveQuery, true)}
+              disabled={isStreaming || isSubmitting}
+              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-xl shrink-0"
+              title="重新全网深度搜索"
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
           )}
-        </div>
-      ) : isStreaming ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground border border-dashed border-primary/30 bg-primary/[0.02] rounded-xl animate-pulse">
-          <Sparkles className="size-6 text-primary mb-2 animate-spin" />
-          <p className="text-xs sm:text-sm font-medium text-foreground">
-            Codex 智能体正在流式组织深度回答...
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            正在根据全网检索的权威信源交叉验证并撰写报告
-          </p>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground border border-dashed border-border rounded-xl">
-          <Bot className="size-7 text-muted-foreground/50 mb-1.5" />
-          <p className="text-xs sm:text-sm font-medium">暂无 AI 回答内容</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            可尝试重新检索或选择其他模型
-          </p>
-        </div>
-      )}
-
-      {/* 3. 智能拓展追问 (Follow-up Questions) */}
-      {followUpQuestions.length > 0 && !isStreaming && (
-        <div className="flex flex-col gap-1.5 pt-1.5 border-t border-border/60">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <HelpCircle className="size-3.5 text-primary" />
-            <span>您可能还想探索：</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {followUpQuestions.map((q, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleFollowUpClick(q)}
-                className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-muted/60 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border border-border transition-all text-foreground text-left cursor-pointer"
-                title={`点击搜索: ${q}`}
-              >
-                <span className="truncate max-w-[240px] sm:max-w-[360px]">{q}</span>
-                <ArrowRight className="size-3 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-0.5 shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 底部信源支持说明 */}
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
-        <div className="flex items-center gap-2">
-          <BookOpen className="size-3 text-primary/70" />
-          <span>
-            参考 <strong className="text-foreground">{sourcesCount}</strong> 个检索来源
+        </form>
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 pt-1.5 px-0.5">
+          <span className="flex items-center gap-1">
+            <BookOpen className="size-2.5 text-primary/70" />
+            基于 {sourcesCount} 个权威信源多轮推理
+          </span>
+          <span className="italic truncate max-w-[160px]">
+            {effectiveQuery}
           </span>
         </div>
-        {effectiveQuery && (
-          <span className="truncate max-w-[200px] italic text-muted-foreground/70">
-            主题: {effectiveQuery}
-          </span>
-        )}
       </div>
     </IOSWidget>
   );

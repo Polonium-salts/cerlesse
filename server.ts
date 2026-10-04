@@ -61,10 +61,10 @@ app.all(["/api/models/detect", "/api/models"], async (req, res) => {
   }
 });
 
-// 单一 Codex Agent 执行入口
+// 单一 Codex Agent 执行入口（支持全新研报与单 Agent 追问会话）
 const handleAgentRun = async (req: express.Request, res: express.Response) => {
   try {
-    const { query, model, customSearxngUrl } = req.body || {};
+    const { query, model, customSearxngUrl, mode, threadId, history, sources } = req.body || {};
     if (typeof query !== "string" || !query.trim()) {
       return res.status(400).json({ error: "缺少搜索关键词" });
     }
@@ -73,6 +73,10 @@ const handleAgentRun = async (req: express.Request, res: express.Response) => {
       query: query.trim(),
       model: cleanParam(model),
       customSearxngUrl: cleanParam(customSearxngUrl),
+      mode: mode === "followup" ? "followup" : "search",
+      threadId: cleanParam(threadId),
+      history: Array.isArray(history) ? history : undefined,
+      sources: Array.isArray(sources) ? sources : undefined,
       apiKey: cleanParam(apiKey),
       apiBaseUrl: cleanParam(apiBaseUrl),
       env: process.env
@@ -84,18 +88,24 @@ const handleAgentRun = async (req: express.Request, res: express.Response) => {
 };
 
 app.post("/api/agent", handleAgentRun);
-app.post(["/api/agent/run", "/api/agent/synthesize"], handleAgentRun);
+app.post(["/api/agent/run", "/api/agent/synthesize", "/api/agent/chat"], handleAgentRun);
 app.post("/api/planner", (_req, res) => res.status(410).json({ error: "规划由 Codex 搜索 Agent 完成。" }));
 app.post("/api/intent", (_req, res) => res.status(410).json({ error: "意图分析由 Codex 搜索 Agent 完成。" }));
 app.post("/api/cards/forge", (_req, res) => res.status(503).json({ error: "AI 卡片生成 API 已暂时移除。" }));
 
-// Codex Agent SSE 流式接口
-app.get("/api/agent/stream", async (req, res) => {
-  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+// Codex Agent SSE 流式接口 (支持 GET 与 POST，覆盖首轮搜索与会话追问续聊)
+app.all(["/api/agent/stream", "/api/agent/chat/stream"], async (req, res) => {
+  const isPost = req.method === "POST";
+  const rawQuery = isPost ? req.body?.query : req.query.q;
+  const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
   if (!query) return res.status(400).json({ error: "缺少搜索关键词" });
 
-  const model = cleanParam(req.query.model);
-  const customSearxngUrl = cleanParam(req.query.searxngUrl);
+  const model = cleanParam(isPost ? req.body?.model : req.query.model);
+  const customSearxngUrl = cleanParam(isPost ? (req.body?.customSearxngUrl || req.body?.searxngUrl) : req.query.searxngUrl);
+  const mode = (isPost ? req.body?.mode : req.query.mode) === "followup" ? "followup" : "search";
+  const threadId = cleanParam(isPost ? req.body?.threadId : req.query.threadId);
+  const history = isPost && Array.isArray(req.body?.history) ? req.body.history : undefined;
+  const sources = isPost && Array.isArray(req.body?.sources) ? req.body.sources : undefined;
   const { apiKey, apiBaseUrl } = extractAuthHeaders(req);
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -116,13 +126,13 @@ app.get("/api/agent/stream", async (req, res) => {
   res.on("close", () => clearInterval(keepAlive));
 
   try {
-    sendEvent("status", { message: "Cerlesse Agent 正在检索并调用工具..." });
+    sendEvent("status", { message: mode === "followup" ? "Cerlesse Agent 正在组织追问回答..." : "Cerlesse Agent 正在检索并调用工具..." });
     const eventBridge = new CodexEventBridge();
     eventBridge.subscribe((event) => {
       if (event.type === "tool_call" || event.type === "tool_result") {
         sendEvent("step", { currentStep: event, allSteps: eventBridge.getSteps() });
         sendEvent(event.type, event);
-      } else if (event.type === "source_update" || event.type === "widget_update") {
+      } else if (event.type === "source_update" || event.type === "widget_update" || event.type === "answer_delta") {
         sendEvent(event.type, event);
       }
     });
@@ -131,6 +141,10 @@ app.get("/api/agent/stream", async (req, res) => {
       query,
       model,
       customSearxngUrl,
+      mode,
+      threadId,
+      history,
+      sources,
       apiKey: cleanParam(apiKey),
       apiBaseUrl: cleanParam(apiBaseUrl),
       env: process.env,

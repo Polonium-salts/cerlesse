@@ -35,6 +35,7 @@ export const aiAnswerModule: WidgetModule = {
         summary={summary}
         query={ctx.activeResult?.query || ctx.data?.query}
         onExecuteSearch={ctx.onExecuteSearch}
+        onAskFollowUp={ctx.onAskFollowUp}
         openUrl={ctx.openUrl}
         copyText={ctx.copyText}
         flipTile={ctx.flipTile}

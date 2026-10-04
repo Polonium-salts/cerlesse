@@ -595,12 +595,31 @@ export default function App() {
         }
 
         const result: SearchSynthesisResult = await res.json();
-        setActiveResult(result);
+        const initialTurns: ChatTurn[] = [
+          {
+            id: `turn_u_${Date.now()}`,
+            role: "user",
+            content: query,
+            timestamp: Date.now()
+          },
+          {
+            id: `turn_a_${Date.now()}`,
+            role: "assistant",
+            content: result.summary,
+            timestamp: Date.now(),
+            sources: result.filteredResults
+          }
+        ];
+        const resultWithTurns: SearchSynthesisResult = {
+          ...result,
+          chatTurns: result.chatTurns && result.chatTurns.length > 0 ? result.chatTurns : initialTurns
+        };
+        setActiveResult(resultWithTurns);
         setAgentSteps(result.steps || []);
         setIsLoading(false);
 
         setHistory(prev => {
-          const next = [{ query, timestamp: Date.now(), result }, ...prev.slice(0, 19)];
+          const next = [{ query, timestamp: Date.now(), result: resultWithTurns }, ...prev.slice(0, 19)];
           try {
             localStorage.setItem("ai_search_history", JSON.stringify(next));
           } catch {
@@ -713,12 +732,31 @@ export default function App() {
           const result: SearchSynthesisResult = JSON.parse(event.data);
           if (result) {
             hasCompleted = true;
-            setActiveResult(result);
+            const initialTurns: ChatTurn[] = [
+              {
+                id: `turn_u_${Date.now()}`,
+                role: "user",
+                content: query,
+                timestamp: Date.now()
+              },
+              {
+                id: `turn_a_${Date.now()}`,
+                role: "assistant",
+                content: result.summary,
+                timestamp: Date.now(),
+                sources: result.filteredResults
+              }
+            ];
+            const resultWithTurns: SearchSynthesisResult = {
+              ...result,
+              chatTurns: result.chatTurns && result.chatTurns.length > 0 ? result.chatTurns : initialTurns
+            };
+            setActiveResult(resultWithTurns);
             setAgentSteps(result.steps || []);
             setIsLoading(false);
 
             setHistory(prev => {
-              const next = [{ query, timestamp: Date.now(), result }, ...prev.slice(0, 19)];
+              const next = [{ query, timestamp: Date.now(), result: resultWithTurns }, ...prev.slice(0, 19)];
               try {
                 localStorage.setItem("ai_search_history", JSON.stringify(next));
               } catch {
@@ -770,6 +808,298 @@ export default function App() {
     } catch {
       clearTimeout(watchdogTimer);
       fallbackPostSearch();
+    }
+  };
+
+  // 核心追问实现：基于已有桌面信源与上下文无状态续聊，不重置排版与状态
+  const handleAskFollowUp = async (question: string) => {
+    const q = question.trim();
+    if (!q || isLoading || !activeResult) return;
+
+    const userTurnId = `turn_u_${Date.now()}`;
+    const assistantTurnId = `turn_a_${Date.now()}`;
+
+    const prevTurns: ChatTurn[] = activeResult.chatTurns && activeResult.chatTurns.length > 0
+      ? [...activeResult.chatTurns]
+      : [
+          {
+            id: `turn_u_init`,
+            role: "user",
+            content: activeResult.query,
+            timestamp: activeResult.timestamp
+          },
+          {
+            id: `turn_a_init`,
+            role: "assistant",
+            content: activeResult.summary,
+            timestamp: activeResult.timestamp,
+            sources: activeResult.filteredResults
+          }
+        ];
+
+    const newUserTurn: ChatTurn = {
+      id: userTurnId,
+      role: "user",
+      content: q,
+      timestamp: Date.now()
+    };
+
+    const newAssistantTurn: ChatTurn = {
+      id: assistantTurnId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+      isStreaming: true
+    };
+
+    const nextTurns = [...prevTurns, newUserTurn, newAssistantTurn];
+
+    setActiveResult((prev) => (prev ? { ...prev, chatTurns: nextTurns } : prev));
+    setIsLoading(true);
+
+    const historyPayload = prevTurns.map((t) => ({ role: t.role, content: t.content }));
+    const sourcesPayload = (activeResult.filteredResults || []).slice(0, 15).map((s) => ({
+      id: s.id,
+      title: s.title,
+      url: s.url,
+      snippet: (s.snippet || "").slice(0, 300),
+      ref: s.ref
+    }));
+
+    const bodyPayload = {
+      query: q,
+      mode: "followup",
+      threadId: activeResult.threadId,
+      history: historyPayload,
+      sources: sourcesPayload,
+      model: settings.selectedModel || undefined,
+      customSearxngUrl: settings.searxngCustomUrl?.trim() || undefined,
+      apiKey: settings.customApiKey?.trim() || undefined,
+      apiBaseUrl: settings.customApiBaseUrl?.trim() || undefined,
+      temperature: settings.temperature,
+      maxIterations: settings.maxIterations
+    };
+
+    const saveHistoryItem = (res: SearchSynthesisResult) => {
+      setHistory((prev) => {
+        const idx = prev.findIndex((h) => h.query === activeResult.query);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], result: res };
+          try {
+            localStorage.setItem("ai_search_history", JSON.stringify(next));
+          } catch {}
+          return next;
+        }
+        return prev;
+      });
+    };
+
+    let hasCompleted = false;
+
+    const fallbackPostFollowUp = async () => {
+      if (hasCompleted) return;
+      hasCompleted = true;
+      try {
+        const res = await fetch("/api/agent/run", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(settings.customApiKey?.trim() ? { "x-custom-api-key": settings.customApiKey.trim() } : {}),
+            ...(settings.customApiBaseUrl?.trim() ? { "x-custom-base-url": settings.customApiBaseUrl.trim() } : {})
+          },
+          body: JSON.stringify(bodyPayload)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "追问请求异常");
+        }
+
+        const resData: SearchSynthesisResult = await res.json();
+        const finalAnswer = resData.summary || "已完成回答。";
+
+        setActiveResult((prev) => {
+          if (!prev) return prev;
+          const updated = (prev.chatTurns || []).map((turn) =>
+            turn.id === assistantTurnId
+              ? { ...turn, content: finalAnswer, isStreaming: false, sources: resData.filteredResults }
+              : turn
+          );
+          const next = {
+            ...prev,
+            chatTurns: updated,
+            followUpQuestions: resData.followUpQuestions?.length ? resData.followUpQuestions : prev.followUpQuestions,
+            filteredResults: resData.filteredResults?.length ? resData.filteredResults : prev.filteredResults
+          };
+          saveHistoryItem(next);
+          return next;
+        });
+      } catch (err: any) {
+        setActiveResult((prev) => {
+          if (!prev) return prev;
+          const updated = (prev.chatTurns || []).map((turn) =>
+            turn.id === assistantTurnId
+              ? { ...turn, content: `追问回答生成失败: ${err.message || "请稍后重试"}`, isStreaming: false }
+              : turn
+          );
+          return { ...prev, chatTurns: updated };
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    try {
+      const response = await fetch("/api/agent/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(settings.customApiKey?.trim() ? { "x-custom-api-key": settings.customApiKey.trim() } : {}),
+          ...(settings.customApiBaseUrl?.trim() ? { "x-custom-base-url": settings.customApiBaseUrl.trim() } : {})
+        },
+        body: JSON.stringify(bodyPayload)
+      });
+
+      if (!response.ok || !response.body) {
+        await fallbackPostFollowUp();
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const block of lines) {
+          const trimmed = block.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue;
+
+          let eventName = "message";
+          let eventData = "";
+
+          const blockLines = trimmed.split("\n");
+          for (const line of blockLines) {
+            if (line.startsWith("event:")) {
+              eventName = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+              eventData = line.slice(5).trim();
+            }
+          }
+
+          if (eventName === "answer_delta") {
+            try {
+              const parsed = JSON.parse(eventData);
+              if (parsed?.delta) {
+                setActiveResult((prev) => {
+                  if (!prev) return prev;
+                  const updated = (prev.chatTurns || []).map((t) =>
+                    t.id === assistantTurnId
+                      ? { ...t, content: (t.content || "") + parsed.delta, isStreaming: true }
+                      : t
+                  );
+                  return { ...prev, chatTurns: updated };
+                });
+              }
+            } catch {}
+          } else if (eventName === "source_update") {
+            try {
+              const parsed = JSON.parse(eventData);
+              if (Array.isArray(parsed?.sources)) {
+                setActiveResult((prev) =>
+                  prev ? { ...prev, filteredResults: parsed.sources } : prev
+                );
+              }
+            } catch {}
+          } else if (eventName === "step") {
+            try {
+              const parsed = JSON.parse(eventData);
+              if (parsed?.allSteps && Array.isArray(parsed.allSteps)) {
+                setAgentSteps(parsed.allSteps);
+              } else if (parsed?.currentStep) {
+                setAgentSteps((prev) => {
+                  const idx = prev.findIndex((s) => s.id === parsed.currentStep.id);
+                  if (idx !== -1) {
+                    const up = [...prev];
+                    up[idx] = parsed.currentStep;
+                    return up;
+                  }
+                  return [...prev, parsed.currentStep];
+                });
+              }
+            } catch {}
+          } else if (eventName === "complete") {
+            hasCompleted = true;
+            try {
+              const parsed: SearchSynthesisResult = JSON.parse(eventData);
+              setActiveResult((prev) => {
+                if (!prev) return prev;
+                const finalContent = parsed?.summary?.trim() || "";
+                const updated = (prev.chatTurns || []).map((t) =>
+                  t.id === assistantTurnId
+                    ? {
+                        ...t,
+                        content: finalContent || t.content || "已完成回答。",
+                        isStreaming: false,
+                        sources: parsed.filteredResults || prev.filteredResults
+                      }
+                    : t
+                );
+                const next = {
+                  ...prev,
+                  chatTurns: updated,
+                  followUpQuestions: parsed.followUpQuestions?.length ? parsed.followUpQuestions : prev.followUpQuestions,
+                  filteredResults: parsed.filteredResults?.length ? parsed.filteredResults : prev.filteredResults
+                };
+                saveHistoryItem(next);
+                return next;
+              });
+            } catch {}
+            setIsLoading(false);
+          } else if (eventName === "error") {
+            hasCompleted = true;
+            try {
+              const errParsed = JSON.parse(eventData);
+              setActiveResult((prev) => {
+                if (!prev) return prev;
+                const updated = (prev.chatTurns || []).map((t) =>
+                  t.id === assistantTurnId
+                    ? {
+                        ...t,
+                        content: t.content || `追问生成异常: ${errParsed.message || "请稍后重试"}`,
+                        isStreaming: false
+                      }
+                    : t
+                );
+                return { ...prev, chatTurns: updated };
+              });
+            } catch {}
+            setIsLoading(false);
+          }
+        }
+      }
+
+      if (!hasCompleted) {
+        setActiveResult((prev) => {
+          if (!prev) return prev;
+          const updated = (prev.chatTurns || []).map((t) =>
+            t.id === assistantTurnId ? { ...t, isStreaming: false } : t
+          );
+          const next = { ...prev, chatTurns: updated };
+          saveHistoryItem(next);
+          return next;
+        });
+        setIsLoading(false);
+      }
+    } catch {
+      await fallbackPostFollowUp();
     }
   };
 
@@ -890,6 +1220,7 @@ export default function App() {
         isCompact={isCompact}
         onResize={onResize}
         onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+        onAskFollowUp={handleAskFollowUp}
       />
     );
   };
@@ -1134,6 +1465,7 @@ export default function App() {
                         activeResult={activeResult}
                         settings={settings}
                         onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+                        onAskFollowUp={handleAskFollowUp}
                         onSwitchToBentoGrid={() => handleToggleInteractionMode("bento")}
                         isDark={darkMode}
                       />
@@ -1148,6 +1480,7 @@ export default function App() {
                           isWideCanvas={isWideCanvas}
                           onOpenMarketplace={() => setIsMarketplaceOpen(true)}
                           onExecuteSearch={(q, deep) => executeSearch(q, deep)}
+                          onAskFollowUp={handleAskFollowUp}
                           onNavigateTab={(tab) => goToPage(tab)}
                         />
                       </div>

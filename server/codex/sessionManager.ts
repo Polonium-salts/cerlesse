@@ -65,6 +65,45 @@ export class CodexSessionManager {
     return session;
   }
 
+  /**
+   * 恢复或新建多轮会话上下文（支持无状态环境下的外部历史与信源回灌）
+   */
+  public resumeOrCreateSession(
+    query: string,
+    customThreadId?: string,
+    initialSources?: SearchResult[],
+    history?: Array<{ role: "user" | "assistant"; content: string }>
+  ): CodexSession {
+    const existing = customThreadId ? this.sessions.get(customThreadId) : undefined;
+    if (existing) {
+      existing.lastActiveAt = Date.now();
+      existing.turns.push({
+        role: "user",
+        content: query,
+        timestamp: Date.now()
+      });
+      if (initialSources && initialSources.length > 0) {
+        this.recordSources(existing.threadId, initialSources);
+      }
+      return existing;
+    }
+
+    const session = this.createSession(query, customThreadId);
+    if (history && history.length > 0) {
+      const historicalTurns: MessageTurn[] = history.map((h, i) => ({
+        role: h.role,
+        content: h.content,
+        timestamp: Date.now() - (history.length - i) * 1000
+      }));
+      // 保持历史在前，当前提问在末尾
+      session.turns = [...historicalTurns, { role: "user", content: query, timestamp: Date.now() }];
+    }
+    if (initialSources && initialSources.length > 0) {
+      this.recordSources(session.threadId, initialSources);
+    }
+    return session;
+  }
+
   public getSession(threadId: string): CodexSession | undefined {
     return this.sessions.get(threadId);
   }

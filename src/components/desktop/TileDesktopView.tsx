@@ -49,6 +49,7 @@ interface TileDesktopViewProps {
   isWideCanvas?: boolean;
   onOpenMarketplace?: () => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
+  onAskFollowUp?: (question: string) => Promise<void> | void;
   onNavigateTab?: (tab: "bento" | "images" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
 }
 
@@ -60,6 +61,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   widgetPlan,
   activeResult,
   onExecuteSearch,
+  onAskFollowUp,
   onNavigateTab
 }) => {
   // 用户持久化手动调整的尺寸覆盖
@@ -476,6 +478,7 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         isCompact={size === 25}
         onResize={(nextSize) => handleTileResize(id, nextSize)}
         onExecuteSearch={onExecuteSearchRef.current}
+        onAskFollowUp={onAskFollowUp}
       />
     );
   };

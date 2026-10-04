@@ -109,6 +109,7 @@ interface WidgetRuntimeProps {
   isCompact?: boolean;
   onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
+  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
 }
@@ -122,6 +123,7 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
   isCompact = false,
   onResize,
   onExecuteSearch,
+  onAskFollowUp,
   openUrl,
   copyText
 }) => {
@@ -155,6 +157,7 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
         isCompact={isCompact}
         onResize={onResize}
         onExecuteSearch={onExecuteSearch}
+        onAskFollowUp={onAskFollowUp}
         openUrl={openUrl}
         copyText={copyText}
       />
@@ -170,6 +173,7 @@ interface WidgetRuntimeInnerProps {
   isCompact?: boolean;
   onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
+  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
 }
@@ -182,6 +186,7 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
   isCompact = false,
   onResize,
   onExecuteSearch,
+  onAskFollowUp,
   openUrl,
   copyText
 }) => {
@@ -275,6 +280,7 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
       actions: boundActions,
       onResize: onResize as any,
       onExecuteSearch,
+      onAskFollowUp,
       openUrl: openUrl || ((url: string) => window.open(url, "_blank", "noopener,noreferrer")),
       copyText: copyText || ((text: string) => navigator.clipboard?.writeText(text)),
       storage: scopedStorage
@@ -290,7 +296,8 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
     setState, 
     boundActions, 
     onResize, 
-    onExecuteSearch, 
+    onExecuteSearch,
+    onAskFollowUp,
     openUrl, 
     copyText, 
     scopedStorage

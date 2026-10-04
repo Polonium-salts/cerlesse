@@ -19,6 +19,7 @@ interface CockpitWorkspaceProps {
   activeResult: SearchSynthesisResult;
   settings: UserSettings;
   onExecuteSearch: (query: string, deepSearch?: boolean) => void;
+  onAskFollowUp?: (question: string) => Promise<void> | void;
   onSwitchToBentoGrid?: () => void;
   initialTab?: "answer" | "links" | "reasoning";
   isDark?: boolean;
@@ -32,6 +33,7 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
   activeResult,
   settings,
   onExecuteSearch,
+  onAskFollowUp,
   onSwitchToBentoGrid,
   initialTab = "links",
   openUrl,
@@ -96,6 +98,7 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
                 result={activeResult}
                 query={activeResult.query}
                 onExecuteSearch={onExecuteSearch}
+                onAskFollowUp={onAskFollowUp}
                 openUrl={openUrl}
                 copyText={copyText}
               />
