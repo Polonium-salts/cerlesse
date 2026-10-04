@@ -23,8 +23,9 @@ import { Button } from "../../components/ui/button.js";
 import { Badge } from "../../components/ui/badge.js";
 
 export interface AiAnswerWidgetProps {
-  result?: SearchSynthesisResult;
+  result?: SearchSynthesisResult | any;
   query?: string;
+  summary?: string;
   isStreaming?: boolean;
   isProviderError?: boolean;
   errorText?: string;
@@ -36,6 +37,41 @@ export interface AiAnswerWidgetProps {
   flipTile?: () => void;
 }
 
+function cleanAdFromSummary(text: string): string {
+  if (!text) return "";
+  let clean = text.trim();
+  clean = clean.replace(/^[【\[(（]?(?:广告|商业推广|推广|赞助商?|AD|Sponsored|Advertisement)[】\])）]?[:：·\-\s]+/i, "");
+  clean = clean.replace(/[【\[(（]?(?:广告|商业推广|推广|赞助商?|AD|Sponsored|Advertisement)[】\])）]?$/i, "");
+
+  // 清洗泄露的伪工具交互转录与原始检索结果 JSON 块
+  clean = clean.replace(/(?:^|\n)(?:Tool:\s*[a-zA-Z0-9_]+|Query:\s*[^\n]+|Language:\s*[^\n]+|Recency Days:\s*[^\n]+|Arguments:\s*\{[\s\S]*?\}|Result:\s*\{[\s\S]*?\})\s*(?=\n|$)/gi, "");
+  clean = clean.replace(/search_web\s+query="[^"]*"[^\n]*/gi, "");
+  clean = clean.replace(/\{\s*"results"\s*:\s*\[[\s\S]*?\]\s*\}/gi, "");
+
+  // 逐行剔除包含明确广告特征的行
+  const lines = clean.split("\n");
+  const filteredLines = lines.filter((line) => {
+    const l = line.trim();
+    if (!l) return true;
+    if (/^[【\[(（]?(?:广告|商业推广|推广|赞助商?|AD|Sponsored)[】\])）]/i.test(l)) return false;
+    if (/(?:商业推广|广告推广|赞助商链接|推广链接|点击进入|立即购买|限时抢购|招商加盟|加微信|加V:|免费领取优惠券)/i.test(l)) {
+      return false;
+    }
+    return true;
+  });
+  clean = filteredLines.join("\n").trim();
+
+  // 若全文主要是营销广告词或纯机器转录，彻底清空
+  if (
+    (clean.length < 240 && /(?:商业推广|广告推广|赞助商链接|推广链接|点击进入|立即购买|限时抢购|招商加盟|加微信|加V:)/i.test(clean)) ||
+    clean.startsWith("{") ||
+    clean.startsWith("search_web")
+  ) {
+    return "";
+  }
+  return clean.trim();
+}
+
 /**
  * AI 智能回答小组件 (正面)
  * 沉浸式展示基于全网多信源的 AI 深度综合回答、核心要点结论与智能拓展追问
@@ -43,6 +79,7 @@ export interface AiAnswerWidgetProps {
 export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   result,
   query: customQuery,
+  summary: customSummary,
   isStreaming = false,
   isProviderError = false,
   errorText,
@@ -70,19 +107,52 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   }, []);
 
   const effectiveQuery = (customQuery || result?.query || "智能检索").trim();
-  const summary = result?.summary || "";
-  const keyTakeaways = result?.keyTakeaways || [];
-  const followUpQuestions = result?.followUpQuestions || [];
-  const modelUsed = result?.modelUsed || "AI 深度推理引擎";
-  const executionTimeMs = result?.executionTimeMs || 0;
+  const rawSummary =
+    customSummary ||
+    result?.summary ||
+    result?.answer ||
+    result?.content ||
+    result?.chatText ||
+    result?.text ||
+    result?.finalResponse ||
+    result?.markdown ||
+    (typeof result === "string" ? result : "");
+  const extractedSummary = (typeof rawSummary === "string" ? rawSummary : String(rawSummary || "")).trim();
+  const summary = cleanAdFromSummary(extractedSummary);
   const filteredResults = result?.filteredResults || [];
   const sourcesCount = filteredResults.length;
 
+  const cleanSummaryFromSources = useMemo(() => {
+    if (summary) return summary;
+    if (!filteredResults || filteredResults.length === 0) return "";
+    const cleanItems = filteredResults.filter((s: any) => {
+      const text = `${s.title || ""} ${s.snippet || ""}`;
+      return !/^[【\[(（]?(?:广告|商业推广|推广|赞助商?)[】\])）]|(?:商业推广|赞助商链接|推广链接|广告推广|正品低价)/i.test(text);
+    });
+    if (cleanItems.length === 0) return "";
+    const primary = cleanItems[0];
+    const lead = `${cleanAdFromSummary(primary.snippet || primary.title)} [1]`;
+    const rest = cleanItems
+      .slice(1, 4)
+      .map((s: any, idx: number) => {
+        const snip = cleanAdFromSummary(s.snippet || s.title);
+        return snip ? `- **${s.title}**：${snip} [${idx + 2}]` : null;
+      })
+      .filter(Boolean);
+    return rest.length > 0 ? `${lead}\n\n${rest.join("\n")}` : lead;
+  }, [summary, filteredResults]);
+
+  const effectiveSummary = summary || cleanSummaryFromSources;
+  const keyTakeaways = result?.keyTakeaways || [];
+  const followUpQuestions = result?.followUpQuestions || [];
+  const modelUsed = result?.modelUsed || (summary ? "AI 深度推理引擎" : "AI 权威信源综合");
+  const executionTimeMs = result?.executionTimeMs || 0;
+
   useEffect(() => {
-    if (summary && typeof console !== "undefined") {
-      console.log(`[PipelineMetrics][Render] summaryChars=${summary.length}, isClamped=${isMobile && !isExpanded && summary.length > 360}, isExpanded=${isExpanded}, isMobile=${isMobile}`);
+    if (effectiveSummary && typeof console !== "undefined") {
+      console.log(`[PipelineMetrics][Render] summaryChars=${effectiveSummary.length}, isClamped=${isMobile && !isExpanded && effectiveSummary.length > 360}, isExpanded=${isExpanded}, isMobile=${isMobile}`);
     }
-  }, [summary, isExpanded, isMobile]);
+  }, [effectiveSummary, isExpanded, isMobile]);
 
   // 将信源转换为 Markdown 可溯源引用的格式
   const citations: SourceCitation[] = useMemo(() => {
@@ -95,7 +165,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   }, [filteredResults]);
 
   const handleCopy = () => {
-    const textToCopy = `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${summary}`;
+    const textToCopy = `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${effectiveSummary}`;
     if (copyText) {
       copyText(textToCopy);
     } else if (navigator.clipboard) {
@@ -141,7 +211,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
       }
       actions={
         <div className="flex items-center gap-1">
-          {summary && (
+          {effectiveSummary && (
             <Button
               variant="ghost"
               size="sm"
@@ -211,30 +281,12 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
         </div>
       )}
 
-      {/* 1. 核心结论要点 (Key Takeaways) */}
-      {keyTakeaways.length > 0 && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex flex-col gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-primary uppercase tracking-wider">
-            <CheckCircle2 className="size-3.5" />
-            <span>核心提炼与结论速览</span>
-          </div>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs text-foreground/90">
-            {keyTakeaways.map((takeaway, idx) => (
-              <li key={idx} className="flex items-start gap-1.5 bg-background/60 rounded-md p-2 border border-border/50">
-                <span className="size-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
-                <span className="leading-snug">{takeaway}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* 2. AI 深度回答正文 (Markdown Content with citations and streaming indicator) */}
-      {summary ? (
+      {/* AI 深度回答正文 (Markdown Content with citations and streaming indicator) */}
+      {effectiveSummary ? (
         <div className="flex flex-col gap-1.5 flex-1">
           <div
             className={`flex-1 bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4 transition-all duration-300 ${
-              isMobile && !isExpanded && summary.length > 220
+              isMobile && !isExpanded && effectiveSummary.length > 220
                 ? "max-h-[290px] overflow-hidden relative"
                 : ""
             }`}
@@ -245,16 +297,16 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
               sources={citations}
               onOpenUrl={openUrl}
             >
-              {summary}
+              {effectiveSummary}
             </MarkdownContent>
 
-            {isMobile && !isExpanded && summary.length > 220 && (
+            {isMobile && !isExpanded && effectiveSummary.length > 220 && (
               <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-card via-card/85 to-transparent pointer-events-none" />
             )}
           </div>
 
           {/* 移动端长内容折叠与展开交互 */}
-          {isMobile && summary.length > 220 && (
+          {isMobile && effectiveSummary.length > 220 && (
             <div className="flex justify-center -mt-1 relative z-10">
               <Button
                 variant={isExpanded ? "ghost" : "outline"}
@@ -319,12 +371,12 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
         </div>
       )}
 
-      {/* 4. 底部信源支持说明 */}
+      {/* 底部信源支持说明 */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
         <div className="flex items-center gap-2">
           <BookOpen className="size-3 text-primary/70" />
           <span>
-            已综合参考全网 <strong className="text-foreground">{sourcesCount}</strong> 个权威信源数据
+            参考 <strong className="text-foreground">{sourcesCount}</strong> 个检索来源
           </span>
         </div>
         {effectiveQuery && (
@@ -344,21 +396,55 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
 export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
   result,
   query: customQuery,
+  summary: customSummary,
   openUrl,
   copyText,
   flipTile
 }) => {
   const [copiedRaw, setCopiedRaw] = useState(false);
-  const summary = result?.summary || "";
-  const modelUsed = result?.modelUsed || "Deep Reasoning Agent";
-  const executionTimeMs = result?.executionTimeMs || 0;
+  const rawSummary =
+    customSummary ||
+    result?.summary ||
+    result?.answer ||
+    result?.content ||
+    result?.chatText ||
+    result?.text ||
+    result?.finalResponse ||
+    result?.markdown ||
+    (typeof result === "string" ? result : "");
+  const extractedSummary = (typeof rawSummary === "string" ? rawSummary : String(rawSummary || "")).trim();
+  const summary = cleanAdFromSummary(extractedSummary);
   const filteredResults = result?.filteredResults || [];
+
+  const cleanSummaryFromSources = useMemo(() => {
+    if (summary) return summary;
+    if (!filteredResults || filteredResults.length === 0) return "";
+    const cleanItems = filteredResults.filter((s: any) => {
+      const text = `${s.title || ""} ${s.snippet || ""}`;
+      return !/^[【\[(（]?(?:广告|商业推广|推广|赞助商?)[】\])）]|(?:商业推广|赞助商链接|推广链接|广告推广|正品低价)/i.test(text);
+    });
+    if (cleanItems.length === 0) return "";
+    const primary = cleanItems[0];
+    const lead = `${cleanAdFromSummary(primary.snippet || primary.title)} [1]`;
+    const rest = cleanItems
+      .slice(1, 4)
+      .map((s: any, idx: number) => {
+        const snip = cleanAdFromSummary(s.snippet || s.title);
+        return snip ? `- **${s.title}**：${snip} [${idx + 2}]` : null;
+      })
+      .filter(Boolean);
+    return rest.length > 0 ? `${lead}\n\n${rest.join("\n")}` : lead;
+  }, [summary, filteredResults]);
+
+  const effectiveSummary = summary || cleanSummaryFromSources;
+  const modelUsed = result?.modelUsed || (summary ? "Deep Reasoning Agent" : "AI 权威信源综合");
+  const executionTimeMs = result?.executionTimeMs || 0;
 
   const handleCopyRaw = () => {
     if (copyText) {
-      copyText(summary);
+      copyText(effectiveSummary);
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(summary);
+      navigator.clipboard.writeText(effectiveSummary);
     }
     setCopiedRaw(true);
     setTimeout(() => setCopiedRaw(false), 2000);

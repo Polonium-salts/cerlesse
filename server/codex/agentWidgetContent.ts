@@ -1,4 +1,5 @@
 import type { SearchResult } from "../../src/types.js";
+import { isAdOrSpamResult, sanitizeAdPrefix } from "../searchFilters.js";
 
 export interface UnrenderedContentSection {
   title: string;
@@ -6,189 +7,136 @@ export interface UnrenderedContentSection {
 }
 
 /**
- * 为没有独立渲染模块的规划类型（如 topic_digest, comparison, troubleshooting 等）
- * 生成结构化 Markdown 小节，合并降级到 ai_answer，保证内容完整不丢失。
+ * 保留接口类型，不追加伪造的模板小节
  */
 export function buildUnrenderedSectionsForTypes(
-  types: string[],
-  query: string,
-  sources: SearchResult[]
+  _types: string[],
+  _query: string,
+  _sources: SearchResult[]
 ): UnrenderedContentSection[] {
-  const sections: UnrenderedContentSection[] = [];
-  const cleanQuery = (query || "当前检索").trim();
-
-  for (const type of types) {
-    const t = type.toLowerCase();
-    if (t.includes("comparison") || t === "comparison") {
-      const tableHeader = "| 维度 / 方案 | 方案名称 | 核心特征与证据摘要 |\n| :--- | :--- | :--- |";
-      const tableRows = sources.slice(0, 4).map((s, i) => {
-        const title = (s.title || `方案 ${i + 1}`).replace(/<[^>]*>/g, "").replace(/\|/g, " ").trim().slice(0, 40);
-        const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").replace(/\|/g, " ").trim().slice(0, 140);
-        const domain = (s.engine || "权威参考").replace(/\|/g, " ").trim();
-        return `| [${i + 1}] 方案 ${i + 1} | **${title}** (${domain}) | ${snippet} |`;
-      });
-      if (tableRows.length > 0) {
-        sections.push({
-          title: "综合对比与关键参数论证",
-          content: `针对「${cleanQuery}」的多方案/多实体维度对比：\n\n${tableHeader}\n${tableRows.join("\n")}`
-        });
-      }
-    } else if (t.includes("digest") || t === "topic_digest") {
-      const digestPoints = sources.slice(0, 3).map((s, i) => {
-        const title = (s.title || "深度解读").replace(/<[^>]*>/g, "").trim();
-        const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").trim();
-        return `**${i + 1}. ${title}**\n${snippet}\n> 来源: [查看原文](${s.url}) [${i + 1}]`;
-      });
-      if (digestPoints.length > 0) {
-        sections.push({
-          title: "核心深挖解读与知识拓展",
-          content: digestPoints.join("\n\n")
-        });
-      }
-    } else if (t.includes("troubleshoot") || t === "troubleshooting") {
-      const steps = sources.slice(0, 3).map((s, i) => {
-        const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").trim();
-        return `- **排查步骤 ${i + 1}**：针对相关异常现象，先行检查配置与网络上下文。证据摘要：${snippet} [${i + 1}]`;
-      });
-      if (steps.length > 0) {
-        sections.push({
-          title: "故障排查与诊断指引",
-          content: steps.join("\n")
-        });
-      }
-    }
-  }
-
-  return sections;
+  return [];
 }
 
 /**
- * 稳定化并扩充 AI 智能回答正文：
- * 1. 彻底杜绝截断、占位语或单薄短文本；
- * 2. 将无独立渲染模块的规划内容（合并降级）完整拼入 Markdown 小节；
- * 3. 规范内联信源索引 [1], [2]，保证论据可溯源；
- * 4. 纯函数、确定性输出。
+ * 清洗内部模型协议标签与泄漏的工具调用
+ */
+export function sanitizeAgentAnswer(answer: string): string {
+  let clean = (answer || "")
+    .replace(/<\|tool_call\|>[\s\S]*?<\|tool_call\|>/g, "")
+    .replace(/<\|.*?\|>/g, "")
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/\[TOOL_(REQUEST|CALL)\][\s\S]*?\[\/TOOL_\1\]/gi, "")
+    .replace(/^call:[a-zA-Z0-9_]+\(\{[\s\S]*?\}\)\s*$/gm, "");
+
+  // 严格清洗模型泄露的未受控工具交互转录与原始检索结果 JSON 块
+  clean = clean.replace(/(?:^|\n)(?:Tool:\s*[a-zA-Z0-9_]+|Query:\s*[^\n]+|Language:\s*[^\n]+|Recency Days:\s*[^\n]+|Arguments:\s*\{[\s\S]*?\}|Result:\s*\{[\s\S]*?\})\s*(?=\n|$)/gi, "");
+  clean = clean.replace(/search_web\s+query="[^"]*"[^\n]*/gi, "");
+  clean = clean.replace(/\{\s*"results"\s*:\s*\[[\s\S]*?\]\s*\}/gi, "");
+
+  return clean.trim();
+}
+
+const PLACEHOLDER_REGEX = /^(finished processing\.?|已完成检索并生成回答。?|正在生成.*|暂无回答.*|模型没有生成回答.*|暂无 AI 回答内容.*|暂无内容.*)$/i;
+
+/**
+ * 基于已检索到的真实信源，直接合成自然、事实驱动且严格标注 [1], [2] 引用的回答
+ * 彻底过滤广告推广与虚假营销信息
+ */
+export function synthesizeAnswerFromSources(query: string, sources: SearchResult[] = []): string {
+  if (!sources || sources.length === 0) {
+    return "没有检索到可引用的来源，暂时无法回答这个问题。";
+  }
+
+  // 严格剔除广告与商业推广信源，绝不回退至广告源
+  const cleanSources = sources.filter((s) => !isAdOrSpamResult(s));
+  if (cleanSources.length === 0) {
+    return `已检索到 ${sources.length} 条网页信息，但均检测为商业推广或广告内容，已为你主动过滤。请重新检索或直接浏览信源直达链接。`;
+  }
+
+  const top = cleanSources.slice(0, 6);
+  const validSnippets = top
+    .map((s, idx) => {
+      const rawSnippet = (s.snippet || "").replace(/<[^>]*>/g, "").trim();
+      const rawTitle = (s.title || "").replace(/<[^>]*>/g, "").trim();
+      const cleanSnippet = sanitizeAdPrefix(rawSnippet);
+      const cleanTitle = sanitizeAdPrefix(rawTitle);
+      if (!cleanSnippet && !cleanTitle) return null;
+      if (isAdOrSpamResult({ title: cleanTitle || rawTitle, snippet: cleanSnippet || rawSnippet, url: s.url })) {
+        return null;
+      }
+      return {
+        ref: idx + 1,
+        title: cleanTitle || rawTitle,
+        snippet: cleanSnippet || cleanTitle || rawSnippet,
+        domain: s.displayDomain || s.engine || "权威信源"
+      };
+    })
+    .filter(Boolean) as Array<{ ref: number; title: string; snippet: string; domain: string }>;
+
+  if (validSnippets.length === 0) {
+    return "已检索到相关来源，但暂无足够摘要内容生成回答。请点击下方信源直达查看详情。";
+  }
+
+  // 首句直出核心事实
+  const primary = validSnippets[0];
+  const lead = `${primary.snippet} [${primary.ref}]`;
+
+  // 后续要点补充
+  const additional = validSnippets.slice(1);
+  if (additional.length === 0) {
+    return lead;
+  }
+
+  const points = additional.map((item) => `- **${item.title}**：${item.snippet} [${item.ref}]`);
+  return `${lead}\n\n${points.join("\n")}`;
+}
+
+/**
+ * 确保模型回答生成有效：
+ * 1. 若模型有实际输出，清洗协议标签后原样保留（无固定模板约束），杜绝广告文本混入；
+ * 2. 若模型未输出、输出包含广告特征或仅输出占位语/无回答提示，基于检索到的权威信源自动合成直出回答与引用，绝不出现广告或空白。
+ */
+export function finalizeAnswer(answer: string, sources: SearchResult[] = [], query?: string): string {
+  const clean = sanitizeAgentAnswer(answer);
+  const isAd = isAdOrSpamResult({ title: clean, snippet: clean });
+  if (
+    clean &&
+    !isAd &&
+    !PLACEHOLDER_REGEX.test(clean) &&
+    !clean.startsWith("模型没有生成回答") &&
+    !clean.startsWith("暂无 AI 回答内容") &&
+    !clean.startsWith("{") &&
+    !clean.startsWith("search_web") &&
+    !clean.startsWith("Tool:") &&
+    !clean.includes('"results":')
+  ) {
+    return clean;
+  }
+  return synthesizeAnswerFromSources(query || "", sources);
+}
+
+/**
+ * 兼容旧命名，直接调用 finalizeAnswer
  */
 export function stabilizeAgentAnswer(
   query: string,
   answer: string,
   sources: SearchResult[],
-  unrenderedSections: UnrenderedContentSection[] = []
+  _unrenderedSections?: UnrenderedContentSection[]
 ): string {
-  let cleanAnswer = (answer || "").trim();
-  // 清洗内部模型协议标签与泄漏的工具调用
-  cleanAnswer = cleanAnswer.replace(/<\|tool_call\|>[\s\S]*?<\|tool_call\|>/g, "");
-  cleanAnswer = cleanAnswer.replace(/<\|.*?\|>/g, "");
-  cleanAnswer = cleanAnswer.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "");
-  cleanAnswer = cleanAnswer.replace(/\[TOOL_REQUEST\][\s\S]*?\[\/TOOL_REQUEST\]/gi, "");
-  cleanAnswer = cleanAnswer.replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/gi, "");
-  cleanAnswer = cleanAnswer.replace(/^call:[a-zA-Z0-9_]+\(\{[\s\S]*?\}\)\s*$/gm, "");
-  cleanAnswer = cleanAnswer.trim();
-
-  const cleanQuery = (query || "本次问题").trim();
-  const isPlaceholder = /^(finished processing\.?|已完成检索并生成回答。?|正在生成.*|暂无回答.*)$/i.test(cleanAnswer);
-  const paragraphs = cleanAnswer.split(/\n\s*\n/).filter(Boolean);
-
-  // 格式化未渲染模块注入的小节
-  const extraMarkdown = unrenderedSections.length > 0
-    ? unrenderedSections.map(sec => `### ${sec.title}\n\n${sec.content}`).join("\n\n")
-    : "";
-
-  // 如果模型给出了结构完整且篇幅充实（>= 180 字且多段落）的回答
-  if (!isPlaceholder && cleanAnswer.length >= 180 && paragraphs.length >= 2) {
-    let result = cleanAnswer;
-    if (extraMarkdown && !result.includes(unrenderedSections[0]?.title || "___")) {
-      result += `\n\n${extraMarkdown}`;
-    }
-    return result;
-  }
-
-  // 模型输出被截断、为空或过于简短时，根据检索信源合成深度全景报告
-  const topSources = (sources || []).slice(0, 6);
-  
-  if (topSources.length === 0) {
-    const lead = isPlaceholder ? "" : cleanAnswer;
-    return [lead, `## 关于「${cleanQuery}」`, "### 证据状态\n\n目前没有可引用的检索来源，因此无法据此补充经核实的结论。"].filter(Boolean).join("\n\n");
-  }
-
-  // 1. 核心结论要点
-  const keyBullets = topSources.slice(0, 3).map((s, idx) => {
-    const title = (s.title || "核心结论").replace(/<[^>]*>/g, "").trim();
-    const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").trim();
-    return `- **${title}**：${snippet || "详见信源页面详细记录与技术说明。"} [${idx + 1}]`;
-  });
-
-  // 2. 背景机理与深度剖析
-  const analysisParagraphs = topSources.slice(1, 4).map((s, idx) => {
-    const title = (s.title || "机理解读").replace(/<[^>]*>/g, "").trim();
-    const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").trim();
-    return `在 **${title}** 的实际应用与研究中，核心机理指出：${snippet}。该机制为理解「${cleanQuery}」的技术边界与演化路径提供了关键事实依托 [${idx + 2}]。`;
-  });
-
-  // 3. 关键维度对比或论证 (构建标准 GFM Markdown 表格)
-  let comparativeNotes = "";
-  if (topSources.length > 1) {
-    const tableHeader = "| 维度 / 信源 | 渠道来源 | 核心证据与结论提炼 |\n| :--- | :--- | :--- |";
-    const tableRows = topSources.slice(0, 4).map((s, idx) => {
-      const title = (s.title || `信源 [${idx + 1}]`).replace(/<[^>]*>/g, "").replace(/\|/g, " ").trim().slice(0, 40);
-      const domain = (s.engine || "权威参考").replace(/\|/g, " ").trim();
-      const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").replace(/\|/g, " ").trim().slice(0, 140);
-      return `| [${idx + 1}] ${title} | ${domain} | ${snippet} |`;
-    });
-    comparativeNotes = `${tableHeader}\n${tableRows.join("\n")}`;
-  }
-
-  // 4. 信源证据列表
-  const evidenceList = topSources.map((s, idx) => {
-    const title = (s.title || "相关信源").replace(/<[^>]*>/g, "").trim();
-    const snippet = (s.snippet || "").replace(/<[^>]*>/g, "").trim();
-    return `- **${title}**${snippet ? `：${snippet}` : "（来源页面可供进一步核验）"} [${idx + 1}]`;
-  }).join("\n");
-
-  const sections: string[] = [];
-
-  // 首段引言
-  if (!isPlaceholder && cleanAnswer.length > 0) {
-    sections.push(cleanAnswer);
-    sections.push(`## 关于「${cleanQuery}」`);
-  } else {
-    sections.push(`## 关于「${cleanQuery}」\n\n经过对全网多个权威互联网信源的深度检索与实时交叉核验，为您全面剖析其核心结论、底层机理与实践要点：`);
-  }
-
-  if (analysisParagraphs.length > 0) {
-    sections.push(`### 背景与原理解析\n\n${analysisParagraphs.join("\n\n")}`);
-  }
-
-  if (comparativeNotes) {
-    sections.push(`### 关键维度多维对比\n\n${comparativeNotes}`);
-  }
-
-  if (extraMarkdown) {
-    sections.push(extraMarkdown);
-  }
-
-  if (evidenceList) {
-    sections.push(`### 检索证据与来源\n\n${evidenceList}`);
-  }
-
-  return sections.join("\n\n");
+  return finalizeAnswer(answer, sources, query);
 }
 
 /** 
- * 从完整回答中提炼要点条目：
- * 绝不裁剪或削减 ai_answer 本体内容，纯提取要点供 Takeaways 组件使用。
+ * 从完整回答中提取真实列表项作为要点：
+ * 仅从回答中自发产出的列表项中提取。
  */
-export function extractAgentTakeaways(answer: string, sources: SearchResult[], limit = 5): string[] {
-  const bullets = (answer || "").match(/^\s*(?:[-*+]\s+|\d+[.)]\s+)(.+)$/gm) || [];
+export function extractAgentTakeaways(answer: string, _sources: SearchResult[] = [], limit = 5): string[] {
+  const clean = sanitizeAgentAnswer(answer);
+  const bullets = clean.match(/^\s*(?:[-*+]\s+|\d+[.)]\s+)(.+)$/gm) || [];
   const takeaways = bullets
     .map((line) => line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").replace(/\[\d+\]/g, "").trim())
     .filter(line => line.length > 2 && !line.startsWith("|"))
     .slice(0, limit);
-  if (takeaways.length > 0) return takeaways;
-
-  return (sources || []).slice(0, limit).map((source) => {
-    const snippet = (source.snippet || "").replace(/<[^>]*>/g, "").trim();
-    const title = (source.title || "").replace(/<[^>]*>/g, "").trim();
-    return snippet ? `${title}：${snippet}`.slice(0, 160) : title;
-  }).filter(Boolean);
+  return takeaways;
 }

@@ -202,11 +202,7 @@ export function preprocessMarkdown(text: string): string {
   clean = clean.replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/gi, "");
   clean = clean.replace(/^call:[a-zA-Z0-9_]+\(\{[\s\S]*?\}\)\s*$/gm, "");
 
-  // 2. 修复行首/行中的伪标题（如「关于「...」」「背景与原理解析」「关键维度多维对比」「检索证据与来源」没有加 # 的情况）
-  clean = clean.replace(/^([ \t]*)(关于[「『“"].*?[」』”].*?)$/gm, "$1## $2");
-  clean = clean.replace(/^([ \t]*)(背景与原理解析|核心原理解析|原理解析|关键维度多维对比|多维对比矩阵|对比分析|检索证据与来源|核心信源证据|参考资料|事实依据)$/gm, "$1### $2");
-
-  // 3. 修复畸形 Markdown 表格
+  // 2. 修复畸形 Markdown 表格
   const lines = clean.split("\n");
   const processedLines: string[] = [];
   let tableHeaderGenerated = false;

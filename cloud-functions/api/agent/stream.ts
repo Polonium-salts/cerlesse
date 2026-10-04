@@ -85,7 +85,7 @@ export const onRequest: PagesFunction = async (context) => {
         if (ev.type === "tool_call" || ev.type === "tool_result") {
           await sendEvent("step", { currentStep: ev, allSteps: eventBridge.getSteps() });
           await sendEvent(ev.type, ev);
-        } else if (ev.type === "source_update" || ev.type === "widget_update") {
+        } else if (ev.type === "source_update" || ev.type === "widget_update" || ev.type === "answer_delta") {
           await sendEvent(ev.type, ev);
         }
       });

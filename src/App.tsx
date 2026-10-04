@@ -65,7 +65,7 @@ import {
 } from "lucide-react";
 
 const DEFAULT_SETTINGS: UserSettings = {
-  selectedModel: "gpt-4o-mini",
+  selectedModel: "deepseek-v4-flash:free",
   customApiBaseUrl: undefined,
   customApiKey: undefined,
   customProvider: undefined,
@@ -498,10 +498,10 @@ export default function App() {
         setSettings((prev) => {
           if (prev.customApiKey || prev.customApiBaseUrl || prev.customProvider) return prev;
           const configuredModelIds = new Set(models.map((model) => model.id));
-          if (configuredModelIds.has(prev.selectedModel)) return prev;
-          const nextModel = configuredModelIds.has(data.defaultModel)
-            ? data.defaultModel
-            : models[0]?.id || DEFAULT_SETTINGS.selectedModel;
+          const isLegacyOrPaidDefault = prev.selectedModel === "gpt-4o-mini" || !configuredModelIds.has(prev.selectedModel);
+          const nextModel = isLegacyOrPaidDefault
+            ? (data.defaultModel || "deepseek-v4-flash:free")
+            : prev.selectedModel;
           return { ...prev, selectedModel: nextModel };
         });
       })
@@ -655,6 +655,54 @@ export default function App() {
         }
       });
 
+      // Handle real-time answer token streaming
+      eventSource.addEventListener("answer_delta", (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && typeof data.delta === "string") {
+            setActiveResult((prev) => {
+              if (prev) {
+                return { ...prev, summary: (prev.summary || "") + data.delta };
+              }
+              return {
+                query,
+                timestamp: Date.now(),
+                plan: { originalQuery: query, intent: "comprehensive", subQueries: [query], comparisonDimensions: [] },
+                steps: [],
+                filteredResults: [],
+                rawResultCount: 0,
+                hitLevel: "hit",
+                relatedImages: [],
+                summary: data.delta,
+                keyTakeaways: [],
+                comparisonTable: [],
+                mindMap: { id: "root", label: query, children: [] },
+                followUpQuestions: [],
+                modelUsed: settings.selectedModel || "AI Agent",
+                generationStatus: "agent_completed",
+                generationProvider: "agent",
+                modelCallCount: 1,
+                executionTimeMs: 0
+              };
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to parse SSE answer_delta", e);
+        }
+      });
+
+      // Handle real-time source update
+      eventSource.addEventListener("source_update", (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && Array.isArray(data.sources)) {
+            setActiveResult((prev) => (prev ? { ...prev, filteredResults: data.sources } : prev));
+          }
+        } catch (e) {
+          console.warn("Failed to parse SSE source_update", e);
+        }
+      });
+
       // Handle successful synthesis completion directly from stream data
       eventSource.addEventListener("complete", (event: MessageEvent) => {
         clearTimeout(watchdogTimer);
@@ -663,7 +711,7 @@ export default function App() {
 
         try {
           const result: SearchSynthesisResult = JSON.parse(event.data);
-          if (result && result.summary) {
+          if (result) {
             hasCompleted = true;
             setActiveResult(result);
             setAgentSteps(result.steps || []);
@@ -1005,7 +1053,7 @@ export default function App() {
             )}
 
             {/* 极简搜索加载状态：检索进行中呈现纯粹简洁微动效，结果就绪后平滑展开研报 */}
-            {(isLoading || (agentSteps.length > 0 && !activeResult)) && (
+            {((isLoading && !activeResult) || (agentSteps.length > 0 && !activeResult)) && (
               <div className="flex-1 flex items-center justify-center min-h-[40vh]">
                 <AgentOrchestrationLoader
                   steps={agentSteps}

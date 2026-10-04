@@ -25,7 +25,7 @@ const SEARCH_ENGINES: SearchEngineConfig[] = [
     id: "bing",
     name: "Bing",
     brandLabel: "微软必应",
-    promotedText: "Promoted by Microsoft",
+    promotedText: "微软必应检索",
     accentColor: "#0078d4",
     getSearchUrl: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}`
   },
@@ -33,7 +33,7 @@ const SEARCH_ENGINES: SearchEngineConfig[] = [
     id: "google",
     name: "Google",
     brandLabel: "谷歌搜索",
-    promotedText: "Google Search",
+    promotedText: "谷歌全球搜索",
     accentColor: "#4285f4",
     getSearchUrl: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}`
   },
@@ -41,7 +41,7 @@ const SEARCH_ENGINES: SearchEngineConfig[] = [
     id: "baidu",
     name: "百度",
     brandLabel: "百度搜索",
-    promotedText: "百度一下，你就知道",
+    promotedText: "百度中文检索",
     accentColor: "#2932e1",
     getSearchUrl: (q) => `https://www.baidu.com/s?wd=${encodeURIComponent(q)}`
   },
@@ -49,7 +49,7 @@ const SEARCH_ENGINES: SearchEngineConfig[] = [
     id: "sogou",
     name: "搜狗",
     brandLabel: "搜狗搜索",
-    promotedText: "搜狗搜索，结果更准",
+    promotedText: "搜狗全网检索",
     accentColor: "#fb6022",
     getSearchUrl: (q) => `https://www.sogou.com/web?query=${encodeURIComponent(q)}`
   },
@@ -57,7 +57,7 @@ const SEARCH_ENGINES: SearchEngineConfig[] = [
     id: "duckduckgo",
     name: "DuckDuckGo",
     brandLabel: "隐私搜索",
-    promotedText: "Privacy, simplified.",
+    promotedText: "DuckDuckGo 隐私检索",
     accentColor: "#de5833",
     getSearchUrl: (q) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`
   }
@@ -174,7 +174,7 @@ export const SearchEngineWidget: React.FC<SearchEngineWidgetProps> = ({
       contentClassName="p-3.5 sm:p-4 flex flex-col justify-between gap-2.5"
     >
       <div className="flex flex-col gap-2">
-        {/* 顶部赞助与归属标识（如截图中的 Promoted by Microsoft） */}
+        {/* 顶部引擎归属与直达标识 */}
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-normal text-muted-foreground tracking-tight select-none">
             {currentEngine.promotedText}

@@ -100,7 +100,7 @@ export const GATEWAY_REGISTRY: Record<Exclude<GatewayProvider, "none">, GatewayC
     name: "UnoRouter",
     baseUrl: "https://api.unorouter.com/v1",
     envKeys: ["UNOROUTER_API_KEY", "UNOROUTER_KEY", "LLM_API_KEY", "AI_API_KEY"],
-    defaultModel: "deepseek/deepseek-chat",
+    defaultModel: "deepseek-v4-flash:free",
     pricingEndpoint: "https://api.unorouter.com/api/pricing"
   },
   openrouter: {

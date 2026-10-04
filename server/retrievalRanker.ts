@@ -22,6 +22,7 @@
 
 import { SearchFilters, SearchResult, SearchSourceType } from "../src/types.js";
 import { OFFICIAL_DOMAIN_PATTERNS } from "./officialDomains.js";
+import { isAdOrSpamResult } from "./searchFilters.js";
 
 // ============================================================
 // 1. 查询画像：把自然语言查询拆成「核心实体 + 意图修饰词」
@@ -1312,12 +1313,13 @@ export function rankAndFilterResultsWithReport(
       continue;
     }
 
-    // 硬性剔除：营销导流站、破解/优惠券标题、以及「搜索结果页」这类根本不是内容的 URL。
-    // 三者都不参与排序，也绝不允许被后续兜底补位重新拉回。
+    // 硬性剔除：营销导流站、广告/商业推广/赞助、破解/优惠券标题、以及「搜索结果页」这类根本不是内容的 URL。
+    // 都不参与排序，也绝不允许被后续兜底补位重新拉回。
     if (
       SPAM_URL_PATTERNS.test(result.url) ||
       SPAM_TITLE_PATTERNS.test(result.title) ||
-      isSearchEndpoint(result.url)
+      isSearchEndpoint(result.url) ||
+      isAdOrSpamResult(result)
     ) {
       hardRejected++;
       continue;

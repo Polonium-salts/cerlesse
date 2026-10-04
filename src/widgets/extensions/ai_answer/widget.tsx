@@ -7,11 +7,14 @@ export const AiAnswerExtensionWidget: React.FC<ExtensionComponentProps<AiAnswerD
   data,
   context
 }) => {
-  const result = data.activeResult || context.activeResult;
+  const result = data?.activeResult || context.activeResult;
+  const summary = data?.summary || result?.summary || (data as any)?.chatText || (data as any)?.answer || (data as any)?.content || "";
+  const effectiveResult = result ? { ...result, summary: summary || result.summary } : ({ query: data?.query, summary } as any);
   return (
     <AiAnswerWidget
-      result={result}
-      query={data.query || result?.query}
+      result={effectiveResult}
+      summary={summary}
+      query={data?.query || result?.query || context.activeResult?.query}
       onExecuteSearch={context.onExecuteSearch}
       openUrl={context.openUrl}
       copyText={context.copyText}
@@ -24,11 +27,14 @@ export const AiAnswerBackExtensionWidget: React.FC<ExtensionComponentProps<AiAns
   data,
   context
 }) => {
-  const result = data.activeResult || context.activeResult;
+  const result = data?.activeResult || context.activeResult;
+  const summary = data?.summary || result?.summary || (data as any)?.chatText || (data as any)?.answer || (data as any)?.content || "";
+  const effectiveResult = result ? { ...result, summary: summary || result.summary } : ({ query: data?.query, summary } as any);
   return (
     <AiAnswerBackWidget
-      result={result}
-      query={data.query || result?.query}
+      result={effectiveResult}
+      summary={summary}
+      query={data?.query || result?.query || context.activeResult?.query}
       onExecuteSearch={context.onExecuteSearch}
       openUrl={context.openUrl}
       copyText={context.copyText}

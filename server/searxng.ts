@@ -3,6 +3,7 @@ import { SearchResult, SearchImage } from "../src/types.js";
 import { normalizeUrlKey } from "./retrievalRanker.js";
 import { acceptLanguageFor, toSearxngLanguage } from "./language.js";
 import { collectWebSearchResults, WEB_SEARCH_MAX_SEARXNG_INSTANCES, WEB_SEARCH_RESULT_TARGET } from "./webSearchCollection.js";
+import { isAdOrSpamResult } from "./searchFilters.js";
 
 export function generateStableSourceId(url: string): string {
   const norm = normalizeUrlKey(url);
@@ -184,7 +185,7 @@ async function getActiveSearxngInstances(): Promise<string[]> {
 
 function sanitizeSnippet(text: string): string {
   if (!text) return "";
-  return text
+  let clean = text
     .replace(/<[^>]*>/g, "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -192,7 +193,11 @@ function sanitizeSnippet(text: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/^\d{4}年\d{1,2}月\d{1,2}日\s*[\·\-\—\s]*\s*/i, "")
     .trim();
+  return clean;
 }
 
 /**
@@ -259,6 +264,11 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
 
     for (let i = 1; i < blocks.length; i++) {
       const block = blocks[i];
+      // 严格跳过包含任何 Bing 广告标识的元素（b_ad, b_adTop, b_adBottom, data-ad 等）
+      if (/class="[^"]*b_ad|data-ad|class="[^"]*b_ans b_ad/i.test(block)) {
+        continue;
+      }
+
       const linkMatch =
         block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>/i) ||
         block.match(/<a[^>]*href="([^"]+)"[^>]*><h2[^>]*>([\s\S]*?)<\/h2><\/a>/i);
@@ -273,6 +283,11 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
         const directUrl = decodeBingUrl(rawUrl);
         const title = sanitizeSnippet(linkMatch[2]);
         const snippet = snippetMatch ? sanitizeSnippet(snippetMatch[1]) : "";
+
+        // 杜绝广告/商业推广/追踪重定向进入结果池
+        if (isAdOrSpamResult({ title, snippet, url: directUrl })) {
+          continue;
+        }
 
         if (directUrl.startsWith("http")) {
           let hostname = "";
@@ -301,6 +316,9 @@ export async function searchDirectWeb(query: string, langCode?: string): Promise
       for (const m of h2Global) {
         const directUrl = decodeBingUrl(m[1]);
         const title = sanitizeSnippet(m[2]);
+        if (isAdOrSpamResult({ title, url: directUrl })) {
+          continue;
+        }
         if (directUrl.startsWith("http")) {
           let hostname = "";
           try {
@@ -425,11 +443,17 @@ async function searchSingleSearxng(instance: string, query: string, langCode?: s
       hostname = item.url;
     }
 
+    const title = sanitizeSnippet(item.title || "无标题");
+    const snippet = sanitizeSnippet(item.content || item.snippet || item.parsed_url?.[1] || "");
+    if (isAdOrSpamResult({ title, snippet, url: item.url })) {
+      continue;
+    }
+
     mapped.push({
       id: `sx-${Math.random().toString(36).substring(2, 9)}`,
-      title: sanitizeSnippet(item.title || "无标题"),
+      title,
       url: item.url,
-      snippet: sanitizeSnippet(item.content || item.snippet || item.parsed_url?.[1] || ""),
+      snippet,
       engine: item.engine || item.engines?.[0] || "SearXNG",
       category: item.category || "general",
       publishedDate: item.publishedDate || item.pubdate,
@@ -891,6 +915,9 @@ async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> 
     const blocks = html.split(/<div[^>]*class="[^"]*result[^"]*results_links/i);
     for (let i = 1; i < blocks.length; i++) {
       const b = blocks[i];
+      if (/sponsor|badge--ad|result--ad|data-ad|class="[^"]*ad[_\-\s]/i.test(b)) {
+        continue;
+      }
       const linkM = b.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) ||
                     b.match(/<a[^>]*class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>/i);
       const titleM = b.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
@@ -902,6 +929,11 @@ async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> 
           if (u) directUrl = decodeURIComponent(u[1]);
         }
         if (directUrl.startsWith("http")) {
+          const cleanTitle = sanitizeSnippet(titleM[1]);
+          const cleanSnippet = snippetM ? sanitizeSnippet(snippetM[1]) : `访问 ${cleanTitle} 了解详细内容。`;
+          if (isAdOrSpamResult({ title: cleanTitle, snippet: cleanSnippet, url: directUrl })) {
+            continue;
+          }
           let hostname = "";
           try {
             hostname = new URL(directUrl).hostname;
@@ -910,9 +942,9 @@ async function searchDuckDuckGoFallback(query: string): Promise<SearchResult[]> 
           }
           results.push({
             id: `ddg-${Math.random().toString(36).substring(2, 9)}`,
-            title: sanitizeSnippet(titleM[1]),
+            title: cleanTitle,
             url: directUrl,
-            snippet: snippetM ? sanitizeSnippet(snippetM[1]) : `访问 ${titleM[1]} 了解详细内容。`,
+            snippet: cleanSnippet,
             engine: "DuckDuckGo",
             category: "general",
             displayDomain: hostname
@@ -1050,14 +1082,17 @@ export async function searchSearxng(
 
     const isWiki = /wikipedia\.org|baike\.baidu\.com/i.test(item.url);
     if (isWiki && !userWantsEncyclopedia) continue;
+    if (isAdOrSpamResult({ title: item.title, snippet: item.snippet, url: item.url })) continue;
     item.id = generateStableSourceId(item.url);
     filtered.push(item);
   }
   if (filtered.length === 0 && combined.length > 0) {
     for (const item of combined) {
-      if (item.url) item.id = generateStableSourceId(item.url);
+      if (item.url && !isAdOrSpamResult({ title: item.title, snippet: item.snippet, url: item.url })) {
+        item.id = generateStableSourceId(item.url);
+        filtered.push(item);
+      }
     }
-    filtered.push(...combined);
   }
 
   const instancesUsed = Array.from(

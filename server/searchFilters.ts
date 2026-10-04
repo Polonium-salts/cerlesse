@@ -155,3 +155,55 @@ export function normalizeSearchFilters(input: unknown): SearchFilters | undefine
   // （空对象会让调用方误以为"用户指定了筛选"，进而触发不必要的筛选分支）
   return Object.keys(filters).length > 0 ? filters : undefined;
 }
+
+export interface AdCheckItem {
+  title?: string;
+  snippet?: string;
+  url?: string;
+}
+
+const AD_URL_REGEX = /(?:bing\.com\/(?:aclick|ck\/a)|googleadservices\.com|googlesyndication\.com|doubleclick\.net|cpro\.baidu\.com|pos\.baidu\.com|union\.baidu\.com|e\.baidu\.com|adservice\.google|s\.click\.taobao\.com|union\.jd\.com|cps\.jd\.com|\/aclick|\bad_id=|\badurl=|\badclick\b|\bclick_id=|\bspm=|\bref=ad|\butm_medium=cpc|\butm_source=ad|\bp4p\b)/i;
+
+const AD_DOMAIN_REGEX = /(?:^|\.)(?:ad|ads|adserver|affiliate|p4p|track|click|promote|advert)\.[a-z0-9\-]+$/i;
+
+const AD_TITLE_OR_SNIPPET_REGEX = /(?:^|[【\[(（\s])(?:广告|商业推广|推广|赞助商?|AD|Sponsored|Advertisement|Ad)(?:[】\])）:：·\-\s]|$)|(?:广告推广|赞助商链接|商业赞助|商业推广链接|竞价推广|竞价排名|广告合作|广告位招租|广告投放|点击查看优惠|限时秒杀|立即抢购|立即购买|加微信|加V:|免费领取优惠券|招商加盟|免费加盟|专场特惠|全场包邮|正品低价.*点击选购|直降.*元|点击咨询|免费预约|官方正品.*点击购买)/i;
+
+/**
+ * 判断给定的检索结果是否属于广告、商业推广、竞价链接或追踪重定向
+ */
+export function isAdOrSpamResult(item: AdCheckItem): boolean {
+  if (!item) return false;
+  const url = (item.url || "").trim();
+  if (url) {
+    if (AD_URL_REGEX.test(url)) return true;
+    try {
+      const hostname = new URL(url).hostname;
+      if (AD_DOMAIN_REGEX.test(hostname)) return true;
+    } catch {
+      // ignore malformed url
+    }
+  }
+  const title = (item.title || "").trim();
+  if (title && AD_TITLE_OR_SNIPPET_REGEX.test(title)) {
+    return true;
+  }
+  const snippet = (item.snippet || "").trim();
+  if (snippet && AD_TITLE_OR_SNIPPET_REGEX.test(snippet)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 清除文本中混杂的广告/推广标记或整段商业营销语
+ */
+export function sanitizeAdPrefix(text: string): string {
+  if (!text) return "";
+  let clean = text
+    .replace(/^[【\[(（]?(?:广告|商业推广|推广|赞助商?|AD|Sponsored|Advertisement)[】\])）]?[:：·\-\s]+/i, "")
+    .replace(/[【\[(（]?(?:广告|商业推广|推广|赞助商?|AD|Sponsored|Advertisement)[】\])）]?$/i, "")
+    .replace(/[-*•]?\s*[【\[(（]?(?:广告|商业推广|推广|赞助商?)[】\])）][^\n]*/gi, "")
+    .replace(/(?:点击查看优惠|限时秒杀|立即抢购|立即购买|加微信|加V:|免费领取优惠券|招商加盟|免费加盟|专场特惠)[^\n。！？]*/gi, "")
+    .trim();
+  return clean;
+}

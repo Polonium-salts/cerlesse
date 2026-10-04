@@ -16,13 +16,13 @@ import { filterAndSanitizeWidgetTypes } from "../widgetPlanner.js";
 import { WidgetSelectionSkillResult } from "./widgetSelectionSkill.js";
 import {
   extractAgentTakeaways as extractStableTakeaways,
-  stabilizeAgentAnswer as stabilizeStableAnswer,
-  buildUnrenderedSectionsForTypes
+  finalizeAnswer,
+  sanitizeAgentAnswer,
+  stabilizeAgentAnswer as stabilizeStableAnswer
 } from "./agentWidgetContent.js";
 
-// 回答稳定化 / 要点提取的唯一实现在 agentWidgetContent.ts（含单测），
-// 这里只做兼容转发，避免同一份规则在两处各写一遍而逐渐分叉。
-export { extractAgentTakeaways, stabilizeAgentAnswer } from "./agentWidgetContent.js";
+// 规范回答清洗与提取方法
+export { extractAgentTakeaways, finalizeAnswer, sanitizeAgentAnswer, stabilizeAgentAnswer } from "./agentWidgetContent.js";
 
 export type AgentEventType =
   | "thread_started"
@@ -32,8 +32,16 @@ export type AgentEventType =
   | "source_update"
   | "widget_update"
   | "token_usage_update"
+  | "answer_delta"
   | "final_response"
   | "error";
+
+export interface AnswerDeltaEvent {
+  type: "answer_delta";
+  delta: string;
+  accumulated?: string;
+  timestamp: number;
+}
 
 export interface ToolCallEvent {
   type: "tool_call";
@@ -109,6 +117,7 @@ export type CerlesseAgentEvent =
   | SourceEvent
   | WidgetEvent
   | TokenUsageUpdateEvent
+  | AnswerDeltaEvent
   | { type: "final_response"; threadId: string; response: CerlesseAgentResponse; timestamp: number }
   | { type: "error"; error: string; timestamp: number };
 
@@ -306,13 +315,12 @@ export function buildSynthesisResultFromCodex(
     packingMethod: "semantic-css-grid"
   };
 
-  // 回答稳定化与要点提取：对无渲染模块的规划类型采用合并降级，并入 Markdown 小节
-  const unrenderedSections = buildUnrenderedSectionsForTypes(filteredTypes, query, sources);
-  const stableAnswer = stabilizeStableAnswer(query, response.finalResponse, sources, unrenderedSections);
+  // 回答清洗与真实要点提炼：原样保留模型真实回答，不强行追加伪造小节
+  const stableAnswer = finalizeAnswer(response.finalResponse, sources, query);
   const takeaways = extractStableTakeaways(stableAnswer, sources);
 
   const rawAnswerLen = (response.finalResponse || "").length;
-  console.log(`[PipelineMetrics][ParseAndMerge] rawLength=${rawAnswerLen}, mergedLength=${stableAnswer.length}, mergedSections=${unrenderedSections.length}, filteredTypes=${filteredTypes.join(",") || "none"}`);
+  console.log(`[PipelineMetrics][ParseAndMerge] rawLength=${rawAnswerLen}, finalLength=${stableAnswer.length}, filteredTypes=${filteredTypes.join(",") || "none"}`);
 
   const hitLevel = extras.hitLevel ?? resolveHitLevel(sources.length);
   const executedQueries = (extras.subQueries || []).filter(Boolean);

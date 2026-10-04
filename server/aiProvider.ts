@@ -12,9 +12,9 @@ import {
 
 export * from "./gateway.js";
 
-// 规范默认地址与模型：以 UnoRouter 网关为核心
+// 规范默认地址与模型：以 UnoRouter 网关免费极速模型为核心
 export const DEFAULT_AI_API_BASE_URL = "https://api.unorouter.com";
-export const DEFAULT_AI_MODEL = "deepseek/deepseek-chat";
+export const DEFAULT_AI_MODEL = "deepseek-v4-flash:free";
 
 export interface AiApiConfig {
   apiBaseUrl: string;
@@ -446,7 +446,7 @@ export async function detectAndFetchModels(params: {
     providerType = "unorouter";
     providerName = "UnoRouter 聚合网关";
     rawBase = rawBase || "https://api.unorouter.com/v1";
-    defaultModel = "deepseek/deepseek-chat";
+    defaultModel = "deepseek-v4-flash:free";
   }
 
   // 规范化 Base URL
@@ -487,28 +487,65 @@ export async function detectAndFetchModels(params: {
         const rawList = Array.isArray(body?.data) ? body.data : Array.isArray(body) ? body : [];
 
         if (rawList.length > 0) {
-          const models: ModelInfo[] = rawList.map((item: any) => {
-            const id = String(item.id || item.name || "");
-            const name = String(item.name || item.id || "");
-            const isRec = id.includes("deepseek-chat") || id.includes("deepseek-reasoner") || id.includes("free");
-            return {
-              id,
-              name,
-              description: item.description || `上游实时可用模型 (${id})`,
-              contextLength: item.context_length ? `${Math.round(item.context_length / 1000)}k` : "128k",
-              pricing: item.pricing?.prompt ? `$${item.pricing.prompt}/M` : "上游计费",
-              isRecommended: isRec
-            };
-          });
+          const isNonChat = (id: string) =>
+            /sdxl|pony|illustrious|diffusion|flux|midjourney|majicmix|realism|reality|embedding|rerank|whisper|tts/i.test(id);
 
-          // 排序：推荐模型和常用模型排在前面
+          const models: ModelInfo[] = rawList
+            .filter((item: any) => {
+              const id = String(item.id || item.name || "");
+              return id && !isNonChat(id);
+            })
+            .map((item: any) => {
+              const id = String(item.id || item.name || "");
+              const name = String(item.name || item.id || "");
+              const isRec =
+                id === "deepseek-v4-flash:free" ||
+                id === "deepseek-v4.1-flash:free" ||
+                id === "gemini-3.6-flash:free" ||
+                id === "glm-4.7-flash:free" ||
+                id === "qwen3:free" ||
+                id === "gpt-4o:free" ||
+                id.includes("deepseek-chat") ||
+                id.includes("free");
+              return {
+                id,
+                name,
+                description: item.description || `上游实时可用模型 (${id})`,
+                contextLength: item.context_length ? `${Math.round(item.context_length / 1000)}k` : "128k",
+                pricing: item.pricing?.prompt ? `$${item.pricing.prompt}/M` : (id.includes("free") ? "免费体验" : "上游计费"),
+                isRecommended: isRec
+              };
+            });
+
+          // 排序：精选免费大模型排最前，其次其他文本模型
           models.sort((a, b) => {
-            if (a.isRecommended && !b.isRecommended) return -1;
-            if (!a.isRecommended && b.isRecommended) return 1;
+            const getPriority = (id: string) => {
+              if (id === "deepseek-v4-flash:free") return 100;
+              if (id === "deepseek-v4.1-flash:free") return 95;
+              if (id === "gemini-3.6-flash:free") return 90;
+              if (id === "glm-4.7-flash:free") return 85;
+              if (id === "qwen3:free") return 80;
+              if (id === "gpt-4o:free") return 75;
+              if (id.includes("free")) return 60;
+              return 10;
+            };
+            const pA = getPriority(a.id);
+            const pB = getPriority(b.id);
+            if (pA !== pB) return pB - pA;
             return a.name.localeCompare(b.name);
           });
 
-          const activeDefault = models.some((m) => m.id === defaultModel) ? defaultModel : models[0]?.id;
+          const preferred =
+            models.find((m) => m.id === defaultModel) ||
+            models.find((m) => m.id === "deepseek-v4-flash:free") ||
+            models.find((m) => m.id === "deepseek-v4.1-flash:free") ||
+            models.find((m) => m.id === "gemini-3.6-flash:free") ||
+            models.find((m) => m.id === "glm-4.7-flash:free") ||
+            models.find((m) => m.id === "qwen3:free") ||
+            models.find((m) => m.id.includes("free")) ||
+            models[0];
+
+          const activeDefault = preferred?.id || defaultModel;
 
           return {
             success: true,
