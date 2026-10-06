@@ -19,7 +19,9 @@ export const aiAnswerAdapter: WidgetAdapter<SearchSynthesisResult, AiAnswerData>
     return {
       query: query || result?.query || "",
       summary: rawSummary,
-      activeResult: result
+      activeResult: result,
+      // ReAct-Read 循环思维链：取本次检索真实记录的执行步骤
+      agentSteps: Array.isArray(result?.steps) ? result.steps : undefined
     };
   },
 

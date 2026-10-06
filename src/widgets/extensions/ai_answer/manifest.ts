@@ -6,7 +6,7 @@ export const manifest: WidgetManifest = {
   version: "1.0.0",
   apiVersion: 1,
   presence: "resident",
-  description: "基于全网信源的 AI 深度结构化回答、要点提炼与智能拓展追问",
+  description: "Ask 模式 AI 回答：基于全网信源深度回答，并内嵌可展开的 ReAct-Read 循环思维链（提问统一由搜索栏发起）",
   category: "synthesis",
   tags: [
     "AI回答",
@@ -15,7 +15,10 @@ export const manifest: WidgetManifest = {
     "问答",
     "结论",
     "知识综合",
-    "多信源提炼"
+    "多信源提炼",
+    "ask模式",
+    "ReAct循环",
+    "思维链"
   ],
   capabilities: [
     "direct_answer",
@@ -24,7 +27,9 @@ export const manifest: WidgetManifest = {
     "overview_synthesis",
     "summary_points",
     "bullet_conclusions",
-    "high_density_takeaways"
+    "high_density_takeaways",
+    "ask_mode_answer",
+    "react_reasoning_trace"
   ],
   intents: [
     "concept_explanation",
@@ -52,12 +57,13 @@ export const manifest: WidgetManifest = {
     "React 和 Vue 核心理念解析"
   ],
   layout: {
+    // ask 模式回答卡横向固定 2 格 (50%)，与 TileDesktopView 的约束一致
     defaultWidth: 50,
     minWidth: 25,
-    maxWidth: 100,
+    maxWidth: 50,
     preferredHeight: 480,
     height: "auto",
-},
+  },
   agent: {
     selectable: true,
     minConfidence: 0.5,

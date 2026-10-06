@@ -7,23 +7,18 @@ import {
   Bot,
   Timer,
   BookOpen,
-  ArrowRight,
-  HelpCircle,
-  CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  Send,
-  MessageSquare,
   CornerDownLeft
 } from "lucide-react";
-import { SearchSynthesisResult, ChatTurn } from "../../types.js";
+import { SearchSynthesisResult, ChatTurn, AgentStep } from "../../types.js";
 import { IOSWidget } from "../../components/ui/IOSWidget.js";
 import { MarkdownContent, SourceCitation } from "./MarkdownContent.js";
+import { SourceListItem } from "./SourceLink.js";
 import { Button } from "../../components/ui/button.js";
 import { Badge } from "../../components/ui/badge.js";
+import { ReActLoopTimeline } from "./ReActLoopTimeline.js";
+import { getUiStrings } from "../../lib/appLanguage.js";
 
 export interface AiAnswerWidgetProps {
   result?: SearchSynthesisResult | any;
@@ -34,14 +29,25 @@ export interface AiAnswerWidgetProps {
   errorText?: string;
   onRetry?: () => void;
   ratioMode?: "flexible" | "strict";
-  onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
   flipTile?: () => void;
+  /**
+   * ReAct-Read 循环思维链的真实执行步骤。
+   * 来自 eventBridge 记录的 AgentStep[]，组件只做投影展示，不自行编造推理。
+   */
+  agentSteps?: AgentStep[];
+  /** 全局语言设置（settings.language）；不传则按 auto（中文）渲染界面文案 */
+  language?: string;
+  /** ask 模式：引导用户改用顶部搜索栏提问（组件内不再自带任何提问入口） */
+  askModeHint?: boolean;
 }
 
-function cleanAdFromSummary(text: string): string {
+/**
+ * 清洗 AI 回答正文：剔除广告话术与泄露的机器交互痕迹。
+ * 导出以便单测锁定「工具调用语法不得混进正文」这一行为。
+ */
+export function cleanAdFromSummary(text: string): string {
   if (!text) return "";
   let clean = text.trim();
   clean = clean.replace(/^[【\[(（]?(?:广告|商业推广|推广|赞助商?|AD|Sponsored|Advertisement)[】\])）]?[:：·\-\s]+/i, "");
@@ -50,6 +56,17 @@ function cleanAdFromSummary(text: string): string {
   // 清洗泄露的伪工具交互转录与原始检索结果 JSON 块
   clean = clean.replace(/(?:^|\n)(?:Tool:\s*[a-zA-Z0-9_]+|Query:\s*[^\n]+|Language:\s*[^\n]+|Recency Days:\s*[^\n]+|Arguments:\s*\{[\s\S]*?\}|Result:\s*\{[\s\S]*?\})\s*(?=\n|$)/gi, "");
   clean = clean.replace(/search_web\s+query="[^"]*"[^\n]*/gi, "");
+
+  // 清洗模型直接吐在正文里的 MCP 工具调用语法。
+  // 实际观察到的是括号形式，例如：
+  //   search_web(query="量子退火算法原理", language="zh", recencyDays=365)
+  // 上面那条 search_web\\s+query= 只覆盖空格形式，管不到括号形式，
+  // 于是机器调用痕迹会直接混在回答正文里。
+  // 这里按注册表里的真实工具名做白名单式匹配，避免误伤正常英文文本。
+  clean = clean.replace(
+    /\b(?:search_web|search_images|verify_source|get_widget_catalog|prepare_widget|solve_layout|browser_read|inspect_repository|create_action)\s*\([^)]*\)/gi,
+    ""
+  );
   clean = clean.replace(/\{\s*"results"\s*:\s*\[[\s\S]*?\]\s*\}/gi, "");
 
   // 逐行剔除包含明确广告特征的行
@@ -78,7 +95,9 @@ function cleanAdFromSummary(text: string): string {
 
 /**
  * AI 智能回答小组件 (正面)
- * 沉浸式展示基于全网多信源的 AI 深度综合回答、核心要点结论与智能拓展追问
+ * 沉浸式展示基于全网多信源的 AI 深度综合回答。
+ * 组件只呈现 AI 内容：不带头像、不渲染用户提问气泡、不提供任何追问入口，
+ * 需要继续提问时统一走顶部搜索栏。
  */
 export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   result,
@@ -89,15 +108,15 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   errorText,
   onRetry,
   ratioMode = "flexible",
-  onExecuteSearch,
-  onAskFollowUp,
   openUrl,
   copyText,
-  flipTile
+  flipTile,
+  agentSteps,
+  language,
+  askModeHint = true
 }) => {
+  const t = getUiStrings(language);
   const [copied, setCopied] = useState(false);
-  const [inputText, setInputText] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(() => {
     return typeof window !== "undefined" ? window.innerWidth < 768 : false;
@@ -151,15 +170,14 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   }, [summary, filteredResults]);
 
   const effectiveSummary = summary || cleanSummaryFromSources;
-  const keyTakeaways = result?.keyTakeaways || [];
-  const followUpQuestions = result?.followUpQuestions || [];
   const modelUsed = result?.modelUsed || (summary ? "AI 深度推理引擎" : "AI 权威信源综合");
   const executionTimeMs = result?.executionTimeMs || 0;
 
-  // 会话轮次解析：支持从 result.chatTurns 恢复多轮追问上下文
-  const chatTurns: ChatTurn[] = useMemo(() => {
-    if (result?.chatTurns && Array.isArray(result.chatTurns) && result.chatTurns.length > 0) {
-      return result.chatTurns;
+  // 会话轮次解析：只取 assistant 轮次。
+  // user 轮次（用户提问）在组件内不再渲染，也不参与复制与滚动锚点。
+  const assistantTurns: ChatTurn[] = useMemo(() => {
+    if (result?.chatTurns && Array.isArray(result.chatTurns)) {
+      return (result.chatTurns as ChatTurn[]).filter((turn) => turn?.role !== "user");
     }
     return [];
   }, [result?.chatTurns]);
@@ -169,7 +187,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatTurns, effectiveSummary, isStreaming]);
+  }, [assistantTurns, effectiveSummary, isStreaming]);
 
   // 将信源转换为 Markdown 可溯源引用的格式
   const citations: SourceCitation[] = useMemo(() => {
@@ -182,12 +200,12 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
   }, [filteredResults]);
 
   const handleCopy = () => {
-    let textToCopy = `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${effectiveSummary}`;
-    if (chatTurns.length > 0) {
-      textToCopy = chatTurns
-        .map((t) => `${t.role === "user" ? "Q" : "A"}: ${t.content}`)
-        .join("\n\n");
-    }
+    // 只复制 AI 回答：用户提问已不在组件内呈现
+    const answers = assistantTurns.map((t) => cleanAdFromSummary(t.content || "")).filter(Boolean);
+    const textToCopy =
+      answers.length > 0
+        ? answers.join("\n\n")
+        : `${effectiveQuery ? `### ${effectiveQuery}\n\n` : ""}${effectiveSummary}`;
     if (copyText) {
       copyText(textToCopy);
     } else if (navigator.clipboard) {
@@ -197,49 +215,28 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleFollowUpSubmit = async (textToSubmit?: string) => {
-    const q = (textToSubmit ?? inputText).trim();
-    if (!q || isStreaming || isSubmitting) return;
-
-    setInputText("");
-    setIsSubmitting(true);
-    try {
-      if (onAskFollowUp) {
-        await onAskFollowUp(q);
-      } else if (onExecuteSearch) {
-        onExecuteSearch(q);
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleFollowUpClick = (question: string) => {
-    handleFollowUpSubmit(question);
-  };
-
   return (
     <IOSWidget
       id="ai_answer"
-      title="AI 智能回答"
+      title={t.aiTitle}
       icon={<Sparkles className="size-4 text-primary" />}
       ratioMode={ratioMode}
       badge={
         <div className="flex items-center gap-1.5 flex-wrap">
           {isStreaming ? (
-            <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/15 text-primary border-primary/30 animate-pulse">
+            <Badge variant="secondary" className="text-xs h-6 gap-1.5 font-normal bg-primary/15 text-primary border-primary/30 animate-pulse">
               <span className="size-1.5 rounded-full bg-primary animate-ping" />
-              <span>正在思考中</span>
+              <span>{t.aiThinking}</span>
             </Badge>
           ) : (
-            <Badge variant="secondary" className="text-[11px] h-5 gap-1 font-normal bg-primary/10 text-primary border-primary/20">
+            <Badge variant="secondary" className="text-xs h-6 gap-1.5 font-normal bg-primary/10 text-primary border-primary/20">
               <Bot className="size-3" />
               <span className="truncate max-w-[120px]">{modelUsed}</span>
             </Badge>
           )}
 
           {executionTimeMs > 0 && !isStreaming && (
-            <Badge variant="outline" className="text-[11px] h-5 gap-1 text-muted-foreground font-normal">
+            <Badge variant="outline" className="text-xs h-6 gap-1.5 text-muted-foreground font-normal">
               <Timer className="size-3" />
               <span>{(executionTimeMs / 1000).toFixed(1)}s</span>
             </Badge>
@@ -253,18 +250,18 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
               variant="ghost"
               size="sm"
               onClick={handleCopy}
-              className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-              title="复制对话全文"
+              className="h-8 px-2.5 text-sm gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              title={t.aiCopyAll}
             >
               {copied ? (
                 <>
                   <Check className="size-3.5 text-emerald-500" />
-                  <span className="text-emerald-600 font-medium">已复制</span>
+                  <span className="text-emerald-600 font-medium">{t.aiCopied}</span>
                 </>
               ) : (
                 <>
                   <Copy className="size-3.5" />
-                  <span>复制</span>
+                  <span>{t.aiCopy}</span>
                 </>
               )}
             </Button>
@@ -276,7 +273,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
               size="sm"
               onClick={flipTile}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-              title="翻转查看信源与元数据"
+              title={t.aiFlip}
             >
               <RotateCcw className="size-3.5" />
             </Button>
@@ -286,7 +283,10 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
       className={`w-full transition-all duration-300 ${
         isStreaming ? "border-primary/40 ring-1 ring-primary/15 shadow-sm" : "border-border/80"
       } bg-card`}
-      contentClassName="p-3 sm:p-4 flex flex-col h-[520px] max-h-[580px] gap-2.5 overflow-hidden"
+      // 高度由 WidgetContainer 的 flex-1 + 内联 maxHeight 决定，
+      // 这里写 h-[…] / max-h-[…] 会被 flex-basis:0% 与内联样式盖掉，
+      // 属于无效类名 —— 不再保留，只调真正生效的内边距与间距。
+      contentClassName="p-4 sm:p-5 flex flex-col gap-3.5 overflow-hidden"
     >
       {/* 状态：Provider Error 局部克制提示 */}
       {isProviderError && (
@@ -295,7 +295,7 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
             <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
               <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
-                AI 服务暂时不可用，已为你保留网页搜索结果
+                {t.aiProviderError}
               </p>
               {errorText && (
                 <p className="text-[11px] text-amber-700/80 dark:text-amber-300/70 mt-0.5">
@@ -312,53 +312,40 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
               className="h-7 px-2.5 text-xs gap-1 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 self-end sm:self-auto cursor-pointer shrink-0"
             >
               <RefreshCw className="size-3" />
-              <span>重试</span>
+              <span>{t.aiRetry}</span>
             </Button>
           )}
         </div>
       )}
 
-      {/* 消息滚动容器：承载首轮全景研报与后续多轮对话 */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1.5 scrollbar-thin">
-        {chatTurns.length > 0 ? (
-          // 多轮对话模式
-          chatTurns.map((turn, index) => {
-            if (turn.role === "user") {
-              return (
-                <div key={turn.id || index} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-primary text-primary-foreground px-3.5 py-2 text-xs sm:text-sm shadow-xs leading-relaxed break-words">
-                    {turn.content}
-                  </div>
-                </div>
-              );
-            }
-
-            // Assistant 回答
-            const isFirstAssistantTurn = index <= 1;
+      {/* 消息滚动容器：只承载 AI 回答，不渲染用户提问气泡 */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-2 scrollbar-thin">
+        {assistantTurns.length > 0 ? (
+          // 多轮回答模式（仅 assistant 轮次）
+          assistantTurns.map((turn, index) => {
+            const isFirstAssistantTurn = index === 0;
             const turnText = cleanAdFromSummary(turn.content || (isFirstAssistantTurn ? effectiveSummary : ""));
 
             return (
-              <div key={turn.id || index} className="flex gap-2.5 items-start">
-                <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="size-3.5" />
-                </div>
-                <div className="flex-1 bg-background/50 rounded-2xl rounded-tl-xs border border-border/60 p-3 text-xs sm:text-sm text-foreground shadow-xs space-y-2">
+              <div key={turn.id || index}>
+                <div className="bg-background/50 rounded-xl border border-border/60 p-4 sm:p-5 text-foreground shadow-xs space-y-3">
                   {turnText ? (
                     <MarkdownContent
-                      className="leading-relaxed text-xs sm:text-sm"
+                      className="text-[15px] leading-7"
                       isStreaming={turn.isStreaming}
                       sources={citations}
                       onOpenUrl={openUrl}
+                      language={language}
                     >
                       {turnText}
                     </MarkdownContent>
                   ) : turn.isStreaming ? (
                     <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground animate-pulse">
                       <span className="size-1.5 rounded-full bg-primary animate-ping" />
-                      <span>正在组织深度回答...</span>
+                      <span>{t.aiComposing}</span>
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">暂无回答内容</p>
+                    <p className="text-xs text-muted-foreground">{t.aiTurnEmpty}</p>
                   )}
                 </div>
               </div>
@@ -366,12 +353,13 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
           })
         ) : effectiveSummary ? (
           // 首轮单次研报渲染（向后兼容）
-          <div className="bg-background/40 rounded-xl border border-border/60 p-3.5 sm:p-4">
+          <div className="bg-background/40 rounded-xl border border-border/60 p-4 sm:p-5">
             <MarkdownContent
-              className="leading-relaxed text-sm"
+              className="text-[15px] leading-7"
               isStreaming={isStreaming}
               sources={citations}
               onOpenUrl={openUrl}
+              language={language}
             >
               {effectiveSummary}
             </MarkdownContent>
@@ -380,44 +368,18 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground border border-dashed border-primary/30 bg-primary/[0.02] rounded-xl animate-pulse">
             <Sparkles className="size-6 text-primary mb-2 animate-spin" />
             <p className="text-xs sm:text-sm font-medium text-foreground">
-              Codex 智能体正在流式组织深度回答...
+              {t.aiStreamingTitle}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              根据全网检索的权威信源交叉验证并撰写报告
+              {t.aiStreamingSub}
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground border border-dashed border-border rounded-xl">
-            <Bot className="size-7 text-muted-foreground/50 mb-1.5" />
-            <p className="text-xs sm:text-sm font-medium">暂无 AI 回答内容</p>
+            <p className="text-xs sm:text-sm font-medium">{t.aiEmptyTitle}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              可尝试重新检索或追问细节
+              {t.aiEmptyHint}
             </p>
-          </div>
-        )}
-
-        {/* 智能拓展追问推荐气泡 */}
-        {followUpQuestions.length > 0 && !isStreaming && (
-          <div className="flex flex-col gap-1.5 pt-2 border-t border-border/40">
-            <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <HelpCircle className="size-3 text-primary" />
-              <span>智能推荐追问：</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {followUpQuestions.map((q, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleFollowUpClick(q)}
-                  disabled={isStreaming || isSubmitting}
-                  className="group inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-muted/60 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border border-border/80 transition-all text-foreground text-left cursor-pointer disabled:opacity-50"
-                  title={`点击追问: ${q}`}
-                >
-                  <span className="truncate max-w-[240px] sm:max-w-[340px]">{q}</span>
-                  <ArrowRight className="size-2.5 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-0.5 shrink-0" />
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -425,71 +387,26 @@ export const AiAnswerWidget: React.FC<AiAnswerWidgetProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 底部追问输入框（钉在底部） */}
-      <div className="pt-2 border-t border-border/50 shrink-0">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleFollowUpSubmit();
-          }}
-          className="flex items-center gap-1.5"
-        >
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleFollowUpSubmit();
-                }
-              }}
-              placeholder="向 AI 追问或补充细节... (Enter 发送)"
-              disabled={isStreaming || isSubmitting}
-              className="w-full bg-background/80 border border-border/80 rounded-xl px-3 py-1.5 pr-8 text-xs sm:text-sm placeholder:text-muted-foreground/60 focus:outline-hidden focus:ring-1 focus:ring-primary disabled:opacity-50 transition-all"
-            />
-            {inputText && (
-              <button
-                type="button"
-                onClick={() => setInputText("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground text-xs"
-              >
-                ×
-              </button>
-            )}
-          </div>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!inputText.trim() || isStreaming || isSubmitting}
-            className="h-8 px-3 rounded-xl text-xs gap-1 cursor-pointer shrink-0"
-          >
-            <Send className="size-3" />
-            <span className="hidden sm:inline">发送</span>
-          </Button>
-          {onExecuteSearch && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => onExecuteSearch(effectiveQuery, true)}
-              disabled={isStreaming || isSubmitting}
-              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-xl shrink-0"
-              title="重新全网深度搜索"
-            >
-              <RefreshCw className="size-3.5" />
-            </Button>
+      {/* 底部：ReAct-Read 循环思维链 + ask 模式引导（提问统一走顶部搜索栏） */}
+      <div className="pt-3.5 border-t border-border/50 shrink-0 space-y-2.5">
+        <ReActLoopTimeline steps={agentSteps} isStreaming={isStreaming} language={language} />
+
+        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground/70 px-1">
+          {askModeHint ? (
+            <span className="flex items-center gap-1 min-w-0">
+              <CornerDownLeft className="size-2.5 text-primary/70 shrink-0" />
+              <span className="truncate">{t.aiAskHint}</span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 min-w-0">
+              <BookOpen className="size-2.5 text-primary/70 shrink-0" />
+              <span className="truncate">{t.aiSourceBasis(sourcesCount)}</span>
+            </span>
           )}
-        </form>
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 pt-1.5 px-0.5">
-          <span className="flex items-center gap-1">
-            <BookOpen className="size-2.5 text-primary/70" />
-            基于 {sourcesCount} 个权威信源多轮推理
-          </span>
-          <span className="italic truncate max-w-[160px]">
-            {effectiveQuery}
-          </span>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="italic truncate max-w-[120px]">{effectiveQuery}</span>
+          </div>
         </div>
       </div>
     </IOSWidget>
@@ -506,8 +423,10 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
   summary: customSummary,
   openUrl,
   copyText,
-  flipTile
+  flipTile,
+  language
 }) => {
+  const t = getUiStrings(language);
   const [copiedRaw, setCopiedRaw] = useState(false);
   const rawSummary =
     customSummary ||
@@ -559,7 +478,7 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
 
   return (
     <IOSWidget
-      title="AI 回答元数据与信源溯源"
+      title={t.aiBackTitle}
       icon={<Bot className="size-4 text-primary" />}
       actions={
         <div className="flex items-center gap-1">
@@ -568,10 +487,10 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
             size="sm"
             onClick={flipTile}
             className="h-7 px-2 text-xs gap-1 text-primary hover:bg-primary/10"
-            title="翻转回正文回答"
+            title={t.aiBackToFront}
           >
             <RotateCcw className="size-3.5" />
-            <span>返回正面</span>
+            <span>{t.aiBackToFront}</span>
           </Button>
         </div>
       }
@@ -581,27 +500,27 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
       {/* 推理指标卡片 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <div className="p-2.5 rounded-lg border border-border bg-background/60 flex flex-col">
-          <span className="text-[11px] text-muted-foreground">推理模型</span>
+          <span className="text-[11px] text-muted-foreground">{t.aiMetricModel}</span>
           <span className="text-xs font-semibold text-foreground truncate mt-0.5" title={modelUsed}>
             {modelUsed}
           </span>
         </div>
         <div className="p-2.5 rounded-lg border border-border bg-background/60 flex flex-col">
-          <span className="text-[11px] text-muted-foreground">总耗时</span>
+          <span className="text-[11px] text-muted-foreground">{t.aiMetricDuration}</span>
           <span className="text-xs font-semibold text-foreground mt-0.5">
-            {(executionTimeMs / 1000).toFixed(2)} 秒
+            {t.aiMetricSeconds(executionTimeMs / 1000)}
           </span>
         </div>
         <div className="p-2.5 rounded-lg border border-border bg-background/60 flex flex-col">
-          <span className="text-[11px] text-muted-foreground">字数统计</span>
+          <span className="text-[11px] text-muted-foreground">{t.aiMetricChars}</span>
           <span className="text-xs font-semibold text-foreground mt-0.5">
-            {summary.length} 字符
+            {t.aiMetricCharCount(summary.length)}
           </span>
         </div>
         <div className="p-2.5 rounded-lg border border-border bg-background/60 flex flex-col">
-          <span className="text-[11px] text-muted-foreground">已研判信源</span>
+          <span className="text-[11px] text-muted-foreground">{t.aiMetricSources}</span>
           <span className="text-xs font-semibold text-foreground mt-0.5">
-            {filteredResults.length} 篇
+            {t.aiMetricSourceCount(filteredResults.length)}
           </span>
         </div>
       </div>
@@ -610,38 +529,17 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
       <div className="flex flex-col gap-2">
         <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
           <BookOpen className="size-3.5 text-primary" />
-          核心参引网页与文档
+          {t.aiKeySources}
         </span>
         <div className="space-y-1.5">
           {filteredResults.slice(0, 6).map((source, idx) => (
-            <div
+            <SourceListItem
               key={idx}
-              className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/60 bg-background/40 hover:bg-muted/40 text-xs"
-            >
-              <div className="flex items-center gap-2 truncate">
-                <span className="size-4 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
-                  {idx + 1}
-                </span>
-                <span className="truncate text-foreground" title={source.title}>
-                  {source.title}
-                </span>
-              </div>
-              <a
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  if (openUrl) {
-                    e.preventDefault();
-                    openUrl(source.url);
-                  }
-                }}
-                className="shrink-0 text-primary hover:underline flex items-center gap-0.5 text-[11px]"
-              >
-                <span>直达</span>
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
+              index={idx + 1}
+              source={{ title: source.title, url: source.url, snippet: source.snippet }}
+              onOpenUrl={openUrl}
+              language={language}
+            />
           ))}
         </div>
       </div>
@@ -658,12 +556,12 @@ export const AiAnswerBackWidget: React.FC<AiAnswerWidgetProps> = ({
           {copiedRaw ? (
             <>
               <Check className="size-3 text-emerald-500" />
-              <span>已复制 Markdown</span>
+              <span>{t.aiCopiedMarkdown}</span>
             </>
           ) : (
             <>
               <Copy className="size-3" />
-              <span>复制 Markdown 原文</span>
+              <span>{t.aiCopyMarkdown}</span>
             </>
           )}
         </Button>

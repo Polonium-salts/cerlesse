@@ -10,7 +10,7 @@ import type { TileWidth } from "../lib/tileLayoutEngine.js";
 import { WidgetSchemaRenderer } from "./schemaRenderer.js";
 import { TileAtomRenderer } from "./tileRenderer.js";
 import { WidgetBoundary } from "./core/WidgetBoundary.js";
-import { SearchSynthesisResult } from "../types.js";
+import { SearchSynthesisResult, AgentStep } from "../types.js";
 import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { Button } from "../components/ui/button.js";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -109,9 +109,12 @@ interface WidgetRuntimeProps {
   isCompact?: boolean;
   onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
+  /** 本次执行真实产生的 Agent 步骤，用于 ReAct-Read 循环思维链展示 */
+  agentSteps?: AgentStep[];
+  /** 全局语言设置（settings.language），供组件本地化界面文案 */
+  language?: string;
 }
 
 export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
@@ -123,9 +126,10 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
   isCompact = false,
   onResize,
   onExecuteSearch,
-  onAskFollowUp,
   openUrl,
-  copyText
+  copyText,
+  agentSteps,
+  language
 }) => {
   const module = useMemo(() => {
     if (propModule) return propModule;
@@ -157,9 +161,10 @@ export const WidgetRuntime: React.FC<WidgetRuntimeProps> = ({
         isCompact={isCompact}
         onResize={onResize}
         onExecuteSearch={onExecuteSearch}
-        onAskFollowUp={onAskFollowUp}
         openUrl={openUrl}
         copyText={copyText}
+        agentSteps={agentSteps}
+        language={language}
       />
     </WidgetBoundary>
   );
@@ -173,9 +178,12 @@ interface WidgetRuntimeInnerProps {
   isCompact?: boolean;
   onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onAskFollowUp?: (question: string) => Promise<void> | void;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
+  /** 本次执行真实产生的 Agent 步骤，用于 ReAct-Read 循环思维链展示 */
+  agentSteps?: AgentStep[];
+  /** 全局语言设置（settings.language），供组件本地化界面文案 */
+  language?: string;
 }
 
 const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
@@ -186,9 +194,10 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
   isCompact = false,
   onResize,
   onExecuteSearch,
-  onAskFollowUp,
   openUrl,
-  copyText
+  copyText,
+  agentSteps,
+  language
 }) => {
   // 局域响应式 State
   const [state, setStateInternal] = useState<Record<string, any>>({});
@@ -280,7 +289,8 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
       actions: boundActions,
       onResize: onResize as any,
       onExecuteSearch,
-      onAskFollowUp,
+      agentSteps: agentSteps ?? activeResult?.steps,
+      language,
       openUrl: openUrl || ((url: string) => window.open(url, "_blank", "noopener,noreferrer")),
       copyText: copyText || ((text: string) => navigator.clipboard?.writeText(text)),
       storage: scopedStorage
@@ -297,7 +307,8 @@ const WidgetRuntimeInner: React.FC<WidgetRuntimeInnerProps> = ({
     boundActions, 
     onResize, 
     onExecuteSearch,
-    onAskFollowUp,
+    agentSteps,
+    language,
     openUrl, 
     copyText, 
     scopedStorage

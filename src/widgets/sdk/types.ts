@@ -1,5 +1,5 @@
 import React from "react";
-import { SearchSynthesisResult, ResultWidgetKey } from "../../types.js";
+import { SearchSynthesisResult, ResultWidgetKey, AgentStep } from "../../types.js";
 import type { TileWidth, TileRatio, Breakpoint } from "../../lib/tileLayoutEngine.js";
 
 // ResultWidgetKey 是注册中心对外契约的一部分（registry.get / has / unregister 的入参类型），
@@ -169,7 +169,16 @@ export interface WidgetContext<TData = any> {
   // 宿主程序桥接能力
   onResize?: (nextSize: TileWidth) => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onAskFollowUp?: (question: string) => Promise<void> | void;
+  /**
+   * 本次执行真实产生的 Agent 步骤（ReAct-Read 循环思维链）。
+   * 由宿主注入，组件只做投影展示；未注入时不得自行编造推理节点。
+   */
+  agentSteps?: AgentStep[];
+  /**
+   * 全局语言设置（settings.language），由宿主注入。
+   * 组件用它本地化用户可见文案；不传时按 auto（中文）渲染。
+   */
+  language?: string;
   openUrl?: (url: string) => void;
   copyText?: (text: string) => void;
   

@@ -14,6 +14,7 @@ import { SolveLayoutOutput } from "../tools/layoutTool.js";
 import { resolveHitLevel } from "../services/searchService.js";
 import { filterAndSanitizeWidgetTypes } from "../widgetPlanner.js";
 import { WidgetSelectionSkillResult } from "./widgetSelectionSkill.js";
+import { getUiStrings, type UiStrings } from "../../src/lib/appLanguage.js";
 import {
   extractAgentTakeaways as extractStableTakeaways,
   finalizeAnswer,
@@ -130,6 +131,16 @@ export class CodexEventBridge {
   private listeners: Set<EventListener> = new Set();
   private steps: AgentStep[] = [];
   private currentStepMap: Map<string, AgentStep> = new Map();
+  /**
+   * 用户可见的步骤标题文案，跟随全局语言设置。
+   * 这里存的是**已归一**的语言码（auto 也会归一成 "auto"），取文案时
+   * 未知语言回退中文，不会因为设置值看不懂就让整条链路抛错。
+   */
+  private ui: UiStrings;
+
+  constructor(language?: string) {
+    this.ui = getUiStrings(language);
+  }
 
   public subscribe(fn: EventListener): () => void {
     this.listeners.add(fn);
@@ -149,22 +160,25 @@ export class CodexEventBridge {
   }
 
   public recordToolCall(callId: string, toolName: string, args: Record<string, any>): AgentStep {
+    // 标题模板跟随全局语言：这些文案会直接显示在 ai_answer 的 ReAct 思维链里，
+    // 属于用户可见文案，必须和回答正文一起切语言。
+    const t = this.ui;
     const titleMap: Record<string, string> = {
-      search_web: `检索网络：${args.query || ""}`,
-      search_images: `检索配图：${args.query || ""}`,
-      verify_source: `核验信源权威度与域安全`,
-      get_widget_catalog: `拉取组件注册中心完整目录`,
-      prepare_widget: `绑定交付小组件：${args.widgetId || ""}`,
-      solve_layout: `装箱排版：计算 12 栅格最优错落布局`,
-      browser_read: `深度阅读页面：${args.url || ""}`,
-      inspect_repository: `检查开源仓库状态：${args.repoPathOrUrl || ""}`,
-      create_action: `生成可执行操作卡片：${args.label || ""}`
+      search_web: t.toolSearchWeb(args.query || ""),
+      search_images: t.toolSearchImages(args.query || ""),
+      verify_source: t.toolVerifySource,
+      get_widget_catalog: t.toolGetCatalog,
+      prepare_widget: t.toolPrepareWidget(args.widgetId || ""),
+      solve_layout: t.toolSolveLayout,
+      browser_read: t.toolBrowserRead(args.url || ""),
+      inspect_repository: t.toolInspectRepository(args.repoPathOrUrl || ""),
+      create_action: t.toolCreateAction(args.label || "")
     };
 
     const step: AgentStep = {
       id: callId,
-      title: titleMap[toolName] || `调用能力工具 [${toolName}]`,
-      description: `参数: ${JSON.stringify(args).slice(0, 120)}`,
+      title: titleMap[toolName] || t.toolGeneric(toolName),
+      description: t.toolArgs(JSON.stringify(args).slice(0, 120)),
       status: "running",
       timestamp: Date.now()
     };
@@ -207,13 +221,13 @@ export class CodexEventBridge {
   public recordReasoning(content: string, details?: string[]): AgentStep {
     const step: AgentStep = {
       id: `reason_${Date.now()}_${this.steps.length}`,
-      title: "检索推理",
+      title: this.ui.reasoningTitle,
       description: content,
       status: "completed",
       timestamp: Date.now(),
       details,
       agentRole: "retrieval",
-      agentName: "检索推理层"
+      agentName: this.ui.reasoningAgentName
     };
     this.steps.push(step);
     return step;
@@ -291,7 +305,7 @@ export function buildSynthesisResultFromCodex(
    * 「信源条数」折算 —— 两者都与事实不符：Agent 实际下发过收敛后的查询与补检查询，
    * 而「命中」更应看**实体命中条数**（10 条全在讲别的事，也不叫命中）。
    */
-  extras: { subQueries?: string[]; hitLevel?: SearchHitLevel } = {}
+  extras: { subQueries?: string[]; hitLevel?: SearchHitLevel; language?: string } = {}
 ): SearchSynthesisResult {
   const sources = response.sources || [];
   const widgets = response.widgets || [];
@@ -391,7 +405,7 @@ export function buildSynthesisResultFromCodex(
     rawResultCount: sources.length,
     hitLevel,
     relatedImages: images,
-    summary: stableAnswer || "已完成检索并生成回答。",
+    summary: stableAnswer || getUiStrings(extras.language).fallbackSummary,
     keyTakeaways: takeaways,
     comparisonTable: [],
     mindMap: { id: "root", label: query, children: [] },

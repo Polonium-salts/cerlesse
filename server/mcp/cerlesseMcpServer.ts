@@ -36,7 +36,7 @@ export const CERLESSE_MCP_TOOLS: McpToolDefinition[] = [
       type: "object",
       properties: {
         query: { type: "string", description: "The search query string. Focused subject-first phrasing returns sharply better results than a full natural-language sentence." },
-        limit: { type: "number", description: "Maximum number of ranked results to return (default: 12, max: 16)." },
+        limit: { type: "number", description: "Maximum number of ranked results to return (default: 24). Raise it when a broad topic needs more distinct sources; prefer a second differently-focused query over repeating the same one." },
         language: { type: "string", description: "Preferred language code (e.g. 'zh-CN', 'en')." },
         domains: { type: "array", items: { type: "string" }, description: "Strict domain whitelist." },
         recencyDays: { type: "number", description: "Recency scoring window in days." }

@@ -64,7 +64,7 @@ app.all(["/api/models/detect", "/api/models"], async (req, res) => {
 // 单一 Codex Agent 执行入口（支持全新研报与单 Agent 追问会话）
 const handleAgentRun = async (req: express.Request, res: express.Response) => {
   try {
-    const { query, model, customSearxngUrl, mode, threadId, history, sources } = req.body || {};
+    const { query, model, customSearxngUrl, mode, threadId, history, sources, targetLanguage } = req.body || {};
     if (typeof query !== "string" || !query.trim()) {
       return res.status(400).json({ error: "缺少搜索关键词" });
     }
@@ -79,6 +79,8 @@ const handleAgentRun = async (req: express.Request, res: express.Response) => {
       sources: Array.isArray(sources) ? sources : undefined,
       apiKey: cleanParam(apiKey),
       apiBaseUrl: cleanParam(apiBaseUrl),
+      // 全局回答语言：前端一直在发，服务端之前一直没读
+      targetLanguage: cleanParam(targetLanguage),
       env: process.env
     });
     return res.json(result.legacySynthesis);
@@ -106,6 +108,10 @@ app.all(["/api/agent/stream", "/api/agent/chat/stream"], async (req, res) => {
   const threadId = cleanParam(isPost ? req.body?.threadId : req.query.threadId);
   const history = isPost && Array.isArray(req.body?.history) ? req.body.history : undefined;
   const sources = isPost && Array.isArray(req.body?.sources) ? req.body.sources : undefined;
+  // 全局回答语言：POST 走 body.targetLanguage，GET 走 query.lang（前端 EventSource 只能发 query）
+  const targetLanguage = cleanParam(
+    isPost ? (req.body?.targetLanguage || req.body?.lang) : req.query.lang
+  );
   const { apiKey, apiBaseUrl } = extractAuthHeaders(req);
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -127,7 +133,9 @@ app.all(["/api/agent/stream", "/api/agent/chat/stream"], async (req, res) => {
 
   try {
     sendEvent("status", { message: mode === "followup" ? "Cerlesse Agent 正在组织追问回答..." : "Cerlesse Agent 正在检索并调用工具..." });
-    const eventBridge = new CodexEventBridge();
+    // 步骤标题文案跟随全局语言；这**就是**订阅的那个实例，
+    // 必须传给 executeAgentRun，不能另建一个，否则订阅到的永远收不到事件。
+    const eventBridge = new CodexEventBridge(targetLanguage);
     eventBridge.subscribe((event) => {
       if (event.type === "tool_call" || event.type === "tool_result") {
         sendEvent("step", { currentStep: event, allSteps: eventBridge.getSteps() });
@@ -147,6 +155,7 @@ app.all(["/api/agent/stream", "/api/agent/chat/stream"], async (req, res) => {
       sources,
       apiKey: cleanParam(apiKey),
       apiBaseUrl: cleanParam(apiBaseUrl),
+      targetLanguage,
       env: process.env,
       eventBridge
     });

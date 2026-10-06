@@ -31,7 +31,8 @@ export const onRequest: PagesFunction = async (context) => {
       history,
       sources,
       apiKey: bodyApiKey,
-      apiBaseUrl: bodyApiBaseUrl
+      apiBaseUrl: bodyApiBaseUrl,
+      targetLanguage
     } = body || {};
     if (!query || typeof query !== "string" || query.trim() === "") {
       return errorResponse("缺少搜索关键词", 400);
@@ -52,6 +53,8 @@ export const onRequest: PagesFunction = async (context) => {
       sources: Array.isArray(sources) ? sources : undefined,
       apiKey: effectiveApiKey,
       apiBaseUrl: effectiveApiBaseUrl,
+      // 全局回答语言：前端一直在发，这个 handler 之前一直没读
+      targetLanguage: cleanParam(targetLanguage),
       env: effectiveEnv
     });
 

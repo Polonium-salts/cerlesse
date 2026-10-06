@@ -4,7 +4,8 @@ import { manifestMeta } from "../manifests/moduleMeta.js";
 
 /**
  * 小组件：AI 智能回答 (ai_answer)
- * 沉浸式呈现基于全网信源的 AI 深度结构化回答、要点提炼与智能拓展追问
+ * ask 模式：只渲染 AI 回答正文与 ReAct-Read 循环思维链，
+ * 不提供任何组件内提问入口（推荐追问、重搜、输入框），提问统一走顶部搜索栏。
  */
 export const aiAnswerModule: WidgetModule = {
   ...manifestMeta("ai_answer"),
@@ -34,11 +35,12 @@ export const aiAnswerModule: WidgetModule = {
         result={res ? { ...res, summary: summary || res.summary } : (summary ? ({ query: ctx.activeResult?.query, summary } as any) : undefined)}
         summary={summary}
         query={ctx.activeResult?.query || ctx.data?.query}
-        onExecuteSearch={ctx.onExecuteSearch}
-        onAskFollowUp={ctx.onAskFollowUp}
         openUrl={ctx.openUrl}
         copyText={ctx.copyText}
         flipTile={ctx.flipTile}
+        agentSteps={ctx.agentSteps || ctx.data?.agentSteps || res?.steps}
+        language={ctx.language}
+        askModeHint
       />
     );
   },
@@ -50,10 +52,10 @@ export const aiAnswerModule: WidgetModule = {
         result={res ? { ...res, summary: summary || res.summary } : (summary ? ({ query: ctx.activeResult?.query, summary } as any) : undefined)}
         summary={summary}
         query={ctx.activeResult?.query || ctx.data?.query}
-        onExecuteSearch={ctx.onExecuteSearch}
         openUrl={ctx.openUrl}
         copyText={ctx.copyText}
         flipTile={ctx.flipTile}
+        language={ctx.language}
       />
     );
   },

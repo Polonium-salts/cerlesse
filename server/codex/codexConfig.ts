@@ -1,3 +1,5 @@
+import { AUTO_LANGUAGE, getLanguageMeta, normalizeLanguagePreference } from "../../src/lib/appLanguage.js";
+
 export interface CodexAgentConfig {
   agentName: string;
   version: string;
@@ -50,7 +52,8 @@ Available tools:
 
 Search Reasoning Rules (precision first):
 - Every search_web call must carry a focused query: keep the subject plus narrowing words (official docs / comparison / error / latest), and drop conversational filler ('请问 / 帮我看看 / please / tell me') and question marks.
-- Pass language and recencyDays whenever you know them. Run a focused follow-up query instead of raising the limit.
+- Pass language and recencyDays whenever you know them. For broad or multi-faceted questions, issue several differently-focused queries (definition / comparison / latest / official docs / pitfalls) instead of one broad query — the budget allows up to 4 search rounds per session.
+- Each search result carries a rich snippet. Read the snippets before deciding whether you have enough; when a claim is not covered by any snippet, search again rather than filling the gap from memory.
 - After each search_web result, read the evidence assessment (hit / partial / no_hit), missing terms and suggested follow-up queries. A partial or no_hit assessment means you MUST search again with a differently focused query before answering.
 - Never repeat a query that already returned results, and never issue a query that only rewrites the same words. Prefer suggested follow-up queries when they match the user's intent.
 - Answer strictly from returned observations: cite only result ids you actually received, and when something remains uncovered, state that the evidence is insufficient instead of inferring it.
@@ -135,4 +138,47 @@ export function sanitizePromptInjection(query: string): PromptSanitizationResult
     safeMode: false,
     sanitizedQuery: query
   };
+}
+
+// ============================================================
+// 全局回答语言注入
+// ============================================================
+
+/**
+ * 按用户全局语言设置，生成一段**必须用该语言作答**的系统提示词追加段。
+ *
+ * 为什么必须显式注入，而不是只靠 "Reply in the user's language"：
+ * base 提示词里那行的语义是「跟随用户提问的语言」。但用户可以在设置里
+ * 把全局语言钉死成英文，然后**用中文提问** —— 这时「跟随提问语言」会给中文，
+ * 与用户显式选择的语言冲突。全局设置是显式意图，必须压过隐式推断。
+ *
+ * auto（未钉死）返回空串：保持既有语义，由 detectQueryLanguage 决定回答语言，
+ * 不额外提示，避免和检索侧的语言判定打架。
+ *
+ * 措辞用英文：这段是给模型看的指令，base 提示词整体也是英文，混中文会稀释约束力；
+ * 界面文案（用户能看见的部分）才需要跟着界面语言走。
+ */
+export function buildLanguageDirective(targetLanguage?: string): string {
+  const code = normalizeLanguagePreference(targetLanguage);
+  if (code === AUTO_LANGUAGE) return "";
+  const meta = getLanguageMeta(code);
+  if (!meta) return "";
+  return `
+Output Language (overrides every other language signal):
+- Write the ENTIRE answer in ${meta.englishName} (${meta.localName}), regardless of the language the user typed their query in.
+- This applies to the whole response: prose, headings, table headers, list items and section titles.
+- Do NOT switch to the language of the retrieved sources or of the query. Sources are evidence, not a language setting: summarise them in ${meta.englishName}.
+- Your own connective prose must be in ${meta.englishName} even when every source is written in another language.
+- Keep these in their original form and do not translate them: code and identifiers, file paths, URLs, math notation, and verbatim quoted text from sources.
+- Source titles stay exactly as returned by the search results.
+- Citations stay in the numeric [1][2] form.`;
+}
+
+/**
+ * 按全局语言设置组装最终系统提示词。
+ * auto 时原样返回 base，行为与改动前完全一致。
+ */
+export function withLanguageDirective(basePrompt: string, targetLanguage?: string): string {
+  const directive = buildLanguageDirective(targetLanguage);
+  return directive ? `${basePrompt}${directive}` : basePrompt;
 }

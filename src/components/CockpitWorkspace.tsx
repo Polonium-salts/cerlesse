@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import {
   SearchSynthesisResult,
-  UserSettings
+  UserSettings,
+  AgentStep
 } from "../types.js";
 import {
   Sparkles,
@@ -19,7 +20,10 @@ interface CockpitWorkspaceProps {
   activeResult: SearchSynthesisResult;
   settings: UserSettings;
   onExecuteSearch: (query: string, deepSearch?: boolean) => void;
-  onAskFollowUp?: (question: string) => Promise<void> | void;
+  /** 当前这一轮 Agent 的真实执行步骤（ReAct-Read 思维链数据源） */
+  agentSteps?: AgentStep[];
+  /** 全局语言设置（settings.language），用于本地化回答卡片文案 */
+  language?: string;
   onSwitchToBentoGrid?: () => void;
   initialTab?: "answer" | "links" | "reasoning";
   isDark?: boolean;
@@ -33,7 +37,8 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
   activeResult,
   settings,
   onExecuteSearch,
-  onAskFollowUp,
+  agentSteps,
+  language,
   onSwitchToBentoGrid,
   initialTab = "links",
   openUrl,
@@ -97,8 +102,9 @@ export const CockpitWorkspace: React.FC<CockpitWorkspaceProps> = ({
               <AiAnswerWidget
                 result={activeResult}
                 query={activeResult.query}
-                onExecuteSearch={onExecuteSearch}
-                onAskFollowUp={onAskFollowUp}
+                agentSteps={agentSteps ?? activeResult.steps}
+                language={language ?? settings.language}
+                askModeHint
                 openUrl={openUrl}
                 copyText={copyText}
               />

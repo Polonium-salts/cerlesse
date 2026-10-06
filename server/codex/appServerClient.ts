@@ -18,7 +18,8 @@ import {
   buildSynthesisResultFromCodex
 } from "./eventBridge.js";
 import { synthesizeAnswerFromSources } from "./agentWidgetContent.js";
-import { DEFAULT_CODEX_CONFIG, CodexAgentConfig, CERLESSE_FOLLOWUP_SYSTEM_PROMPT } from "./codexConfig.js";
+import { DEFAULT_CODEX_CONFIG, CodexAgentConfig, CERLESSE_FOLLOWUP_SYSTEM_PROMPT, withLanguageDirective } from "./codexConfig.js";
+import { normalizeLanguagePreference } from "../../src/lib/appLanguage.js";
 import { getAiApiClient, getAiApiConfig, LlmProviderError, toLlmProviderError } from "../aiProvider.js";
 import { PreparedWidgetOutput } from "../tools/widgetTool.js";
 import { SolveLayoutOutput } from "../tools/layoutTool.js";
@@ -39,6 +40,12 @@ export interface CodexRunOptions {
   maxIterations?: number;
   threadId?: string;
   timeoutMs?: number;
+  /**
+   * 全局回答语言设置（settings.language）。
+   * `"auto"` 或空 = 不强制，由 Agent 跟随用户查询语言；
+   * 具体语言码（如 `en` / `zh-CN`，内部会归一成 `en` / `zh`）= 强制用该语言作答。
+   */
+  targetLanguage?: string;
   eventBridge?: CodexEventBridge;
   mockStepExecutor?: (
     messages: any[],
@@ -91,7 +98,9 @@ export async function runCodexAgent(
   options: CodexRunOptions = {}
 ): Promise<CodexRunResult> {
   const startTime = Date.now();
-  const eventBridge = options.eventBridge || new CodexEventBridge();
+  // 归一一次，后续提示词注入与界面文案共用同一个语言码，避免两处判定不一致
+  const targetLanguage = normalizeLanguagePreference(options.targetLanguage);
+  const eventBridge = options.eventBridge || new CodexEventBridge(targetLanguage);
   const isFollowUp = options.mode === "followup";
   const session = sessionManager.resumeOrCreateSession(
     query,
@@ -121,7 +130,12 @@ export async function runCodexAgent(
     defaultModel: aiApiConfig.model,
     maxIterations: options.maxIterations || (isFollowUp ? 8 : DEFAULT_CODEX_CONFIG.maxIterations),
     temperature: typeof options.temperature === "number" ? options.temperature : DEFAULT_CODEX_CONFIG.temperature,
-    systemPrompt: isFollowUp ? CERLESSE_FOLLOWUP_SYSTEM_PROMPT : DEFAULT_CODEX_CONFIG.systemPrompt
+    // 全局语言设置在最后一步叠加：它是用户显式意图，压过 base 提示词里
+    // 「跟随用户提问语言」的隐式语义（用户可以钉死英文却用中文提问）。
+    systemPrompt: withLanguageDirective(
+      isFollowUp ? CERLESSE_FOLLOWUP_SYSTEM_PROMPT : DEFAULT_CODEX_CONFIG.systemPrompt,
+      targetLanguage
+    )
   };
 
   const mcpContext: McpCallContext = {
@@ -300,8 +314,13 @@ export async function runCodexAgent(
         effectiveQuery: String(args.query ?? ""),
         ...buildSearchObservation(plan.primary.query || query, session.collectedSources, {
           plan,
-          maxResults: 10,
-          snippetChars: 240
+          // 旧的 10 条 × 240 字符会把「回答得更全」掐死在观测层：
+          // 模型既看不到足够的信源面，也读不完任何一条论证。
+          // 现在给到 24 条 × 单条 600 字符，同时用 snippetBudgetChars
+          // 钉住总量，避免条数与长度同时放大导致观测体积失控。
+          maxResults: 24,
+          snippetChars: 600,
+          snippetBudgetChars: 9000
         }),
         diagnostics: {
           candidateCount: result?.diagnostics?.candidateCount ?? result?.rawCount ?? result.results.length,
@@ -881,7 +900,7 @@ export async function runCodexAgent(
     durationMs,
     selection,
     // 让「展示给用户的检索计划」与「实际下发过的检索式 / 真实命中级别」一致
-    { subQueries: executedSearchQueries, hitLevel: evidence?.level }
+    { subQueries: executedSearchQueries, hitLevel: evidence?.level, language: targetLanguage }
   );
   (legacySynthesis as any).threadId = threadId;
 

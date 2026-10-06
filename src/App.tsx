@@ -20,9 +20,10 @@ import { Alert, AlertDescription } from "./components/ui/alert.js";
 import { Button } from "./components/ui/button.js";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs.js";
 import { WidgetRegistry, WidgetRuntime } from "./widgets/index.js";
-import { 
-  AgentStep, 
-  SearchSynthesisResult, 
+import {
+  AgentStep,
+  ChatTurn,
+  SearchSynthesisResult,
   UserSettings, 
   AiApiModel,
   AdaptiveLayoutStrategy,
@@ -45,6 +46,7 @@ import { resolveActivationTargets, applyAlwaysOnGuarantee, WIDGET_ACTIVATION_POL
 import { evaluateWidgetApplicability } from "./widgets/applicability.js";
 import { modelProviderStore } from "./state/modelProviderStore.js";
 import { navigate, readRoute, useRoute, RouteTab } from "./lib/router.js";
+import { normalizeLanguagePreference } from "./lib/appLanguage.js";
 import { motion } from "motion/react";
 import { 
   LayoutGrid, 
@@ -534,6 +536,24 @@ export default function App() {
     navigate(null, "", { replace: false });
   };
 
+  /**
+   * Ask 模式统一入口（提问内容一律来自搜索栏）
+   * ------------------------------------------------------------------
+   * AI 回答小组件不再自带输入框，所有提问都从顶部搜索栏发起：
+   *   - 已有研报会话时：作为追问进入同一会话（沿用桌面信源与历史，不重置排版）；
+   *   - 尚无会话时：退化为一次全新检索（尚无上下文可追问）。
+   */
+  const submitAskQuery = async (query: string, deep: boolean = true) => {
+    const q = query.trim();
+    if (!q || isLoading) return;
+
+    if (activeResult) {
+      await handleAskFollowUp(q);
+      return;
+    }
+    await runSearch(q, deep);
+  };
+
   const executeSearch = async (query: string, deep: boolean = true) => {
     if (!query.trim() || isLoading) return;
     await runSearch(query, deep);
@@ -557,7 +577,7 @@ export default function App() {
       queryParams.set("searxngUrl", settings.searxngCustomUrl.trim());
     }
     queryParams.set("deep", deep ? "true" : "false");
-    if (settings.language) queryParams.set("lang", settings.language);
+    if (settings.language) queryParams.set("lang", normalizeLanguagePreference(settings.language));
     if (settings.customApiKey?.trim()) queryParams.set("apiKey", settings.customApiKey.trim());
     if (settings.customApiBaseUrl?.trim()) queryParams.set("apiBaseUrl", settings.customApiBaseUrl.trim());
     if (typeof settings.temperature === "number") queryParams.set("temperature", String(settings.temperature));
@@ -581,7 +601,7 @@ export default function App() {
             model: settings.selectedModel || undefined,
             customSearxngUrl: settings.searxngCustomUrl?.trim() || undefined,
             enableDeepSearch: deep,
-            targetLanguage: settings.language || "auto",
+            targetLanguage: normalizeLanguagePreference(settings.language),
             apiKey: settings.customApiKey?.trim() || undefined,
             apiBaseUrl: settings.customApiBaseUrl?.trim() || undefined,
             temperature: settings.temperature,
@@ -857,6 +877,11 @@ export default function App() {
     setActiveResult((prev) => (prev ? { ...prev, chatTurns: nextTurns } : prev));
     setIsLoading(true);
 
+    // ReAct-Read 思维链按「轮次」对齐：eventBridge 每次请求都是全新实例，
+    // allSteps 只覆盖当前这一轮。追问开始时清空，避免把上一轮的轨迹
+    // 当成本轮回答的依据展示（无本轮真实步骤时时间线直接隐藏，不伪造）。
+    setAgentSteps([]);
+
     const historyPayload = prevTurns.map((t) => ({ role: t.role, content: t.content }));
     const sourcesPayload = (activeResult.filteredResults || []).slice(0, 15).map((s) => ({
       id: s.id,
@@ -869,6 +894,9 @@ export default function App() {
     const bodyPayload = {
       query: q,
       mode: "followup",
+      // 全局语言设置必须跟首轮一起带上：否则追问会退回「跟随提问语言」，
+      // 用户选了英文但用中文追问时就会突然变回中文。
+      targetLanguage: normalizeLanguagePreference(settings.language),
       threadId: activeResult.threadId,
       history: historyPayload,
       sources: sourcesPayload,
@@ -1220,7 +1248,8 @@ export default function App() {
         isCompact={isCompact}
         onResize={onResize}
         onExecuteSearch={(q, deep) => executeSearch(q, deep)}
-        onAskFollowUp={handleAskFollowUp}
+        agentSteps={agentSteps}
+        language={settings.language}
       />
     );
   };
@@ -1242,7 +1271,7 @@ export default function App() {
         searxngStatus={settings.searxngCustomUrl ? "自定义实例" : "高可用集群"}
         isHomeView={isHomeView}
         currentQuery={currentQuery}
-        onSearch={(q, deep) => executeSearch(q, deep)}
+        onSearch={(q, deep) => submitAskQuery(q, deep)}
         isLoading={isLoading}
         isWideCanvas={isWideCanvas}
         onToggleCanvasWidth={handleToggleCanvasWidth}
@@ -1318,7 +1347,7 @@ export default function App() {
             {/* iOS Spotlight Search Bar */}
             <div className="w-full max-w-2xl px-1 sm:px-2">
               <SearchBar
-                onSearch={(q, deep) => executeSearch(q, deep)}
+                onSearch={(q, deep) => submitAskQuery(q, deep)}
                 isLoading={isLoading}
                 initialQuery={currentQuery}
                 isHomeView={true}
@@ -1465,7 +1494,8 @@ export default function App() {
                         activeResult={activeResult}
                         settings={settings}
                         onExecuteSearch={(q, deep) => executeSearch(q, deep)}
-                        onAskFollowUp={handleAskFollowUp}
+                        agentSteps={agentSteps}
+                        language={settings.language}
                         onSwitchToBentoGrid={() => handleToggleInteractionMode("bento")}
                         isDark={darkMode}
                       />
@@ -1480,7 +1510,8 @@ export default function App() {
                           isWideCanvas={isWideCanvas}
                           onOpenMarketplace={() => setIsMarketplaceOpen(true)}
                           onExecuteSearch={(q, deep) => executeSearch(q, deep)}
-                          onAskFollowUp={handleAskFollowUp}
+                          agentSteps={agentSteps}
+                          language={settings.language}
                           onNavigateTab={(tab) => goToPage(tab)}
                         />
                       </div>

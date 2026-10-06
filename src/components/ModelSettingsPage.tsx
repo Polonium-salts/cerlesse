@@ -21,6 +21,7 @@ import { Label } from "./ui/label.js";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/card.js";
 import type { UserSettings, AiApiModel } from "../types.js";
 import { useModelProviderStore } from "../state/modelProviderStore.js";
+import { APP_LANGUAGES, AUTO_LANGUAGE, normalizeLanguagePreference } from "../lib/appLanguage.js";
 
 interface ModelSettingsPageProps {
   settings: UserSettings;
@@ -54,6 +55,8 @@ export function ModelSettingsPage({
   const [customKey, setCustomKey] = useState(settings.customApiKey || "");
   const [customBaseUrl, setCustomBaseUrl] = useState(settings.customApiBaseUrl || "");
   const [searxngUrl, setSearxngUrl] = useState(settings.searxngCustomUrl || "");
+  // 默认 auto：跟随提问语言（改动前的行为）。归一一次以兼容历史存储里的 zh-CN 写法。
+  const [language, setLanguage] = useState(() => normalizeLanguagePreference(settings.language));
   const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -77,7 +80,8 @@ export function ModelSettingsPage({
       selectedModel: model.trim(),
       customApiKey: customKey.trim() || undefined,
       customApiBaseUrl: customBaseUrl.trim() || undefined,
-      searxngCustomUrl: searxngUrl.trim()
+      searxngCustomUrl: searxngUrl.trim(),
+      language
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -320,6 +324,32 @@ export function ModelSettingsPage({
               placeholder="例如：deepseek-chat"
               className="font-mono text-xs"
             />
+          </div>
+
+          <div className="space-y-1.5 pt-2 border-t border-border">
+            <Label className="text-xs flex items-center justify-between" htmlFor="cerlesse-answer-language">
+              <span className="flex items-center gap-1.5">
+                <Globe className="size-3 text-muted-foreground" />
+                AI 回答语言
+              </span>
+              <span className="text-muted-foreground text-[11px]">同时切换回答正文与小组件界面文案</span>
+            </Label>
+            <select
+              id="cerlesse-answer-language"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="w-full h-9 px-2 rounded-md border border-input bg-background text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+            >
+              <option value={AUTO_LANGUAGE}>自动（跟随提问语言）</option>
+              {APP_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.flag} {lang.localName} · {lang.englishName}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              选定后 AI 将强制用该语言作答（覆盖提问语言）；选「自动」则沿用提问语言。
+            </p>
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-border">

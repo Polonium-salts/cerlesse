@@ -11,6 +11,11 @@ export interface AgentRunParams {
   sources?: SearchResult[];
   apiKey?: string;
   apiBaseUrl?: string;
+  /**
+   * 全局回答语言（settings.language）。`auto` / 空 = 跟随查询语言。
+   * 之前这个值只从前端发到 HTTP 层就被丢弃，服务端从未读过。
+   */
+  targetLanguage?: string;
   env?: Record<string, string | undefined>;
   eventBridge?: CodexEventBridge;
 }
@@ -25,6 +30,7 @@ export async function executeAgentRun(params: AgentRunParams) {
     sources: params.sources,
     apiKey: params.apiKey,
     apiBaseUrl: params.apiBaseUrl,
+    targetLanguage: params.targetLanguage,
     env: params.env,
     eventBridge: params.eventBridge
   });

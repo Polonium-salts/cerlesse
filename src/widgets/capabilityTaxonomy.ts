@@ -52,6 +52,12 @@ export const CANONICAL_CAPABILITIES = [
   "core_principles",
   "typical_scenarios",
 
+  // ── Ask 模式对话与可审计推理链 ──
+  // 由 ai_answer 真实渲染：ask 模式提问回复，以及可展开的
+  // ReAct-Read（Thought→Act→Read）循环思维链。
+  "ask_mode_answer",
+  "react_reasoning_trace",
+
   // ── 软件 / 下载 / 安装 ──
   "software_info",
   "download",

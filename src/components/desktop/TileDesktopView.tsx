@@ -14,7 +14,8 @@ import {
   ResultWidgetKey,
   AdaptiveLayoutStrategy,
   WidgetPlan,
-  SearchSynthesisResult
+  SearchSynthesisResult,
+  AgentStep
 } from "../../types.js";
 import {
   solveTileLayout,
@@ -49,7 +50,14 @@ interface TileDesktopViewProps {
   isWideCanvas?: boolean;
   onOpenMarketplace?: () => void;
   onExecuteSearch?: (query: string, deep?: boolean) => void;
-  onAskFollowUp?: (question: string) => Promise<void> | void;
+  /**
+   * 当前这一轮 Agent 的真实执行步骤。
+   * 必须显式透传：WidgetRuntime 在缺省时会回退到 activeResult.steps，
+   * 而那是首轮检索的轨迹，ask 追问时会与当前回答对不上号。
+   */
+  agentSteps?: AgentStep[];
+  /** 全局语言设置（settings.language），用于本地化小组件文案 */
+  language?: string;
   onNavigateTab?: (tab: "bento" | "images" | "mindmap" | "comparison" | "sources" | "reasoning") => void;
 }
 
@@ -61,7 +69,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
   widgetPlan,
   activeResult,
   onExecuteSearch,
-  onAskFollowUp,
+  agentSteps,
+  language,
   onNavigateTab
 }) => {
   // 用户持久化手动调整的尺寸覆盖
@@ -277,12 +286,11 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         size = 25;
       }
 
-      // 优化方案 D.1: ai_answer 在长篇回答时自动升至 75% 档位，提供宽阔舒适的阅读与排版空间
-      if (keyStr === "ai_answer" && !userOverriddenSize && !agentSpans[keyStr]) {
-        const textLen = (activeResult?.summary || "").length;
-        if (textLen >= 600) {
-          size = 75;
-        }
+      // ai_answer 严格横向占据 2 格 (50%)：ask 模式的回答卡只承载一条主叙事，
+      // 不再跟随 agent 的 span / 规划尺寸放大，也不再在长文时自动升到 75%。
+      // 用户手动调整过的尺寸仍然优先，不强行覆盖。
+      if (keyStr === "ai_answer" && !userOverriddenSize) {
+        size = 50;
       }
 
       // image_gallery 默认充满 100% 宽度作为全景图片流，彻底避免底部出现单边空洞
@@ -478,7 +486,8 @@ export const TileDesktopView: React.FC<TileDesktopViewProps> = ({
         isCompact={size === 25}
         onResize={(nextSize) => handleTileResize(id, nextSize)}
         onExecuteSearch={onExecuteSearchRef.current}
-        onAskFollowUp={onAskFollowUp}
+        agentSteps={agentSteps}
+        language={language}
       />
     );
   };

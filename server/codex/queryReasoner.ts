@@ -321,7 +321,7 @@ export function planSearchQueries(
     };
   }
 
-  const maxRefinements = Math.max(0, Math.min(options.maxRefinements ?? 2, 3));
+  const maxRefinements = Math.max(0, Math.min(options.maxRefinements ?? 3, 4));
   const seen = new Set<string>([queryKey(primary.query)]);
   const refinements: PlannedQuery[] = [];
 
@@ -493,6 +493,13 @@ export function assessEvidence(results: SearchResult[], plan: SearchPlan): Evide
 // 4. 精确观测：给模型看的那一份摘要
 // ============================================================
 
+/** 单条信源摘要的字符上限（旧的 240 会把一段完整论证拦腰截断） */
+export const DEFAULT_SNIPPET_CHARS = 600;
+/** 整份观测里所有摘要的字符总上限，防止 maxResults 变大时观测体积线性膨胀 */
+export const DEFAULT_SNIPPET_BUDGET_CHARS = 9000;
+/** 均摊后的下限：再拥挤也保证每条信源有一句话可读 */
+export const MIN_SNIPPET_CHARS = 160;
+
 export interface ObservationResult {
   id: string;
   ref?: number;
@@ -533,11 +540,10 @@ export interface SearchObservation {
 export function buildSearchObservation(
   query: string,
   results: SearchResult[],
-  options: { plan?: SearchPlan; maxResults?: number; snippetChars?: number } = {}
+  options: { plan?: SearchPlan; maxResults?: number; snippetChars?: number; snippetBudgetChars?: number } = {}
 ): SearchObservation {
   const plan = options.plan ?? planSearchQueries(query);
   const maxResults = Math.max(1, options.maxResults ?? 30);
-  const snippetChars = Math.max(40, options.snippetChars ?? 240);
   const assessment = assessEvidence(results, plan);
 
   const all = (results || []).filter((item) => item && item.url && item.title);
@@ -548,6 +554,17 @@ export function buildSearchObservation(
   // 实体命中的排前面，但仍保留少量未命中项：它们可能是权威源但表述跨语言，
   // 交给模型自己判断是否弃用，比在这里硬砍掉更安全（避免把唯一可用证据切掉）。
   const ordered = [...matched, ...all.filter((item) => !matched.includes(item))].slice(0, maxResults);
+
+  // 「看更多内容」不等于「无限膨胀 token」：单条摘要放宽到 600 字符（旧的 240 会把
+  // 一段论证拦腰砍断），但整份观测的摘要总量有硬上限，并按结果条数均摊。
+  // 结果少时每条仍能拿到 600 字符；结果多（例如 maxResults=24）时自动降到均摊值，
+  // 保证观测体积不随 maxResults 线性放大。
+  const perResultCap = Math.max(40, options.snippetChars ?? DEFAULT_SNIPPET_CHARS);
+  const totalCap = Math.max(perResultCap, options.snippetBudgetChars ?? DEFAULT_SNIPPET_BUDGET_CHARS);
+  const snippetChars =
+    ordered.length > 0
+      ? Math.max(MIN_SNIPPET_CHARS, Math.min(perResultCap, Math.floor(totalCap / ordered.length)))
+      : perResultCap;
 
   const observations: ObservationResult[] = ordered.map((item) => {
     const host = hostOf(item.url);
@@ -568,9 +585,9 @@ export function buildSearchObservation(
     ? [
         `证据评估：${assessment.level === "no_hit" ? "无命中" : "部分命中"} —— ${assessment.reason}`,
         plan.refinements.length > 0
-          ? `可参考以下补检方向 [${plan.refinements.map((r) => `"${r.query}"`).join(", ")}]，由你判断是否需要，再作答。`
-          : "可根据需要更换表述补检。",
-        "若证据仍有不足，必须明确说明证据边界，不得主观推测。"
+          ? `可参考以下补检方向 [${plan.refinements.map((r) => `"${r.query}"`).join(", ")}]；证据不足时先调用 search_web 补检后再作答。`
+          : "证据不足时可先调用 search_web 更换表述补检。",
+        "若证据仍有不足，必须明确说明证据边界，不得推测未出现在结果中的事实。"
       ].join("\n")
     : `证据评估：命中 —— ${assessment.reason} 可以基于下列结果作答，正文引用请务必使用 [1], [2] 标注对应序号；不得引入未出现在结果中的事实。`;
 
@@ -696,6 +713,13 @@ export interface ReasonedSearchOutcome {
   executedQueries: string[];
 }
 
+/**
+ * 默认补检轮数。这是一条**被测试钉住**的契约（query_reasoner.test.ts「补检轮数受
+ * budget 上限约束」），与 SEARCH_POLICY.maxSearchRounds=4 一起构成检索的双重上限：
+ * 「搜得更全」通过观测层（更多信源、更长摘要、更多补检方向）实现，
+ * 而不是靠放宽自动补检轮数 —— 自动多搜会同时抬高延迟与 token，且不受模型判断约束。
+ * 需要更激进的补检时由调用方显式传 maxRefinementRounds。
+ */
 export const DEFAULT_MAX_REFINEMENT_ROUNDS = 1;
 
 /**

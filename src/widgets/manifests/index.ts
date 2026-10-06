@@ -189,9 +189,11 @@ export const MANIFEST_ITEM_HEIGHTS: Record<string, { itemHeightPx?: number; base
 
 export const DEFAULT_LAYOUT_METAS: Record<string, WidgetLayoutMeta> = {
   ai_answer: {
-    defaultWidth: 100,
-    minWidth: 50,
-    maxWidth: 100,
+    // ask 模式回答卡横向固定 2 格 (50%)：前后端默认档位必须一致，
+    // 否则服务端 layout 工具会把 ai_answer 规划成 100% 而前端末端拉回 50%。
+    defaultWidth: 50,
+    minWidth: 25,
+    maxWidth: 50,
     preferredRoles: ["hero", "primary"],
     canPairWith: ["sources", "takeaways", "related_links", "image_gallery"]
   },
