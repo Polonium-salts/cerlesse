@@ -9,6 +9,11 @@ interface GoogleLogoProps {
   showBadge?: boolean;
   badgeText?: string;
   /**
+   * 追加到 “Agent” 徽标上的类名（例如顶栏在窄屏下传 `hidden sm:inline-flex`）。
+   * 徽标在组件内部，外部无法用选择器定位，所以从属性透出。
+   */
+  badgeClassName?: string;
+  /**
    * 允许强制指定主题模式：
    * - "auto": 默认行为，仅在中秋节期间自动加载中秋主题 Logo，平时加载标准 Logo
    * - "midautumn": 强制加载中秋节主题 Logo
@@ -22,6 +27,7 @@ export const GoogleLogo: React.FC<GoogleLogoProps> = ({
   className = "",
   showBadge = true,
   badgeText,
+  badgeClassName = "",
   themeMode = "auto"
 }) => {
   // 判定是否应当激活中秋节特色 Logo
@@ -93,7 +99,10 @@ export const GoogleLogo: React.FC<GoogleLogoProps> = ({
         </span>
 
         {showBadge && (
-          <Badge variant="secondary" className={`self-center shrink-0 whitespace-nowrap ${badgeTextClasses[size]}`}>
+          <Badge
+            variant="secondary"
+            className={`self-center shrink-0 whitespace-nowrap ${badgeTextClasses[size]} ${badgeClassName}`}
+          >
             {defaultBadge}
           </Badge>
         )}

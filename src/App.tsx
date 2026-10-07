@@ -1289,9 +1289,11 @@ export default function App() {
         hasCustomApiKey={Boolean(settings.customApiKey?.trim())}
       />
 
-      {/* 结果页顶部导航：单一分段控件 + 一句元信息 + 两个操作按钮 */}
+      {/* 结果页顶部导航：单一分段控件 + 一句元信息 + 两个操作按钮。
+          贴在顶栏下方用的偏移量取自 index.css 的 --app-header-offset：
+          移动端顶栏是两行（100px），硬写 top-16 会被盖住。 */}
       {!isHomeView && activeTab !== "settings" && (
-        <div className="border-b border-border bg-background/70 backdrop-blur-xl sticky top-16 z-30">
+        <div className="border-b border-border bg-background/70 backdrop-blur-xl sticky top-[var(--app-header-offset)] z-30">
           <div className={`${isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-2.5 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar transition-all duration-200`}>
             <Tabs
               value={activeTab}

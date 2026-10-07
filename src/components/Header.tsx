@@ -108,35 +108,48 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-xl border-b border-border transition-colors pt-[env(safe-area-inset-top,0px)]">
+      {/*
+        移动端两行、桌面单行。
+        为什么不能一行到底：390px 视口下品牌（图标+词标+徽标）、检索框、模型选择、
+        API Key、主题切换五块内容基本等宽均分，检索框只剩 ~50px（只剩 “go ...”），
+        模型名也被压成 “gem...”。改为移动端网格：第一行品牌 + 操作，第二行检索独占整行。
+        用网格（而不是 flex-wrap）是因为第二行必须稳定换行、且第一行绝不能再被挤到第三行 ——
+        flex-wrap 按内容宽度决定换行，窄屏时会把操作区也顶下去。
+        sm 起恢复单行 flex：品牌 / 检索 / 操作 三段式，与改动前一致。
+      */}
       <div
         className={`${
           isWideCanvas ? "w-full max-w-[2560px] 2xl:max-w-none" : "max-w-7xl"
-        } mx-auto px-2.5 sm:px-6 lg:px-8 xl:px-10 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4 transition-all duration-200`}
+        } mx-auto grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 px-2.5 py-2 transition-all duration-200 sm:flex sm:h-16 sm:flex-nowrap sm:gap-x-4 sm:px-6 sm:py-0 lg:px-8 xl:px-10`}
       >
-        {/* Left: Brand Logo & Inline Search */}
-        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-3xl">
+        {/* Left: Brand Logo */}
+        <div className="col-start-1 row-start-1 flex min-w-0 shrink-0 items-center gap-2 sm:order-1 sm:gap-4">
           <div
             onClick={onReset}
             className="cursor-pointer shrink-0 transition-transform hover:scale-105 active:scale-95 flex items-center"
             title="返回首页"
           >
-            <GoogleLogo size="sm" badgeText="Agent" />
+            {/* 移动端隐去 “Agent” 徽标：它是装饰，宽度应该让给模型名 */}
+            <GoogleLogo size="sm" badgeText="Agent" badgeClassName="hidden sm:inline-flex" />
           </div>
-
-          {!isHomeView && !isSettingsActive && onSearch && (
-            <div className="flex-1 max-w-xl min-w-0">
-              <SearchBar
-                onSearch={onSearch}
-                isLoading={isLoading}
-                initialQuery={currentQuery}
-                isHomeView={false}
-              />
-            </div>
-          )}
         </div>
 
+        {/* Inline Search：移动端第二行跨两列，桌面回到品牌与操作之间 */}
+        {!isHomeView && !isSettingsActive && onSearch && (
+          <div className="col-span-2 col-start-1 row-start-2 w-full min-w-0 sm:order-2 sm:w-auto sm:max-w-xl sm:flex-1">
+            <SearchBar
+              onSearch={onSearch}
+              isLoading={isLoading}
+              initialQuery={currentQuery}
+              isHomeView={false}
+            />
+          </div>
+        )}
+
         {/* Right: 重构后的现代化模型选择面板、API 快捷探查与主题切换 */}
-        <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
+        {/* ml-auto 必须留到 sm：移动端这是网格项，auto 外边距会让它按内容宽度收缩、
+            不再被 1fr 轨道约束，320px 下会把页面撑出横向滚动条 */}
+        <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-end gap-1.5 sm:order-3 sm:ml-auto sm:gap-2.5">
           {/* 1. 现代化重构的模型选择面板 */}
           <ModelSelectorDropdown
             currentModelId={currentModel}

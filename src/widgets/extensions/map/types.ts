@@ -6,8 +6,8 @@ export interface MapPoiItem {
   rating?: number;
   tags?: string[];
   distance?: string;
-  lat?: number;
-  lng?: number;
+  lat: number;
+  lng: number;
   description?: string;
   openingHours?: string;
 }

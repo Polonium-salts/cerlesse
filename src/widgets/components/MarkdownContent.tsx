@@ -10,6 +10,8 @@ import { ExternalLink } from "lucide-react";
 import {
   CitationMarker,
   SourceFavicon,
+  SourceInlineCard,
+  canonicalUrlKey,
   isBareUrlLabel,
   isExternalUrl,
   nodeToText,
@@ -31,6 +33,66 @@ export interface MarkdownContentProps {
   onOpenUrl?: (url: string) => void;
   /** 全局语言设置（settings.language）；只影响代码块复制按钮这类界面文案 */
   language?: string;
+}
+
+/** 方括号引用解析结果：角标序号 + 能对上的信源（对不上时为 undefined） */
+export interface ResolvedBracketCitation {
+  index: number;
+  source?: SourceCitation;
+}
+
+/**
+ * 把一个方括号片段（`[1]` / `[source-2]` / `[bilibili: 官方主站…]`）解析成角标。
+ *
+ * 正文角标与段末常显信源卡必须走同一套判断：两处各写一份，迟早漂移成
+ * 「角标准确指到 3 号信源、卡片却挂在 1 号信源下」这种自相矛盾的溯源展示。
+ *
+ * `allowFallbackToFirst` 只给正文角标打开：信源里匹配不到、但文本明显像残留 snippet
+ * 时角标退化成 1 号是既有行为；常显卡片不开这个兜底 —— 挂错信源的卡比不挂更误导人。
+ */
+export function resolveBracketCitation(
+  rawContent: string,
+  sources?: SourceCitation[],
+  options?: { allowFallbackToFirst?: boolean }
+): ResolvedBracketCitation | null {
+  const content = (rawContent || "").trim();
+  if (!content) return null;
+
+  // 1. 标准数字引用 [1], [2], [source-1]
+  const numMatch = content.match(/^(?:source-)?(\d+)$/i);
+  if (numMatch) {
+    const index = parseInt(numMatch[1], 10);
+    return { index, source: sources ? sources[index - 1] : undefined };
+  }
+
+  // 2. 畸变引用（如 [Google Play], [bilibili: 官方主站…]）：按标题 / URL 模糊匹配回信源
+  const titleKey = content.split(/[:：]/)[0].trim().toLowerCase();
+  if (sources && sources.length > 0) {
+    const foundIdx = sources.findIndex((s) => {
+      const sTitle = (s.title || "").toLowerCase();
+      const sUrl = (s.url || "").toLowerCase();
+      return (
+        (titleKey.length >= 2 && (sTitle.includes(titleKey) || titleKey.includes(sTitle))) ||
+        (content.length >= 3 && (sTitle.includes(content.toLowerCase()) || content.toLowerCase().includes(sTitle))) ||
+        (sUrl && content.toLowerCase().includes(sUrl))
+      );
+    });
+    if (foundIdx !== -1) {
+      return { index: foundIdx + 1, source: sources[foundIdx] };
+    }
+  }
+
+  if (options?.allowFallbackToFirst === false) return null;
+
+  // 3. 没精准匹配到、但文本很长或带冒号 → 当作残留 snippet 引用，退化成 1 号
+  // 很短又没有冒号的括号文本（如 [可选]）保持原样，不假装是引用
+  const looksLikeCitation =
+    content.includes(":") ||
+    content.includes("：") ||
+    content.length > 15 ||
+    /http|\.com|\.org|官网|官方|主页|下载|百科|搜索/i.test(content);
+  if (!looksLikeCitation) return null;
+  return { index: 1, source: sources ? sources[0] : undefined };
 }
 
 /**
@@ -55,54 +117,9 @@ function renderChildrenWithCitations(
 
     for (const match of matchIter) {
       const matchStart = match.index ?? 0;
-      const rawContent = match[1].trim();
-
-      // 跳过纯空内容
-      if (!rawContent) continue;
-
-      let citationIndex: number | undefined;
-      let matchedSource: SourceCitation | undefined;
-
-      // 1. 检查是否为标准数字引用 [1], [2], [source-1]
-      const numMatch = rawContent.match(/^(?:source-)?(\d+)$/i);
-      if (numMatch) {
-        citationIndex = parseInt(numMatch[1], 10);
-        matchedSource = sources ? sources[citationIndex - 1] : undefined;
-      } else {
-        // 2. 检查是否为带有标题、冒号或长摘要的畸变引用（如 [Google Play], [bilibili: 官方主站...]）
-        // 尝试在信源中模糊匹配标题或关键词，映射为正确的数字角标
-        const titleKey = rawContent.split(/[:：]/)[0].trim().toLowerCase();
-        if (sources && sources.length > 0) {
-          const foundIdx = sources.findIndex((s) => {
-            const sTitle = (s.title || "").toLowerCase();
-            const sUrl = (s.url || "").toLowerCase();
-            return (
-              (titleKey.length >= 2 && (sTitle.includes(titleKey) || titleKey.includes(sTitle))) ||
-              (rawContent.length >= 3 && (sTitle.includes(rawContent.toLowerCase()) || rawContent.toLowerCase().includes(sTitle))) ||
-              (sUrl && rawContent.toLowerCase().includes(sUrl))
-            );
-          });
-          if (foundIdx !== -1) {
-            citationIndex = foundIdx + 1;
-            matchedSource = sources[foundIdx];
-          }
-        }
-
-        // 如果信源中没精准匹配到，但文本很长或带有冒号，说明是残留的 snippet 引用
-        // 如果没有匹配到任何信源且很短（可能是普通括号文本如 [可选]），则保持原样
-        if (citationIndex === undefined) {
-          const looksLikeCitation =
-            rawContent.includes(":") ||
-            rawContent.includes("：") ||
-            rawContent.length > 15 ||
-            /http|\.com|\.org|官网|官方|主页|下载|百科|搜索/i.test(rawContent);
-          if (!looksLikeCitation) {
-            continue;
-          }
-          citationIndex = 1;
-          matchedSource = sources ? sources[0] : undefined;
-        }
-      }
+      const resolved = resolveBracketCitation(match[1], sources);
+      // 空内容，或不像引用的普通括号文本（如 [可选]）→ 原样保留
+      if (!resolved) continue;
 
       if (matchStart > lastIndex) {
         parts.push(children.slice(lastIndex, matchStart));
@@ -110,9 +127,9 @@ function renderChildrenWithCitations(
 
       parts.push(
         <CitationMarker
-          key={`cite-${matchStart}-${citationIndex}`}
-          index={citationIndex}
-          source={matchedSource}
+          key={`cite-${matchStart}-${resolved.index}`}
+          index={resolved.index}
+          source={resolved.source}
           onOpenUrl={onOpenUrl}
           language={language}
         />
@@ -137,6 +154,130 @@ function renderChildrenWithCitations(
   }
 
   return children;
+}
+
+/**
+ * 可以下钻的行内包裹元素。
+ * 白名单而不是黑名单：`code` / `pre` / `div` / `table` 这些一律不下钻 ——
+ * 代码示例里的 `[1]`、表格单元格里的数字都不是本文引用，不该长出信源卡。
+ */
+const INLINE_WRAPPER_TAGS = new Set([
+  "a",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "u",
+  "s",
+  "del",
+  "span",
+  "mark",
+  "small",
+  "sub",
+  "sup",
+  "abbr",
+  "cite",
+  "q"
+]);
+
+/** 按 URL 找对应信源：先精确匹配，再退化到归一化 URL（大小写 / www. / 尾斜杠差异）。 */
+export function findSourceByUrl(url: string, sources?: SourceCitation[]): SourceCitation | undefined {
+  const target = (url || "").trim();
+  if (!target || !sources || sources.length === 0) return undefined;
+  const exact = sources.find((s) => (s.url || "").trim() === target);
+  if (exact) return exact;
+  const key = canonicalUrlKey(target);
+  if (!key) return undefined;
+  return sources.find((s) => canonicalUrlKey(s.url) === key);
+}
+
+/**
+ * 收集一个正文块（段落 / 列表项）实际引用到的信源，按出现顺序、按 URL 去重。
+ *
+ * 两个来源：
+ *   1. 块里的 markdown 外链（`[文字](url)` / 裸 URL）—— 必须能对上 sources 里的条目；
+ *   2. 块里文本中的 `[1]` 类角标。
+ *
+ * 对不上信源的链接一律不返回：没有标题与摘要，硬造一张卡等于编造溯源信息
+ * （AGENTS.md：不许声称没发生过的操作）。同理不给它开「退化成 1 号」的兜底。
+ */
+export function collectBlockSources(
+  children: React.ReactNode,
+  sources?: SourceCitation[]
+): SourceCitation[] {
+  if (!sources || sources.length === 0) return [];
+  const found: SourceCitation[] = [];
+  const seen = new Set<string>();
+
+  const push = (source: SourceCitation | undefined) => {
+    if (!source) return;
+    const key = canonicalUrlKey(source.url) || `#${source.index ?? found.length + 1}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push(source);
+  };
+
+  const walk = (node: React.ReactNode) => {
+    if (node === null || node === undefined || typeof node === "boolean") return;
+    if (typeof node === "string") {
+      for (const match of node.matchAll(/\[([^\]\n]+)\]/g)) {
+        const resolved = resolveBracketCitation(match[1], sources, { allowFallbackToFirst: false });
+        if (resolved) push(resolved.source);
+      }
+      return;
+    }
+    if (typeof node === "number") return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (React.isValidElement(node)) {
+      const props = node.props as { href?: unknown; children?: React.ReactNode };
+      if (typeof props.href === "string" && props.href.trim()) {
+        push(findSourceByUrl(props.href, sources));
+      }
+      if (typeof node.type === "string" && INLINE_WRAPPER_TAGS.has(node.type)) {
+        walk(props.children);
+      } else if (node.type === React.Fragment) {
+        walk(props.children);
+      }
+    }
+  };
+
+  walk(children);
+  return found;
+}
+
+/**
+ * 段落 / 列表项末尾的常显信源卡组。
+ * 引用信息直接穿插在它所属的正文块下面，而不是藏在角标的悬停浮层里。
+ */
+function BlockSourceCards({
+  children,
+  sources,
+  onOpenUrl,
+  language
+}: {
+  children: React.ReactNode;
+  sources?: SourceCitation[];
+  onOpenUrl?: (url: string) => void;
+  language?: string;
+}) {
+  const cards = useMemo(() => collectBlockSources(children, sources), [children, sources]);
+  if (cards.length === 0) return null;
+  return (
+    // not-italic：段落可能落在 blockquote 里，信源卡不该继承那份斜体
+    <div className="mt-3 grid gap-2.5 not-italic sm:grid-cols-2">
+      {cards.map((source, idx) => (
+        <SourceInlineCard
+          key={`${source.url}-${idx}`}
+          source={source}
+          onOpenUrl={onOpenUrl}
+          language={language}
+        />
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -452,9 +593,17 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
             </h4>
           ),
           p: ({ children }) => (
-            <p className="my-3.5 text-[15px] leading-7 text-foreground">
-              {renderChildrenWithCitations(children, sources, onOpenUrl, language)}
-            </p>
+            <>
+              <p className="my-3.5 text-[15px] leading-7 text-foreground">
+                {renderChildrenWithCitations(children, sources, onOpenUrl, language)}
+              </p>
+              <BlockSourceCards
+                children={children}
+                sources={sources}
+                onOpenUrl={onOpenUrl}
+                language={language}
+              />
+            </>
           ),
           ul: ({ children }) => (
             <ul className="my-3.5 ml-5 list-disc space-y-2 text-[15px] leading-7 text-foreground marker:text-muted-foreground">
@@ -469,6 +618,12 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
           li: ({ children }) => (
             <li className="leading-7">
               {renderChildrenWithCitations(children, sources, onOpenUrl, language)}
+              <BlockSourceCards
+                children={children}
+                sources={sources}
+                onOpenUrl={onOpenUrl}
+                language={language}
+              />
             </li>
           ),
           strong: ({ children }) => (

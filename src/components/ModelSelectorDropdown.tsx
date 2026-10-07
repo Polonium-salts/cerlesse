@@ -1,16 +1,41 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+/**
+ * 顶部栏模型选择面板。
+ * ========================================================================
+ * 为什么重做（v1 的四个实际问题）：
+ *   1. 类名失效：v1 用了 `h-8.5` / `pl-8.5` / `py-0.2` / `shadow-xs`。
+ *      本仓库是 Tailwind **v3.4.17**（见 package.json 与 tailwind.config.ts），
+ *      这几个是 v4 的命名，编译产物里根本不存在对应规则 ——
+ *      于是触发按钮和搜索框没有固定高度（靠内容撑），搜索框左侧内边距为 0
+ *      （文字压在被绝对定位的放大镜图标下面），标签没有纵向内边距。
+ *      本文件只用 v3 确定生成的类，并有 `scripts/verify:*` 之外的构建产物可核对。
+ *   2. 颜色失效：tailwind.config.ts 把 red/blue/emerald/purple… 全部指向同一套灰阶，
+ *      所以 v1 里那套 `bg-emerald-500/10` / `text-blue-600` 厂牌配色**全都渲染成灰色**，
+ *      视觉层级实际只来自层级本身。重做后不再假装有颜色，改用
+ *      「分组标题 + 主色高亮 + 灰阶标签」来表达结构，任何主题下都成立。
+ *   3. 列表可读性：v1 是 238+ 模型的一条平铺流水（`divide-y` + 每行自带厂牌标签，
+ *      同一厂牌重复出现几十次）。现在按厂牌分组、组标题吸顶，厂牌信息从每行搬到组头，
+ *      每行只留「名称 / 模型 ID / 上下文 / FREE」，搜索与页签过滤照旧。
+ *   4. 键盘与无障碍：v1 只有鼠标点击。现在补上 combobox + listbox 结构、
+ *      ↑/↓/Home/End/Enter/Esc 导航、aria-activedescendant 与选中态播报。
+ *
+ * 数据流不变：只接收 models 与 onSelectModel，不自己发请求、不自己写 localStorage。
+ */
+
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
-  ChevronDown,
-  Search,
   Check,
-  Zap,
-  Database,
+  ChevronDown,
+  Cpu,
+  Loader2,
+  Search,
   SlidersHorizontal,
-  X,
   Star,
-  Cpu
+  X,
+  Zap
 } from "lucide-react";
+import { cn } from "../lib/utils.js";
+import { Input } from "./ui/input.js";
 
 export interface SelectableModelItem {
   id: string;
@@ -31,72 +56,176 @@ interface ModelSelectorDropdownProps {
   onOpenSettings?: () => void;
 }
 
-// 辅助解析模型元数据以进行分类与标签渲染
-function parseModelMetadata(model: SelectableModelItem) {
-  const idLower = model.id.toLowerCase();
-  const nameLower = (model.name || model.id).toLowerCase();
+/** 列表上方的快捷筛选页签 */
+export type ModelListTab = "all" | "recommended" | "free" | "large_ctx";
+
+export interface ModelMeta {
+  /** 去掉装饰性前后缀的展示名（`★ Gemini 2.0 (1000k)` → `Gemini 2.0`） */
+  cleanName: string;
+  isFree: boolean;
+  isRecommended: boolean;
+  /** 规范化后的上下文标记，如 `128k` / `1M`；取不到时为空串 */
+  contextBadge: string;
+  /** 上下文换算成 k，便于比较（`1M` → 1000） */
+  contextScaleK: number;
+  brand: string;
+}
+
+/** 超大上下文的判定线：200k 以上（与 v1 的筛选口径保持一致） */
+const LARGE_CONTEXT_K = 200;
+/** 「其他」分组名：所有规则都没命中的模型归到这里 */
+const OTHER_BRAND = "其他";
+
+/**
+ * 厂牌识别规则，顺序即优先级。
+ *
+ * 用正则而不是 `includes`：`o1` / `o3` 这类极短 token 用子串匹配会误伤
+ * （例如把 `cogito` 里的 `o1` 认成 OpenAI）。这里要求它们出现在
+ * 路径分隔符、空格或连字符的边界上（`openai/o1-mini`）。
+ */
+const BRAND_RULES: ReadonlyArray<{ brand: string; test: RegExp }> = [
+  { brand: "DeepSeek", test: /deepseek/i },
+  { brand: "Anthropic", test: /claude|anthropic/i },
+  { brand: "Google", test: /gemini|gemma|google|palm/i },
+  { brand: "OpenAI", test: /gpt|openai|chatgpt|davinci|(^|[/\s-])o[1-4]([-/\s]|$)/i },
+  { brand: "Qwen", test: /qwen|tongyi|alibaba/i },
+  { brand: "Meta", test: /llama|meta-/i },
+  { brand: "Mistral", test: /mistral|mixtral|magistral|devstral|codestral/i },
+  { brand: "xAI", test: /grok|x-ai|xai/i },
+  { brand: "Moonshot", test: /kimi|moonshot/i },
+  { brand: "Zhipu", test: /glm|zhipu|chatglm/i },
+  { brand: "MiniMax", test: /minimax|abab/i },
+  { brand: "NVIDIA", test: /nvidia|nemotron/i },
+  { brand: "Microsoft", test: /phi-|microsoft/i },
+  { brand: "Cohere", test: /command-|cohere/i },
+  { brand: "Amazon", test: /nova-|amazon|titan/i },
+  { brand: "Vision/Art", test: /flux|diffusion|dreamshaper|sdxl|stable-/i }
+];
+
+/** 从名称 / ID 里捞出上下文长度标记，取不到就回退到结构化字段 */
+export function extractContextBadge(model: SelectableModelItem): string {
+  const source = `${model.name || ""} ${model.id}`;
+  const matched = source.match(/(\d+(?:\.\d+)?)\s*([km])(?![a-z0-9])/i);
+  if (matched) return `${matched[1]}${matched[2].toLowerCase()}`;
+  const structured = (model.contextLength || "").trim();
+  if (structured) return structured;
+  if (typeof model.contextWindow === "number" && model.contextWindow > 0) {
+    return model.contextWindow >= 1_000_000
+      ? `${Math.round(model.contextWindow / 1_000_000)}M`
+      : `${Math.round(model.contextWindow / 1000)}k`;
+  }
+  return "";
+}
+
+/** 上下文标记换算成 k（`1M` → 1000，`128k` → 128，无法解析 → 0） */
+export function contextScaleK(badge: string): number {
+  const matched = (badge || "").match(/(\d+(?:\.\d+)?)\s*([km])?/i);
+  if (!matched) return 0;
+  const value = parseFloat(matched[1]);
+  if (!Number.isFinite(value)) return 0;
+  return /m/i.test(matched[2] || "") ? value * 1000 : value;
+}
+
+/** 解析单个模型的展示元数据（纯函数，可单测） */
+export function parseModelMetadata(model: SelectableModelItem): ModelMeta {
+  const idLower = (model.id || "").toLowerCase();
+  const nameLower = (model.name || model.id || "").toLowerCase();
+  const pricing = (model.pricing || "").toLowerCase();
 
   const isFree =
     idLower.includes(":free") ||
     idLower.includes("free/") ||
+    idLower.endsWith("/free") ||
     nameLower.includes(":free") ||
-    model.pricing === "Free" ||
-    model.pricing === "free";
+    pricing === "free" ||
+    pricing.includes("免费");
 
-  const isRecommended = Boolean(model.isRecommended);
-  
-  // 提取上下文长度 (例如 1049k, 1000k, 128k)
-  let contextBadge = "";
-  const ctxMatch = (model.name || "").match(/\((\d+k?)\)/i) || model.id.match(/(\d+k)/i);
-  if (ctxMatch) {
-    contextBadge = ctxMatch[1];
-  } else if (model.contextLength) {
-    contextBadge = model.contextLength;
-  } else if (typeof model.contextWindow === "number") {
-    contextBadge = model.contextWindow >= 1000000 
-      ? `${Math.round(model.contextWindow / 1000000)}M` 
-      : `${Math.round(model.contextWindow / 1000)}k`;
+  let brand = OTHER_BRAND;
+  for (const rule of BRAND_RULES) {
+    if (rule.test.test(`${idLower} ${nameLower}`)) {
+      brand = rule.brand;
+      break;
+    }
   }
 
-  // 提取纯净名称
   let cleanName = model.name || model.id;
-  cleanName = cleanName.replace(/^[★\s]+/, "").replace(/\s*\(\d+k?\)$/i, "").replace(/:free$/i, "");
+  cleanName = cleanName
+    .replace(/^[★\s]+/, "")
+    .replace(/\s*\(\s*\d+(?:\.\d+)?\s*k?\s*\)\s*$/i, "")
+    .replace(/\s*:free$/i, "")
+    .trim();
+  if (!cleanName) cleanName = model.id;
 
-  // 识别所属供应商/模型族
-  let brand = "General";
-  let brandColor = "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20";
-  if (idLower.includes("deepseek")) {
-    brand = "DeepSeek";
-    brandColor = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
-  } else if (idLower.includes("gemini") || idLower.includes("gemma") || idLower.includes("google")) {
-    brand = "Google";
-    brandColor = "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
-  } else if (idLower.includes("gpt") || idLower.includes("openai") || idLower.includes("o1") || idLower.includes("o3")) {
-    brand = "OpenAI";
-    brandColor = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
-  } else if (idLower.includes("claude") || idLower.includes("anthropic")) {
-    brand = "Anthropic";
-    brandColor = "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
-  } else if (idLower.includes("llama") || idLower.includes("meta")) {
-    brand = "Meta";
-    brandColor = "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20";
-  } else if (idLower.includes("flux") || idLower.includes("dreamshaper") || idLower.includes("diffusion")) {
-    brand = "Vision/Art";
-    brandColor = "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20";
-  } else if (idLower.includes("qwen") || idLower.includes("alibaba")) {
-    brand = "Qwen";
-    brandColor = "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20";
-  }
+  const contextBadge = extractContextBadge(model);
 
   return {
     cleanName,
     isFree,
-    isRecommended,
+    isRecommended: Boolean(model.isRecommended),
     contextBadge,
-    brand,
-    brandColor
+    contextScaleK: contextScaleK(contextBadge),
+    brand
   };
 }
+
+/** 按关键词与页签过滤模型列表（纯函数，可单测） */
+export function filterModels(
+  models: SelectableModelItem[],
+  query: string,
+  tab: ModelListTab
+): SelectableModelItem[] {
+  const needle = (query || "").trim().toLowerCase();
+  return models.filter((model) => {
+    const meta = parseModelMetadata(model);
+    if (needle) {
+      const haystack = `${model.id} ${model.name || ""} ${model.description || ""} ${meta.brand}`.toLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
+    if (tab === "free") return meta.isFree;
+    if (tab === "recommended") return meta.isRecommended;
+    if (tab === "large_ctx") return meta.contextScaleK >= LARGE_CONTEXT_K;
+    return true;
+  });
+}
+
+/**
+ * 按厂牌分组，保持首次出现的顺序。
+ * 不按组大小排序：同一个网关的模型顺序在多次打开展开时应该稳定，
+ * 否则「常常点的那个」每刷新一次就换位置。
+ */
+export function groupModelsByBrand(
+  models: SelectableModelItem[]
+): Array<{ brand: string; items: SelectableModelItem[] }> {
+  const groups = new Map<string, SelectableModelItem[]>();
+  for (const model of models) {
+    const brand = parseModelMetadata(model).brand;
+    const bucket = groups.get(brand);
+    if (bucket) bucket.push(model);
+    else groups.set(brand, [model]);
+  }
+  return [...groups.entries()].map(([brand, items]) => ({ brand, items }));
+}
+
+/** 各页签的数量，用于页签上的角标（纯函数，可单测） */
+export function modelTabCounts(models: SelectableModelItem[]): Record<ModelListTab, number> {
+  let recommended = 0;
+  let free = 0;
+  let largeContext = 0;
+  for (const model of models) {
+    const meta = parseModelMetadata(model);
+    if (meta.isRecommended) recommended += 1;
+    if (meta.isFree) free += 1;
+    if (meta.contextScaleK >= LARGE_CONTEXT_K) largeContext += 1;
+  }
+  return { all: models.length, recommended, free, large_ctx: largeContext };
+}
+
+/** 小标签（FREE / 上下文长度）的统一样式：v3 有效的内边距，没有颜色幻觉 */
+const TAG_CLASS =
+  "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none";
+
+/** 面板与视口边缘的最小留白 */
+const PANEL_MARGIN = 12;
 
 export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
   currentModelId,
@@ -108,80 +237,280 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"all" | "free" | "recommended" | "large_ctx">("all");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<ModelListTab>("all");
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  // 点击外部自动关闭
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 面板相对触发器的水平偏移（px）。
+   * 不能只靠 `right-0`：宽屏下右对齐触发器就是对的，但窄屏时触发器右边还有
+   * 主题切换 / API Key 两个按钮（实测 390px 视口下触发器右边缘距屏幕右边缘 90px），
+   * 一个 366px 宽的面板右对齐过去就会从屏幕左侧溢出 66px，左半边点不到。
+   * 这里把面板右边缘夹取到视口内，左边缘不够时再往右推。
+   */
+  const [panelOffsetRight, setPanelOffsetRight] = useState(0);
+
+  // useId 带冒号（`:r1:`），直接当 DOM id 会在 querySelector 里需要转义，这里洗掉
+  const rawId = useId();
+  const listId = `model-list-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  const activeModel = useMemo<SelectableModelItem>(
+    () => models.find((m) => m.id === currentModelId) || { id: currentModelId, name: currentModelId },
+    [models, currentModelId]
+  );
+  const activeMeta = useMemo(() => parseModelMetadata(activeModel), [activeModel]);
+
+  const filteredModels = useMemo(
+    () => filterModels(models, searchQuery, activeTab),
+    [models, searchQuery, activeTab]
+  );
+  const groups = useMemo(() => groupModelsByBrand(filteredModels), [filteredModels]);
+  const counts = useMemo(() => modelTabCounts(models), [models]);
+
+  // 点击外部关闭
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    if (!isOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
-    }
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  // 打开时自动聚焦搜索输入框
+  // 打开时聚焦搜索框；关闭时清空关键词（页签保留，便于连续挑选）
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 50);
-    } else {
+    if (!isOpen) {
       setSearchQuery("");
+      return;
     }
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 30);
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
 
-  // 获取当前选中的模型对象及解析
-  const activeModel = useMemo<SelectableModelItem>(() => {
-    return models.find((m) => m.id === currentModelId) || {
-      id: currentModelId,
-      name: currentModelId
+  // 过滤条件变化后把高亮落回当前选中模型，找不到就回到第一项
+  useEffect(() => {
+    const selectedIndex = filteredModels.findIndex((m) => m.id === currentModelId);
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+  }, [filteredModels, currentModelId]);
+
+  // 键盘高亮项滚进可视区（block: nearest 不会把列表整体滚动位置带飞）
+  useEffect(() => {
+    if (!isOpen) return;
+    const node = listRef.current?.querySelector<HTMLElement>(`[data-model-index="${activeIndex}"]`);
+    node?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, isOpen, filteredModels]);
+
+  // 定位在 useLayoutEffect 里做：浏览器绘制前就修正，不会出现「先错位再跳一下」
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setPanelOffsetRight(0);
+      return;
+    }
+    const place = () => {
+      const container = containerRef.current;
+      const panel = panelRef.current;
+      if (!container || !panel) return;
+      const rect = container.getBoundingClientRect();
+      const width = panel.offsetWidth;
+      const viewportWidth = window.innerWidth;
+      const desiredRight = Math.min(
+        Math.max(rect.right, PANEL_MARGIN + width),
+        viewportWidth - PANEL_MARGIN
+      );
+      setPanelOffsetRight(Math.round(rect.right - desiredRight));
     };
-  }, [models, currentModelId]);
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [isOpen]);
 
-  const activeMeta = useMemo(() => parseModelMetadata(activeModel), [activeModel]);
+  const closeAndRestoreFocus = useCallback(() => {
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  }, []);
 
-  // 过滤模型列表
-  const filteredModels = useMemo(() => {
-    return models.filter((model) => {
+  const handleSelect = useCallback(
+    (modelId: string) => {
+      const next = (modelId || "").trim();
+      if (!next) return;
+      onSelectModel(next);
+      closeAndRestoreFocus();
+    },
+    [onSelectModel, closeAndRestoreFocus]
+  );
+
+  const handlePopoverKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const total = filteredModels.length;
+    const move = (delta: number) => {
+      event.preventDefault();
+      if (total === 0) return;
+      setActiveIndex((index) => (index + delta + total) % total);
+    };
+
+    switch (event.key) {
+      case "Escape":
+        event.preventDefault();
+        closeAndRestoreFocus();
+        return;
+      case "ArrowDown":
+        move(1);
+        return;
+      case "ArrowUp":
+        move(-1);
+        return;
+      case "Home":
+        event.preventDefault();
+        setActiveIndex(0);
+        return;
+      case "End":
+        event.preventDefault();
+        if (total > 0) setActiveIndex(total - 1);
+        return;
+      case "Enter": {
+        const target = filteredModels[activeIndex];
+        if (target) {
+          event.preventDefault();
+          handleSelect(target.id);
+        } else if (searchQuery.trim()) {
+          // 列表里没有这个 ID 时，允许直接把搜索词当作模型 ID 使用
+          event.preventDefault();
+          handleSelect(searchQuery.trim());
+        }
+        return;
+      }
+      default:
+        return;
+    }
+  };
+
+  const tabs: Array<{ id: ModelListTab; label: string; count: number; icon: React.ReactNode }> = [
+    { id: "all", label: "全部", count: counts.all, icon: <Cpu className="size-2.5" /> },
+    { id: "recommended", label: "推荐", count: counts.recommended, icon: <Star className="size-2.5" /> },
+    { id: "free", label: "免费", count: counts.free, icon: <Zap className="size-2.5" /> },
+    { id: "large_ctx", label: "长上下文", count: counts.large_ctx, icon: <Bot className="size-2.5" /> }
+  ];
+
+  // 逐组铺行，同时维护一个跨组递增的扁平下标（键盘导航用同一个顺序）
+  let flatCursor = 0;
+  const listBody: React.ReactNode[] = [];
+  for (const group of groups) {
+    listBody.push(
+      <div
+        key={`group-${group.brand}`}
+        role="presentation"
+        className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border/50 bg-popover/95 px-3 py-1.5 backdrop-blur-sm"
+      >
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {group.brand}
+        </span>
+        <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+          {group.items.length}
+        </span>
+      </div>
+    );
+
+    for (const model of group.items) {
       const meta = parseModelMetadata(model);
-      const query = searchQuery.trim().toLowerCase();
+      const index = flatCursor++;
+      const isSelected = model.id === currentModelId;
+      const isActive = index === activeIndex;
+      const optionId = `${listId}-option-${index}`;
 
-      // 文本搜索匹配
-      if (query) {
-        const matchesText =
-          model.id.toLowerCase().includes(query) ||
-          (model.name && model.name.toLowerCase().includes(query)) ||
-          meta.cleanName.toLowerCase().includes(query) ||
-          meta.brand.toLowerCase().includes(query);
-        if (!matchesText) return false;
-      }
+      listBody.push(
+        <div
+          key={model.id}
+          id={optionId}
+          role="option"
+          aria-selected={isSelected}
+          data-model-index={index}
+          title={model.description || model.id}
+          onClick={() => handleSelect(model.id)}
+          className={cn(
+            "mx-1.5 mt-1 flex cursor-pointer items-start gap-2.5 rounded-xl border px-2.5 py-2 transition-colors",
+            isSelected
+              ? "border-primary/35 bg-primary/10"
+              : "border-transparent hover:bg-muted/70",
+            isActive && !isSelected && "border-border/70 bg-muted/60",
+            isActive && isSelected && "ring-1 ring-primary/25"
+          )}
+        >
+          {/* 厂牌首字母方块：与信源卡的 favicon 色块同一套「无图标资源的站点标识」思路 */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg border font-mono text-[11px] font-semibold",
+              isSelected
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border/60 bg-muted text-muted-foreground"
+            )}
+          >
+            {meta.isFree ? <Zap className="size-3.5" /> : meta.brand.charAt(0).toUpperCase()}
+          </span>
 
-      // Tab 分类过滤
-      if (activeTab === "free") return meta.isFree;
-      if (activeTab === "recommended") return meta.isRecommended;
-      if (activeTab === "large_ctx") {
-        const ctxNum = parseInt(meta.contextBadge.replace(/[^0-9]/g, ""), 10);
-        return meta.contextBadge.includes("M") || ctxNum >= 200;
-      }
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={cn(
+                  "truncate text-xs font-semibold tracking-tight",
+                  isSelected ? "text-primary" : "text-foreground"
+                )}
+              >
+                {meta.cleanName}
+              </span>
+              {meta.isRecommended && (
+                <span className={cn(TAG_CLASS, "border-primary/25 bg-primary/10 text-primary")}>
+                  <Star className="size-2.5" />
+                  推荐
+                </span>
+              )}
+              {meta.isFree && (
+                <span className={cn(TAG_CLASS, "border-primary/25 bg-primary/10 font-mono text-primary")}>
+                  FREE
+                </span>
+              )}
+            </div>
 
-      return true;
-    });
-  }, [models, searchQuery, activeTab]);
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="truncate font-mono text-[10px] opacity-80">{model.id}</span>
+              {meta.contextBadge && (
+                <span className={cn(TAG_CLASS, "border-border/60 bg-muted/60 font-mono text-muted-foreground")}>
+                  {meta.contextBadge}
+                </span>
+              )}
+            </div>
 
-  const freeCount = useMemo(() => models.filter((m) => parseModelMetadata(m).isFree).length, [models]);
-  const recCount = useMemo(() => models.filter((m) => parseModelMetadata(m).isRecommended).length, [models]);
+            {model.description && (
+              <p className="mt-1 line-clamp-1 text-[11px] leading-4 text-muted-foreground/80">
+                {model.description}
+              </p>
+            )}
+          </div>
+
+          {isSelected && (
+            <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary">
+              <Check className="size-3 stroke-[3] text-primary-foreground" />
+            </span>
+          )}
+        </div>
+      );
+    }
+  }
 
   return (
-    <div className="relative inline-block text-left" ref={containerRef}>
-      {/* 隐藏原生 Select 以满足测试或无障碍可读，实际渲染精美 Popover 触发器 */}
+    // 外层用 flex 而不是 inline-block：
+    // 1) min-w-0 + flex 项，才能让本组件在顶栏（窄屏）里真正被压缩 —— 不放开最小宽度时，
+    //    它的 min-content 就是完整模型名（名字 nowrap + 省略号），会拒绝收缩并压到左边内容上；
+    // 2) 触发器本身是 <button>，即使写 display:flex 也是「按内容收缩」的盒子，
+    //    不会自己填满父容器 —— 放在 flex 容器里当 flex 项，它才会跟着容器一起收缩。
+    <div className="relative flex min-w-0 text-left" ref={containerRef}>
+      {/* 隐藏原生 Select：保留一条非 JS / 读屏可读的兜底通道 */}
       <select
         aria-label="选择 AI 模型"
         value={currentModelId}
@@ -196,261 +525,190 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
         ))}
       </select>
 
-      {/* 现代毛玻璃触发按钮 */}
+      {/* 触发按钮 */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`group h-8.5 sm:h-9 pl-2 sm:pl-3 pr-2 sm:pr-2.5 rounded-xl border bg-background/90 hover:bg-muted/80 backdrop-blur-md transition-all duration-200 flex items-center gap-1.5 sm:gap-2 text-xs font-medium text-foreground cursor-pointer shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 select-none min-w-0 max-w-[130px] xs:max-w-[160px] sm:max-w-none shrink ${
-          isOpen
-            ? "border-primary/60 ring-2 ring-primary/20 bg-muted/90"
-            : "border-border/80 hover:border-border"
-        }`}
-        title={`当前模型: ${activeModel.name || activeModel.id} (${providerName || "AI 模型"})\n点击展开模型选择面板`}
+        onClick={() => setIsOpen((open) => !open)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listId : undefined}
+        aria-label={`当前模型 ${activeMeta.cleanName}，点击选择模型`}
+        title={`当前模型: ${activeModel.name || activeModel.id}${providerName ? ` (${providerName})` : ""}\n点击展开模型选择面板`}
+        className={cn(
+          // 移动端顶栏第一行只放品牌 + 三个操作，模型名可以拿到更多宽度
+          "group flex h-9 min-w-0 max-w-[11rem] shrink cursor-pointer select-none items-center gap-2 rounded-xl border bg-background/90 pl-2 pr-2 text-xs font-medium text-foreground shadow-sm backdrop-blur-md transition-colors sm:max-w-none sm:pl-2.5 sm:pr-2.5",
+          "hover:bg-muted/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+          isOpen ? "border-primary/60 bg-muted/90 ring-2 ring-primary/20" : "border-border/80 hover:border-border"
+        )}
       >
-        {/* 左侧状态/供应商图标 */}
-        <div className="flex items-center justify-center shrink-0">
-          {isDetecting ? (
-            <div className="size-3 sm:size-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-          ) : activeMeta.isFree ? (
-            <Zap className="size-3 sm:size-3.5 text-emerald-500 shrink-0" />
-          ) : (
-            <Bot className="size-3 sm:size-3.5 text-primary shrink-0" />
+        <span
+          aria-hidden="true"
+          className={cn(
+            "grid size-5 shrink-0 place-items-center rounded-md font-mono text-[10px] font-semibold",
+            activeMeta.isFree ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
           )}
-        </div>
+        >
+          {isDetecting ? (
+            <Loader2 className="size-3 animate-spin text-primary" />
+          ) : activeMeta.isFree ? (
+            <Zap className="size-3" />
+          ) : (
+            activeMeta.brand.charAt(0).toUpperCase()
+          )}
+        </span>
 
-        {/* 模型名称及特征标 */}
-        <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 max-w-[70px] xs:max-w-[95px] sm:max-w-[170px] md:max-w-[210px] truncate">
-          <span className="truncate font-semibold text-[11px] sm:text-[12px] tracking-tight">
-            {activeMeta.cleanName}
-          </span>
+        <span className="flex min-w-0 items-center gap-1.5 truncate">
+          <span className="truncate text-[12px] font-semibold tracking-tight">{activeMeta.cleanName}</span>
           {activeMeta.isFree && (
-            <span className="shrink-0 text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-semibold border border-emerald-500/20">
-              FREE
-            </span>
+            <span className={cn(TAG_CLASS, "border-primary/25 bg-primary/10 font-mono text-primary")}>FREE</span>
           )}
           {activeMeta.contextBadge && !activeMeta.isFree && (
-            <span className="shrink-0 text-[9px] sm:text-[10px] px-1 py-0.2 rounded bg-muted text-muted-foreground font-mono hidden sm:inline-flex">
+            <span className={cn(TAG_CLASS, "hidden border-border/60 bg-muted/70 font-mono text-muted-foreground sm:inline-flex")}>
               {activeMeta.contextBadge}
             </span>
           )}
-        </div>
+        </span>
 
-        {/* 下拉微动画箭头 */}
         <ChevronDown
-          className={`size-3 sm:size-3.5 text-muted-foreground transition-transform duration-200 shrink-0 ${
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
             isOpen ? "rotate-180 text-primary" : "opacity-70 group-hover:opacity-100"
-          }`}
+          )}
         />
       </button>
 
-      {/* 现代悬浮卡片下拉列表 (Redesigned Model Dropdown Popover) */}
+      {/* 选择面板 */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-24px)] max-w-[360px] sm:w-[390px] md:w-[420px] rounded-2xl border border-border bg-card dark:bg-zinc-900 bg-white text-card-foreground shadow-2xl z-50 flex flex-col overflow-hidden ring-1 ring-black/10 dark:ring-white/10 animate-in fade-in zoom-in-95 duration-150">
-          {/* 1. 顶部搜索框与清空 */}
-          <div className="p-3 pb-2 border-b border-border/60 bg-muted/40 dark:bg-zinc-800/50">
+        <div
+          ref={panelRef}
+          onKeyDown={handlePopoverKeyDown}
+          style={{ right: panelOffsetRight }}
+          className="absolute top-full z-50 mt-2 flex w-[min(26rem,calc(100vw-1.5rem))] origin-top-right flex-col overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150"
+        >
+          {/* 搜索 + 页签 */}
+          <div className="border-b border-border/60 bg-muted/40 p-3 pb-2">
             <div className="relative flex items-center">
-              <Search className="absolute left-3 size-3.5 text-muted-foreground pointer-events-none" />
-              <input
+              <Search className="pointer-events-none absolute left-3 size-3.5 text-muted-foreground" />
+              <Input
                 ref={searchInputRef}
                 type="text"
+                role="combobox"
+                aria-expanded
+                aria-controls={listId}
+                aria-autocomplete="list"
+                aria-activedescendant={
+                  filteredModels.length > 0 ? `${listId}-option-${activeIndex}` : undefined
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索模型名称、供应商或特性..."
-                className="w-full h-8.5 pl-8.5 pr-7 rounded-xl border border-border/70 bg-background text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all font-sans"
+                placeholder="搜索模型名称、ID 或厂牌…"
+                className="h-9 pl-9 pr-8 text-xs"
               />
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 text-muted-foreground hover:text-foreground cursor-pointer p-0.5 rounded-full hover:bg-muted"
+                  onClick={() => {
+                    setSearchQuery("");
+                    searchInputRef.current?.focus();
+                  }}
+                  aria-label="清空搜索"
+                  className="absolute right-2 grid size-6 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   <X className="size-3" />
                 </button>
               )}
             </div>
 
-            {/* 2. 快捷分类过滤 Pills */}
-            <div className="flex items-center gap-1.5 mt-2.5 overflow-x-auto pb-0.5 scrollbar-none text-[11px]">
-              <button
-                type="button"
-                onClick={() => setActiveTab("all")}
-                className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 ${
-                  activeTab === "all"
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
-                }`}
-              >
-                全部 ({models.length})
-              </button>
-
-              {recCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("recommended")}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
-                    activeTab === "recommended"
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
-                  }`}
-                >
-                  <Star className="size-2.5 fill-current" />
-                  推荐 ({recCount})
-                </button>
-              )}
-
-              {freeCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("free")}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
-                    activeTab === "free"
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
-                  }`}
-                >
-                  <Zap className="size-2.5 fill-current" />
-                  免费专区 ({freeCount})
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("large_ctx")}
-                className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
-                  activeTab === "large_ctx"
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60"
-                }`}
-              >
-                <Database className="size-2.5" />
-                超大上下文
-              </button>
+            <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px]">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border px-2.5 py-1 font-medium transition-colors",
+                      isActive
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border/60 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                    <span className="tabular-nums opacity-70">{tab.count}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* 3. 精美模型列表项 (Custom Styled Items) */}
-          <div className="max-h-[340px] overflow-y-auto p-2 space-y-1 divide-y divide-border/20 bg-card dark:bg-zinc-900 bg-white">
-            {filteredModels.length > 0 ? (
-              filteredModels.map((model) => {
-                const meta = parseModelMetadata(model);
-                const isSelected = model.id === currentModelId;
-
-                return (
-                  <div
-                    key={model.id}
+          {/* 模型列表：按厂牌分组、组标题吸顶 */}
+          <div
+            ref={listRef}
+            id={listId}
+            role="listbox"
+            aria-label="可用模型"
+            className="max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain py-1.5"
+          >
+            {models.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <Bot className="mx-auto mb-2 size-7 text-muted-foreground/50" />
+                <p className="text-xs font-medium text-foreground">还没有加载到可用模型</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  填入 API Key 后会自动探测上游服务并拉取模型目录
+                </p>
+                {onOpenSettings && (
+                  <button
+                    type="button"
                     onClick={() => {
-                      onSelectModel(model.id);
                       setIsOpen(false);
+                      onOpenSettings();
                     }}
-                    className={`group relative p-2.5 rounded-xl transition-all duration-150 cursor-pointer flex items-center justify-between gap-3 ${
-                      isSelected
-                        ? "bg-primary/10 border border-primary/30 shadow-xs"
-                        : "hover:bg-muted/70 hover:border-border/60 border border-transparent"
-                    }`}
+                    className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border/70 px-2.5 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted"
                   >
-                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                      {/* 图标 */}
-                      <div
-                        className={`size-7 rounded-lg flex items-center justify-center shrink-0 border mt-0.5 ${
-                          isSelected
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : meta.isFree
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                            : "bg-muted/80 text-muted-foreground border-border/60 group-hover:bg-background"
-                        }`}
-                      >
-                        {meta.isFree ? (
-                          <Zap className="size-3.5 fill-current" />
-                        ) : meta.isRecommended ? (
-                          <Star className="size-3.5 fill-current" />
-                        ) : (
-                          <Cpu className="size-3.5" />
-                        )}
-                      </div>
-
-                      {/* 模型标题与元数据 */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span
-                            className={`font-semibold text-xs tracking-tight truncate ${
-                              isSelected
-                                ? "text-primary"
-                                : "text-foreground group-hover:text-primary transition-colors"
-                            }`}
-                          >
-                            {meta.cleanName}
-                          </span>
-
-                          {/* 供应商 Badge */}
-                          <span
-                            className={`text-[9px] px-1.5 py-0.2 rounded-md font-medium border ${meta.brandColor}`}
-                          >
-                            {meta.brand}
-                          </span>
-
-                          {/* 免费 Badge */}
-                          {meta.isFree && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-bold border border-emerald-500/25">
-                              FREE
-                            </span>
-                          )}
-                        </div>
-
-                        {/* 模型 ID 与上下文长度 */}
-                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                          <span className="font-mono text-[10px] truncate max-w-[190px] sm:max-w-[240px] opacity-80">
-                            {model.id}
-                          </span>
-                          {meta.contextBadge && (
-                            <span className="font-mono text-[10px] px-1 py-0.2 rounded bg-muted/80 text-foreground shrink-0">
-                              {meta.contextBadge}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 选中打勾标记 */}
-                    {isSelected && (
-                      <div className="size-5 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-xs">
-                        <Check className="size-3 text-primary-foreground stroke-[3]" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="py-6 text-center px-4 space-y-3">
+                    <SlidersHorizontal className="size-3" />
+                    前往设置填入 API Key
+                  </button>
+                )}
+              </div>
+            ) : filteredModels.length === 0 ? (
+              <div className="space-y-3 px-4 py-6 text-center">
                 <div>
-                  <Bot className="size-8 text-muted-foreground/40 mx-auto mb-2" />
-                  <p className="text-xs font-medium text-foreground">未在列表中找到该模型</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    支持直接输入任意 OpenAI 兼容模型 ID 使用
+                  <Bot className="mx-auto mb-2 size-7 text-muted-foreground/50" />
+                  <p className="text-xs font-medium text-foreground">列表里没有匹配的模型</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    也支持直接使用任意 OpenAI 兼容的模型 ID
                   </p>
                 </div>
                 {searchQuery.trim() && (
                   <button
                     type="button"
-                    onClick={() => {
-                      onSelectModel(searchQuery.trim());
-                      setIsOpen(false);
-                    }}
-                    className="w-full py-2 px-3 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    onClick={() => handleSelect(searchQuery.trim())}
+                    className="mx-auto flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
                   >
                     <Cpu className="size-3.5" />
-                    <span>使用模型: <strong>{searchQuery.trim()}</strong></span>
+                    <span>
+                      直接使用 <strong>{searchQuery.trim()}</strong>
+                    </span>
                   </button>
                 )}
               </div>
+            ) : (
+              listBody
             )}
           </div>
 
-          {/* 4. 底部状态与快捷设置跳转 */}
-          <div className="p-2.5 px-3.5 bg-muted/40 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>当前网关: <strong className="text-foreground font-medium">{providerName || "就绪"}</strong></span>
-            </div>
+          {/* 底部：网关状态与设置入口 */}
+          <div className="flex items-center justify-between gap-2 border-t border-border/60 bg-muted/40 px-3.5 py-2.5 text-[11px] text-muted-foreground">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="truncate">
+                当前网关: <strong className="font-medium text-foreground">{providerName || "就绪"}</strong>
+              </span>
+            </span>
 
             {onOpenSettings && (
               <button
@@ -459,7 +717,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
                   setIsOpen(false);
                   onOpenSettings();
                 }}
-                className="text-primary hover:underline font-medium flex items-center gap-1 cursor-pointer"
+                className="flex shrink-0 cursor-pointer items-center gap-1 font-medium text-primary hover:underline"
               >
                 <SlidersHorizontal className="size-3" />
                 管理 API Key

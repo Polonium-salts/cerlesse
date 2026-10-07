@@ -16,6 +16,19 @@
     scrollbar-gutter: stable;
   }
 
+  /* 顶部栏高度：移动端两行（品牌/操作 + 检索），sm 起单行。
+     App.tsx 里结果页的次级导航条要贴在它下面，硬写 top-16 会在移动端
+     被 100px 高的顶栏盖住，所以把高度抽成变量，两边共用同一个数。 */
+  :root {
+    --app-header-height: 6.25rem;
+    --app-header-offset: calc(var(--app-header-height) + env(safe-area-inset-top, 0px));
+  }
+  @media (min-width: 640px) {
+    :root {
+      --app-header-height: 4rem;
+    }
+  }
+
   /* 所有 HSL 变量的饱和度一律为 0% —— 单色约束的底层保证。
      原值中的品牌蓝、品牌红等色相全部收敛为中性灰，
      并交由明度承担原"主色 / 危险色"的层级区分。 */

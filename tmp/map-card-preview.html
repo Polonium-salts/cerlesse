@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>地图小组件预览</title>
+  <style>
+    :root{
+      --background:#0a0a0a;
+      --foreground:#e5e5e5;
+      --card:#171717;
+      --card-foreground:#e5e5e5;
+      --popover:#1c1c1c;
+      --primary:#e5e5e5;
+      --primary-foreground:#0a0a0a;
+      --muted:#a3a3a3;
+      --muted-foreground:#a3a3a3;
+      --border:rgba(46,46,46,.8);
+      --accent:#0f766e;
+      --accent-foreground:#ffffff;
+      --secondary:#27272a;
+      --destructive:#f87171;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--background);color:var(--foreground);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{position:relative;border-radius:16px;border:1px solid var(--border);background:linear-gradient(135deg,#0d2323 0%, #171717 50%, #0a231f 100%);box-shadow:0 1px 2px rgba(0,0,0,.25);overflow:hidden}
+    .header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(46,46,46,.4)}
+    .header-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+    .icon{width:16px;height:16px;color:#10b981}
+    .title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .badge{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    .tag{font-size:11px;font-weight:700;letter-spacing:.04em;background:rgba(16,185,129,.2);color:#34d399;padding:3px 8px;border-radius:999px}
+    .sub{font-size:11px;color:var(--muted-foreground)}
+    .map{height:208px;border-radius:12px;border:1px solid var(--border);background:linear-gradient(135deg,#eef3f8 0%, #e3eaf2 100%);position:relative;overflow:hidden}
+    .grid line{stroke:#9aa7b4;stroke-width:0.5;opacity:.45}
+    .water{stroke:#9fb6c9;stroke-width:6;fill:none;stroke-linecap:round;opacity:.55}
+    .water-thin{stroke:#9fb6c9;stroke-width:4;fill:none;stroke-linecap:round;opacity:.4}
+    .streets{stroke:#7f8c96;stroke-width:2;opacity:.7}
+    .label{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;fill:#5b6b76}
+    .marker{cursor:pointer}
+    .marker circle.dot{fill:#ffffff;stroke:#0f766e;stroke-width:1}
+    .marker circle.ring{fill:none;stroke:#0f766e;stroke-width:1.2;opacity:.9}
+    .marker circle.pulse{fill:#10b981;opacity:.18}
+    .marker text.label-tag{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;fill:#ffffff;text-anchor:middle}
+    .marker rect.tag-bg{fill:#0f172a;opacity:.92;border-radius:7px}
+    .north{font-family:ui-monospace,Menlo,Consolas,monospace}
+    .map-foot{position:absolute;bottom:6px;left:8px;display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:8px;background:rgba(10,10,10,.55);border:1px solid var(--border);font-size:10px;color:var(--muted-foreground)}
+    .body{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px 12px 0}
+    .poi-list{display:flex;flex-direction:column;gap:5px;align-items:stretch}
+    .poi{border-radius:10px;border:1px solid rgba(46,46,46,.4);background:rgba(22,22,22,.55);padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;color:var(--muted-foreground);transition:background .12s ease,border-color .12s ease,color .12s ease}
+    .poi.active{background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.5);color:#6ee7b7}
+    .poi-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+    .poi-icon{width:16px;height:16px;flex-shrink:0}
+    .poi-name{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .poi-addr{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .poi-right{text-align:right;flex-shrink:0}
+    .poi-rating{font-size:11px;font-weight:700;color:#fbbf24;display:flex;align-items:center;gap:3px;justify-content:flex-end}
+    .poi-dist{font-size:10px}
+    .poi-detail{border-radius:10px;border:1px solid rgba(46,46,46,.4);background:rgba(22,22,22,.55);padding:12px 12px}
+    .detail-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;border-bottom:1px solid rgba(46,46,46,.4);padding-bottom:8px}
+    .detail-title{font-size:13px;font-weight:700}
+    .detail-dist{font-size:10px;font-weight:600;background:rgba(16,185,129,.15);color:#34d399;padding:2px 6px;border-radius:6px}
+    .detail-addr{font-size:11px;color:var(--muted-foreground);margin-top:3px}
+    .detail-desc{font-size:11px;color:var(--muted-foreground);margin-top:10px;line-height:1.45}
+    .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+    .tag-pill{font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.06);color:var(--muted-foreground)}
+    .detail-foot{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:8px;border-top:1px solid rgba(46,46,46,.4);font-size:11px;color:var(--muted-foreground)}
+    .route-link{font-size:11px;font-weight:700;color:#34d399;text-decoration:none;display:flex;align-items:center;gap:4px}
+    .route-link:hover{text-decoration:underline}
+    .bottom-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(46,46,46,.4);font-size:11px;color:var(--muted-foreground)}
+    .nav{background:#0f766e;color:#ffffff;font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;display:flex;align-items:center;gap:6px;text-decoration:none;transition:background .12s ease}
+    .nav:hover{background:#0b5e57}
+    .footer-note{margin-top:14px;font-size:11px;color:var(--muted-foreground)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <div class="header-left">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <div class="title">杭州 · 地理导览</div>
+        </div>
+        <div class="badge">
+          <span class="tag">周边探索</span>
+          <span class="sub">已加载地图</span>
+        </div>
+      </div>
+
+      <div class="map">
+        <svg viewBox="0 0 120 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
+          <rect x="0" y="0" width="120" height="80" fill="url(#sketchTile)"/>
+          <defs>
+            <linearGradient id="sketchTile" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#eef3f8"/>
+              <stop offset="100%" stop-color="#e3eaf2"/>
+            </linearGradient>
+          </defs>
+          <path class="water" d="M0,60 C 30,56 70,62 120,58"/>
+          <path class="water-thin" d="M10,28 C 40,22 80,30 110,24"/>
+          <g class="grid">
+            <line x1="12" y1="0" x2="12" y2="80"/><line x1="24" y1="0" x2="24" y2="80"/>
+            <line x1="36" y1="0" x2="36" y2="80"/><line x1="48" y1="0" x2="48" y2="80"/>
+            <line x1="60" y1="0" x2="60" y2="80"/><line x1="72" y1="0" x2="72" y2="80"/>
+            <line x1="84" y1="0" x2="84" y2="80"/><line x1="96" y1="0" x2="96" y2="80"/>
+            <line x1="108" y1="0" x2="108" y2="80"/>
+            <line x1="0" y1="10" x2="120" y2="10"/><line x1="0" y1="20" x2="120" y2="20"/>
+            <line x1="0" y1="30" x2="120" y2="30"/><line x1="0" y1="40" x2="120" y2="40"/>
+            <line x1="0" y1="50" x2="120" y2="50"/><line x1="0" y1="60" x2="120" y2="60"/>
+            <line x1="0" y1="70" x2="120" y2="70"/><line x1="0" y1="80" x2="120" y2="80"/>
+          </g>
+          <path class="streets" d="M24,0 L 24,80"/>
+          <path class="streets" d="M84,0 L 84,80"/>
+          <path class="streets" d="M0,40 L 120,40"/>
+          <text class="label" x="6" y="10">39.90°N 116.41°E</text>
+          <text class="label" x="92" y="10">核心城区</text>
+          <g class="marker">
+            <circle class="pulse" cx="40" cy="34" r="9"/>
+            <circle class="ring" cx="40" cy="34" r="7"/>
+            <circle class="dot" cx="40" cy="34" r="3.4"/>
+            <rect class="tag-bg" x="18" y="12" width="44" height="14" rx="7" ry="7"/>
+            <text class="label-tag" x="40" y="21">西湖 核心景观区</text>
+          </g>
+          <g class="marker">
+            <circle class="dot" cx="62" cy="48" r="2.4"/>
+          </g>
+          <g class="marker">
+            <circle class="dot" cx="82" cy="28" r="2.4"/>
+          </g>
+          <g class="marker">
+            <circle class="dot" cx="30" cy="58" r="2.4"/>
+          </g>
+          <g class="north" transform="translate(106,12)">
+            <path d="M0,0 L -3.2,-6 L 0,-9 L 3.2,-6 Z" fill="#334155"/>
+            <text x="0" y="12" text-anchor="middle" font-size="4" fill="#334155">N</text>
+          </g>
+        </svg>
+        <div class="map-foot">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          西湖 核心景观区 · 0 km
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="poi-list">
+          <button class="poi active">
+            <div class="poi-left">
+              <svg class="poi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#10b981"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              <div>
+                <div class="poi-name">西湖 核心景观区</div>
+                <div class="poi-addr">杭州 中心大道 1 号</div>
+              </div>
+            </div>
+            <div class="poi-right">
+              <div class="poi-rating">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                4.9
+              </div>
+              <div class="poi-dist">0 km</div>
+            </div>
+          </button>
+          <button class="poi">
+            <div class="poi-left">
+              <svg class="poi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f59e0b"><path d="M3 2v4c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 12v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/></svg>
+              <div>
+                <div class="poi-name">特色美食风情街</div>
+                <div class="poi-addr">杭州 步行街东段</div>
+              </div>
+            </div>
+            <div class="poi-right">
+              <div class="poi-rating">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                4.7
+              </div>
+              <div class="poi-dist">1.2 km</div>
+            </div>
+          </button>
+          <button class="poi">
+            <div class="poi-left">
+              <svg class="poi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#3b82f6"><path d="M3 21h18"/><path d="M3 10v11"/><path d="M21 10v11"/><path d="M6 6V5a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v1"/><path d="M10 6V5a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v1"/><path d="M14 6V5a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v1"/><path d="M18 6V5a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v1"/></svg>
+              <div>
+                <div class="poi-name">精品度假酒店</div>
+                <div class="poi-addr">杭州 湖畔路 88 号</div>
+              </div>
+            </div>
+            <div class="poi-right">
+              <div class="poi-rating">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                4.8
+              </div>
+              <div class="poi-dist">2.5 km</div>
+            </div>
+          </button>
+          <button class="poi">
+            <div class="poi-left">
+              <svg class="poi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#a855f7"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M18 18V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2"/></svg>
+              <div>
+                <div class="poi-name">主轨道交通综合枢纽</div>
+                <div class="poi-addr">杭州 交通枢纽中心站</div>
+              </div>
+            </div>
+            <div class="poi-right">
+              <div class="poi-rating">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                4.6
+              </div>
+              <div class="poi-dist">3.8 km</div>
+            </div>
+          </button>
+        </div>
+
+        <div class="poi-detail">
+          <div class="detail-top">
+            <div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="detail-title">西湖 核心景观区</div>
+                <span class="detail-dist">0 km</span>
+              </div>
+              <div class="detail-addr">杭州 中心大道 1 号</div>
+            </div>
+          </div>
+          <div class="detail-desc">
+            核心标志性景区，四季景色宜人，配备完善的步道与导览系统。
+          </div>
+          <div class="tags">
+            <span class="tag-pill">#必游地标</span>
+            <span class="tag-pill">#自然风光</span>
+            <span class="tag-pill">#5A景区</span>
+          </div>
+          <div class="detail-foot">
+            <span style="display:flex;align-items:center;gap:4px">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              营业: 08:00 - 18:30
+            </span>
+            <a class="route-link" href="https://www.google.com/maps/dir/?api=1&destination=西湖%20核心景观区%20杭州%20中心大道%201%20号" target="_blank" rel="noreferrer">
+              规划路线
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12l7 7 7-7"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom-bar">
+        <span>💡 交通建议: 建议优先选用地铁与景区直通大巴出行，避开早晚高峰自驾拥堵。</span>
+        <span style="font-weight:700;color:#34d399">周边精准定位</span>
+      </div>
+    </div>
+    <div class="footer-note">示意卡片 · POI 点击切换 · 实际部署时会显示真实地图视图</div>
+  </div>
+</body>
+</html>

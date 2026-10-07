@@ -1,11 +1,15 @@
 /**
  * 链接与信源的统一展示语言。
  * ========================================================================
- * AI 智能回答里链接出现在三个位置，它们必须看起来像同一套东西：
+ * AI 智能回答里链接出现在四个位置，它们必须看起来像同一套东西：
  *   1. 正文行内引用角标 `[1]`（MarkdownContent 的 InlineCitationPill）
  *   2. 正文 markdown 链接 `[文字](url)` / 裸 URL
- *   3. 背面「核心参引网页与文档」列表
- * 三处共用本文件的 host 格式化、favicon 色块、预览卡内容。
+ *   3. 段落 / 列表项末尾常显的信源卡（SourceInlineCard）
+ *   4. 背面「核心参引网页与文档」列表
+ * 四处共用本文件的 host 格式化、favicon 色块、预览卡内容。
+ *
+ * 「常显信源卡」是刻意加的：链接信息只挂在悬停上时，只有把指针移上去才存在，
+ * 读回答的人根本看不出「这句话是从哪个页面来的」。现在引用信息直接穿插在正文里。
  *
  * 为什么预览卡用 createPortal 挂到 body，而不是就地一个 absolute 浮层：
  *   AI 回答的正文装在 `overflow-y-auto` 的滚动容器里（磁贴高度有限），
@@ -112,6 +116,26 @@ export function isBareUrlLabel(label: string, href: string | undefined | null): 
   // TLD 必须≥2 个字母，否则 "3.14"、"v1.2" 这类正常文本会被误判成链接。
   if (!/\s/.test(bare) && /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(\/|\?|#|$)/i.test(bare)) return true;
   return false;
+}
+
+/**
+ * URL 归一化键：判断「正文里的链接」和「检索结果信源」是不是同一个页面。
+ * 只抹平不影响定位的差异（大小写、www.、结尾斜杠），查询串与 hash 一律保留 ——
+ * 同一站点的不同页面不能被当成同一个信源，否则溯源就成了假的。
+ */
+export function canonicalUrlKey(raw: string | undefined | null): string {
+  const value = (raw || "").trim();
+  if (!value) return "";
+  if (!isExternalUrl(value)) return value.replace(/\/+$/, "").toLowerCase();
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^www\./i, "");
+    const port = url.port ? `:${url.port}` : "";
+    const path = `${url.pathname}${url.search}`.replace(/\/+$/, "");
+    return `${host}${port}${path}`;
+  } catch {
+    return value.replace(/\/+$/, "").toLowerCase();
+  }
 }
 
 /** 由 host 稳定推导出的一组颜色（同一个站永远同一个颜色） */
@@ -221,19 +245,34 @@ function useAnchoredPosition(open: boolean, anchor: HTMLElement | null, cardRef:
 }
 
 interface SourcePreviewCardProps {
-  index: number;
+  /** 角标序号；常显信源卡没有序号，可以省略 */
+  index?: number;
   source: SourceCitation | undefined;
   onOpenUrl?: (url: string) => void;
-  /** 供外层判断焦点/鼠标是否仍在这张卡上（延迟关闭用） */
-  cardRef: React.RefObject<HTMLDivElement>;
+  /** 供外层判断焦点/鼠标是否仍在这张卡上（只有浮层形态需要） */
+  cardRef?: React.RefObject<HTMLDivElement>;
   style?: React.CSSProperties;
   language?: string;
+  /**
+   * `popover`（默认）：悬停角标时出现的浮层；
+   * `inline`：直接穿插在正文里的常显信源卡，宽度跟着正文走、去掉浮层阴影与入场动画。
+   * 两者共用同一套排版与配色（深色卡面 + 图标/标题行 + 灰色摘要行），
+   * 区别只在动作：inner 卡整张就是链接，浮层卡另有复制 / 打开按钮。
+   */
+  variant?: "popover" | "inline";
 }
 
 /**
- * 角标 hover / focus 时出现的信源预览卡。
- * 内容顺序刻意是「域名 → 标题 → 摘要 → 操作」：域名先给出可信度判断，
- * 标题给结论，摘要给上下文，底部才轮到动作。
+ * 信源卡本体：角标 hover / focus 的浮层与正文里的常显卡共用。
+ *
+ * 版式（两行，与「链接预览卡」的通行样式一致）：
+ *   第一行：站点色块 + 加粗标题（单行省略），右侧留给域名或操作；
+ *   第二行：灰色摘要（单行省略），整行从卡片左内边距起排、不与标题缩进对齐。
+ *
+ * 为什么正文里的卡不再挂一个「新标签页打开」按钮：
+ *   按钮把卡片撑到三行，而 `inline` 形态在正文里是成组出现的，三行卡会盖过正文本身。
+ *   整张卡就是链接（`<a>` 包住卡片内容）后，标题与摘要全都能点，卡片只剩两行。
+ *   复制按钮留在悬停浮层里 —— 那里有空间，也不影响正文密度。
  */
 export function SourcePreviewCard({
   index,
@@ -241,14 +280,20 @@ export function SourcePreviewCard({
   onOpenUrl,
   cardRef,
   style,
-  language
+  language,
+  variant = "popover"
 }: SourcePreviewCardProps) {
   const t = getUiStrings(language);
   const [copied, setCopied] = useState(false);
+  const inline = variant === "inline";
   const rawUrl = (source?.url || "").trim();
   const url = isExternalUrl(rawUrl) ? rawUrl : "";
   const host = formatSourceHost(url);
-  const title = source?.title?.trim() || t.linkCitationLabel(index);
+  const title =
+    source?.title?.trim() ||
+    (index !== undefined ? t.linkCitationLabel(index) : "") ||
+    prettySourceUrl(url, 60) ||
+    t.linkUnmatchedSource;
   const snippet = (source?.snippet || "").trim();
 
   const openUrl = useCallback(() => {
@@ -270,70 +315,143 @@ export function SourcePreviewCard({
     }
   }, [url]);
 
+  // 卡片内容（两行版式）。inline 与 popover 共用，区别只在外层的容器元素与动作区。
+  const content = (
+    <>
+      {/* 第一行：图标 + 加粗标题（单行省略）+ 右侧槽位 */}
+      <div className="flex min-w-0 items-center gap-2">
+        <SourceFavicon url={url} className="size-4 rounded-[5px] text-[10px]" />
+        <span
+          className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5 text-foreground"
+          title={title}
+        >
+          {title}
+        </span>
+        {inline ? (
+          // 域名直接顶到标题右侧：正文里没有第二行可以安放它，而域名是溯源的第一判断依据
+          <span
+            className="shrink-0 max-w-[42%] truncate font-mono text-[10px] leading-5 text-muted-foreground/80"
+            title={url || undefined}
+          >
+            {url ? host || prettySourceUrl(url, 32) : t.linkUnmatchedSource}
+          </span>
+        ) : (
+          url && (
+            <button
+              type="button"
+              onClick={copyUrl}
+              title={copied ? t.linkCopied : t.linkCopyUrl}
+              aria-label={copied ? t.linkCopied : t.linkCopyUrl}
+              className="shrink-0 inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+            >
+              {copied ? (
+                <Check className="size-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </button>
+          )
+        )}
+      </div>
+
+      {/* 第二行：灰色摘要（单行省略，全文在 title 与悬停浮层里） */}
+      {snippet && (
+        <p
+          className={cn(
+            "mt-1 truncate text-xs leading-5 text-muted-foreground",
+            // 浮层卡里 extra 的复制/打开按钮占位更宽，摘要放宽到两行
+            !inline && "line-clamp-2 whitespace-normal"
+          )}
+          title={snippet}
+        >
+          {snippet}
+        </p>
+      )}
+
+      {/* popover 专属：完整链接 + 打开按钮 */}
+      {!inline && (
+        <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate font-mono text-[10px] text-muted-foreground/80">
+            {url ? prettySourceUrl(url, 52) : ""}
+          </span>
+          {url ? (
+            <button
+              type="button"
+              onClick={openUrl}
+              title={t.linkOpenInTab}
+              className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              <span>{t.linkOpenInTab}</span>
+              <ExternalLink className="size-3" />
+            </button>
+          ) : (
+            <span className="shrink-0 inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <Search className="size-3" />
+              {t.linkUnmatchedSource}
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const shellClass = cn(
+    "border border-border/80 bg-popover text-popover-foreground",
+    inline
+      // shadow-sm 只为亮色主题——亮色下卡面与页面同为白色，只靠边框会显得像一块空框；
+      // 深色下卡面本身就是 13% 灰（与截图一致），阴影不可见也不影响。
+      ? "group/src block w-full rounded-2xl px-3 py-2.5 shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/30"
+      : "w-80 max-w-[calc(100vw-20px)] rounded-2xl p-3.5 shadow-2xl shadow-black/20 animate-in fade-in zoom-in-95 duration-150"
+  );
+
+  // 正文里的常显卡：整张就是链接，标题与摘要都能点开原文。
+  // 对不上信源（没有可跳转 URL）时不包 <a>，既不假装能跳，也不给空 href。
+  if (inline && url) {
+    return (
+      <a
+        data-source-card="inline"
+        role="group"
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={style}
+        title={t.linkOpenInTab}
+        aria-label={`${title} — ${t.linkOpenInTab}`}
+        onClick={(event) => {
+          // 有宿主 openUrl 时走宿主通道，保持与 widget 约定的行为一致
+          if (onOpenUrl) {
+            event.preventDefault();
+            onOpenUrl(url);
+          }
+        }}
+        className={cn(shellClass, "cursor-pointer")}
+      >
+        {content}
+      </a>
+    );
+  }
+
   return (
     <div
       ref={cardRef}
-      role="tooltip"
+      data-source-card={inline ? "inline" : undefined}
+      role={inline ? "group" : "tooltip"}
       style={style}
-      className="w-80 max-w-[calc(100vw-20px)] rounded-2xl border border-border bg-popover text-popover-foreground p-3.5 shadow-2xl shadow-black/20 animate-in fade-in zoom-in-95 duration-150"
+      className={shellClass}
     >
-      {/* 域名行 */}
-      <div className="flex items-center gap-2 min-w-0">
-        <SourceFavicon url={url} className="size-5 rounded-[6px] text-[11px]" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={url}>
-          {url ? host || prettySourceUrl(url, 40) : t.linkUnmatchedSource}
-        </span>
-        {url && (
-          <button
-            type="button"
-            onClick={copyUrl}
-            title={copied ? t.linkCopied : t.linkCopyUrl}
-            aria-label={copied ? t.linkCopied : t.linkCopyUrl}
-            className="shrink-0 inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-          >
-            {copied ? (
-              <Check className="size-3.5 text-emerald-500" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* 标题 */}
-      <p className="mt-2.5 text-[13px] font-semibold leading-5 text-foreground line-clamp-2" title={title}>
-        {title}
-      </p>
-
-      {/* 摘要 */}
-      {snippet && (
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground line-clamp-3">{snippet}</p>
-      )}
-
-      {/* 操作行 */}
-      <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-mono text-[10px] text-muted-foreground/80">
-          {url ? prettySourceUrl(url, 52) : ""}
-        </span>
-        {url ? (
-          <button
-            type="button"
-            onClick={openUrl}
-            title={t.linkOpenInTab}
-            className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer"
-          >
-            <span>{t.linkOpenInTab}</span>
-            <ExternalLink className="size-3" />
-          </button>
-        ) : (
-          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
-            <Search className="size-3" />
-            {t.linkUnmatchedSource}
-          </span>
-        )}
-      </div>
+      {content}
     </div>
   );
+}
+
+/**
+ * 正文里常显的信源卡：把「这个链接到底是什么」直接穿插在引用它的段落后面，
+ * 不再要求读者把指针悬停到角标上才能知道来源。
+ */
+export function SourceInlineCard(
+  props: Omit<SourcePreviewCardProps, "variant" | "cardRef" | "style">
+) {
+  return <SourcePreviewCard {...props} variant="inline" />;
 }
 
 // ============================================================

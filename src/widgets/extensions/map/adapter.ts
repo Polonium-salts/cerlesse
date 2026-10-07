@@ -25,6 +25,8 @@ export const mapAdapter: MapAdapterType = {
         rating: 4.9,
         tags: ["必游地标", "自然风光", "5A景区"],
         distance: "0 km",
+        lat: 39.9049,
+        lng: 116.4074,
         description: "核心标志性景区，四季景色宜人，配备完善的步道与导览系统。",
         openingHours: "08:00 - 18:30"
       },
@@ -36,6 +38,8 @@ export const mapAdapter: MapAdapterType = {
         rating: 4.7,
         tags: ["地道风味", "老字号", "夜市小吃"],
         distance: "1.2 km",
+        lat: 39.9065,
+        lng: 116.4102,
         description: "汇聚当地传统特色餐饮名店与非遗风味小吃，夜间氛围浓厚。",
         openingHours: "10:00 - 23:00"
       },
@@ -47,6 +51,8 @@ export const mapAdapter: MapAdapterType = {
         rating: 4.8,
         tags: ["景观客房", "免费接驳", "高品质早餐"],
         distance: "2.5 km",
+        lat: 39.8987,
+        lng: 116.4143,
         description: "毗邻主要景区，环境静谧雅致，提供高品质商旅与度假体验。",
         openingHours: "24 小时营业"
       },
@@ -58,6 +64,8 @@ export const mapAdapter: MapAdapterType = {
         rating: 4.6,
         tags: ["多线换乘", "高铁直达", "机场大巴"],
         distance: "3.8 km",
+        lat: 39.9021,
+        lng: 116.3906,
         description: "城市骨干交通节点，多条地铁线与城际公交便捷接驳换乘。",
         openingHours: "06:00 - 23:30"
       }
