@@ -12,7 +12,7 @@ test("Agent fails closed without server-side credentials and never touches fetch
   globalThis.fetch = (async () => {
     fetchCalled = true;
     throw new Error("AI network call must not be made");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   try {
     await assert.rejects(
@@ -31,7 +31,7 @@ test("an explicitly disabled provider stops the Agent before any request", async
   globalThis.fetch = (async () => {
     fetchCalled = true;
     throw new Error("AI network call must not be made");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   try {
     await assert.rejects(

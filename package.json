@@ -18,7 +18,7 @@
     "ci": "tsc --noEmit && tsx scripts/widgets/scan.ts && tsx scripts/widgets/validate.ts && tsx --test tests/**/*.test.ts && vite build"
   },
   "dependencies": {
-    "@aktagon/llmkit-ts": "^2.1.0",
+    "@aktagon/llmkit-ts": "file:packages/llmkit-ts",
     "@orama/orama": "^3.1.18",
     "@vitejs/plugin-react": "^5.0.4",
     "class-variance-authority": "^0.7.1",
@@ -53,7 +53,6 @@
     "tailwindcss-animate": "^1.0.7",
     "terser": "^5.39.0",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "typescript": "~5.8.2"
   }
 }

@@ -1,0 +1,71 @@
+{
+  "name": "@aktagon/llmkit-ts",
+  "version": "2.1.0",
+  "description": "Unified LLM client library for TypeScript — one API for many providers (Anthropic, OpenAI, Google Gemini, AWS Bedrock, Mistral, Groq, DeepSeek, and more), zero runtime dependencies. Bun, Node, Deno, Cloudflare Workers.",
+  "type": "module",
+  "main": "./dist/llmkit.js",
+  "module": "./dist/llmkit.js",
+  "types": "./dist/llmkit.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/llmkit.d.ts",
+      "import": "./dist/llmkit.js"
+    },
+    "./builders": {
+      "types": "./dist/builders/index.d.ts",
+      "import": "./dist/builders/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "llm",
+    "ai",
+    "llm-client",
+    "ai-sdk",
+    "agents",
+    "anthropic",
+    "claude",
+    "openai",
+    "gpt",
+    "gemini",
+    "bedrock",
+    "mistral",
+    "groq",
+    "streaming",
+    "tool-calling",
+    "typescript"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aktagon/llmkit-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aktagon/llmkit-ts/issues"
+  },
+  "homepage": "https://llmkit.aktagon.com",
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target browser --format esm --splitting && bun run build:types",
+    "build:types": "tsc -p tsconfig.build.json",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepack": "bun run build",
+    "prepare": "bun run build",
+    "prepublishOnly": "test -n \"$LLMKIT_PUBLISH_WRAPPER\" || { echo 'publish with the release script, which checks the package first' >&2; exit 1; }"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.7"
+  }
+}

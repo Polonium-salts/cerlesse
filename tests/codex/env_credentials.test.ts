@@ -83,7 +83,7 @@ test("client construction uses the configured OpenAI-compatible base URL and fai
   globalThis.fetch = (async () => {
     fetchCalled = true;
     throw new Error("AI provider network call must not be made");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   try {
     assert.throws(

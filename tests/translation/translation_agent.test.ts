@@ -80,7 +80,7 @@ test("repeated lookups are served from the cache without a second provider call"
       examples: [],
       synonyms: []
     }));
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   try {
     const first = await translateText({ text: "world", sourceLang: "en", targetLang: "zh", env: { AI_API_KEY: VALID_KEY } });
@@ -98,13 +98,13 @@ test("invalid model output and provider failures surface as LlmProviderError", a
   const originalFetch = globalThis.fetch;
 
   try {
-    globalThis.fetch = (async () => chatResponse("这不是 JSON")) as typeof fetch;
+    globalThis.fetch = (async () => chatResponse("这不是 JSON")) as unknown as typeof fetch;
     await assert.rejects(
       translateText({ text: "broken payload", sourceLang: "en", targetLang: "zh", env: { AI_API_KEY: VALID_KEY } }),
       (error: unknown) => error instanceof LlmProviderError && error.code === "invalid_response" && error.status === 502
     );
 
-    globalThis.fetch = (async () => new Response("Unauthorized", { status: 401 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response("Unauthorized", { status: 401 })) as unknown as typeof fetch;
     await assert.rejects(
       translateText({ text: "unauthorized", sourceLang: "en", targetLang: "zh", env: { AI_API_KEY: VALID_KEY } }),
       (error: unknown) => error instanceof LlmProviderError && error.code === "invalid_api_key" && error.status === 401
@@ -120,7 +120,7 @@ test("translation fails closed before fetch when the provider is disabled or unc
   globalThis.fetch = (async () => {
     fetchCalled = true;
     throw new Error("AI provider network call must not be made");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   try {
     await assert.rejects(
